@@ -2,10 +2,20 @@ const OpenAI = require('openai');
 const logger = require('../utils/logger');
 const handleToolProcesses = require('./openaiServerToolsHandler');
 const { getToolResponse, deleteToolResponse } = require('../data/toolsResponsesData');
+require('dotenv').config();
+
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
+
+async function downloadFile(fileId) {
+    const response = await openai.files.content(fileId);
+    // Extract the binary data from the Response object
+    const image_data = await response.arrayBuffer();
+    // Convert the binary data to a Buffer
+    return Buffer.from(image_data);
+}
 
 async function createThreadIfNeeded(threadId) {
     if (threadId) {
@@ -90,44 +100,50 @@ async function getAssistantResponse(userQuery, threadId = null, toolResponses = 
         const thread = await createThreadIfNeeded(threadId);
         threadId = thread.id;
 
-        logger.logWithThreadId('info', `New call performed - User Query: ${userQuery}, Tool Outputs: ${JSON.stringify(toolResponses)}`, threadId);
+        logger.logWithThreadId('info', `\n\nNew call performed - User Query: ${userQuery}, Tool Outputs: ${JSON.stringify(toolResponses)}`, threadId);
 
         let runID = userQuery === "action_response" 
             ? await handleActionResponse(threadId, toolResponses) 
             : await handleRegularMessage(threadId, userQuery, instructions);
 
         const runStatus = await checkRunStatus(threadId, runID);
-        logger.logWithThreadId('info', `Run Status: ${runStatus.status}`, threadId);
+        logger.logWithThreadId('debug', `Run Status: ${runStatus.status}`, threadId);
 
         if (runStatus.status === "requires_action") {
-            const run = await openai.beta.threads.runs.list(threadId);
-            let toolCalls = run.body.data[0].required_action.submit_tool_outputs.tool_calls;
-    
-            const allToolsHandled = await handleToolProcesses(toolCalls, runID);
-            if (allToolsHandled) {
-                handleActionResponse(threadId, { runId:runID, responses: [/*Empty because handleActionResponse will read them from the temp storage*/] });
+            let runStatusAfterTools = runStatus;
+            do {
+                const run = await openai.beta.threads.runs.list(threadId);
+                let toolCalls = run.body.data[0].required_action.submit_tool_outputs.tool_calls;
+        
+                const allToolsHandled = await handleToolProcesses(toolCalls, runID);
+                if (allToolsHandled) {
+                    handleActionResponse(threadId, { runId: runID, responses: [/*Empty because handleActionResponse will read them from the temp storage*/] });
+                    // Wait for the tool responses to be sent to the assistant and go to a different processing state
+                    await new Promise(resolve => setTimeout(resolve, 500)); 
+                } else {
+                    const existingResponses = getToolResponse(runID) || [];
+                    logger.logWithThreadId('debug', `AI requires action response from client, sending toolCall - Tool Calls: ${JSON.stringify(toolCalls)}`, threadId);
+                    return { 
+                        responseContent: "requires_action", 
+                        threadId: threadId, 
+                        tools: { 
+                            calls: toolCalls.filter(toolCall => !existingResponses.some(response => response.tool_call_id === toolCall.id)), 
+                            runID 
+                        } 
+                    };
+                }
+        
                 // Re-check the run status after handling all tool processes
-                await new Promise(resolve => setTimeout(resolve, 500)); // Wait for the tool responses to be sent to the assistant and go to a different processing state
-                const runStatusAfterTools = await checkRunStatus(threadId, runID);
-                logger.logWithThreadId('info', `Run Status afterRunning actions: ${runStatusAfterTools.status}`, threadId);
-            } else {
-                const existingResponses = getToolResponse(runID) || [];
-                logger.logWithThreadId('info', `AI requires action response from client, sending toolCall - Tool Calls: ${JSON.stringify(toolCalls)}`, threadId);
-                return { 
-                    responseContent: "requires_action", 
-                    threadId: threadId, 
-                    tools: { 
-                        calls: toolCalls.filter(toolCall => !existingResponses.some(response => response.tool_call_id === toolCall.id)), 
-                        runID 
-                    } 
-                };
-            }
+                runStatusAfterTools = await checkRunStatus(threadId, runID);
+                logger.logWithThreadId('debug', `Run Status after running actions: ${runStatusAfterTools.status}`, threadId);
+        
+            } while (runStatusAfterTools.status === "requires_action");
         }
 
         const messages = await openai.beta.threads.messages.list(threadId);
         const lastMessage = messages.data.find(msg => msg.role === 'assistant');
         const responseContent = lastMessage ? lastMessage.content : "No response from the assistant.";
-        logger.logWithThreadId('info', `Response Content: \n${responseContent}`, threadId);
+        logger.logWithThreadId('info', `Response Content: \n${JSON.stringify(responseContent, null, 2)}`, threadId);
         return { responseContent, threadId: threadId };
 
     } catch (error) {
@@ -139,4 +155,5 @@ async function getAssistantResponse(userQuery, threadId = null, toolResponses = 
 
 module.exports = {
     getAssistantResponse,
+    downloadFile,
 };

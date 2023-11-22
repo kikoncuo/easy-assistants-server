@@ -1,23 +1,43 @@
 const logger = require('../utils/logger');
-const { getToolResponse, setToolResponse, deleteToolResponse } = require('../data/toolsResponsesData');
+const { getToolResponse, setToolResponse } = require('../data/toolsResponsesData');
+const testtool = require('../tools/testTool');
+
+
+
+const functionMap = {
+    // Add any functions here imported from anywhere, make sure that you define a function with the same name and params in openAI assistant's
+    testTool: testtool.testFunction,
+};
+  
 
 async function handleToolProcesses(toolCalls, runId) {
-    let responses = getToolResponse(runId) || [];
+  let responses = getToolResponse(runId) || [];
 
-    for (const toolCall of toolCalls) {
-        // Additional logic if needed when a specific tool is handled
-        if (toolCall.function.name === "testTool") {
-            // Log the function name and the parametes
-            logger.logWithThreadId('info', `${toolCall.function.name} called with parameters: ${toolCall.function.arguments}`);
-            // Aways add your response to the tool here
-            responses.push({ tool_call_id: toolCall.id, output: "Test Successfull" });
-        }
+  for (const toolCall of toolCalls) {
+    const functionName = toolCall.function.name;
+    const args = JSON.parse(toolCall.function.arguments || '{}');
+
+    try {
+      logger.logWithThreadId('info', `${functionName} called with parameters: ${JSON.stringify(args)}`, "");
+
+      // Call the function dynamically from the functionMap
+      if (functionMap[functionName]) {
+        const result = await functionMap[functionName](...Object.values(args));
+        logger.logWithThreadId('debug', `Result of the call is ${JSON.stringify(result)}`, "");
+        responses.push({ tool_call_id: toolCall.id, output: `Success: ${JSON.stringify(result)}` });
+      } else {
+        logger.logWithThreadId('warn', `Unidentified tool or execution error, likely a client tool ${functionName}: ${JSON.stringify(args)}`, "");
+      }
+    } catch (error) {
+        logger.logWithThreadId('error', JSON.stringify(error), "");
+        logger.logWithThreadId('error', error.message, "");
+        responses.push({ tool_call_id: toolCall.id, output: `Error: ${error.message}` });
     }
-    setToolResponse(runId, responses);
-    if (responses.length === toolCalls.length) {
-        return true;
-    }
-    return false;
+  }
+
+  setToolResponse(runId, responses);
+
+  return responses.length === toolCalls.length;
 }
 
 module.exports = handleToolProcesses;
