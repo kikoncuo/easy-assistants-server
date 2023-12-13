@@ -14,7 +14,7 @@ const logger = winston.createLogger({
   level: logLevel,
   format: combine(
     timestamp(),
-    colorize({ all: true }),
+    //colorize(), For some reason this crashes
     myFormat
   ),
   defaultMeta: { service: 'AssistantService' },
@@ -28,7 +28,7 @@ const logger = winston.createLogger({
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
     format: combine(
-      colorize(),
+      //colorize(),
       timestamp(),
       myFormat
     ),

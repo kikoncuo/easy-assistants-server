@@ -26,7 +26,7 @@ async function handleToolProcesses(toolCalls, runId) {
         logger.logWithThreadId('debug', `Result of the call is ${JSON.stringify(result)}`, "");
         responses.push({ tool_call_id: toolCall.id, output: `Success: ${JSON.stringify(result)}` });
       } else {
-        logger.logWithThreadId('warn', `Unidentified tool or execution error, likely a client tool ${functionName}: ${JSON.stringify(args)}`, "");
+        logger.logWithThreadId('debug', `Unidentified tool, likely a client tool ${functionName}: ${JSON.stringify(args)}`, "");
       }
     } catch (error) {
         logger.logWithThreadId('error', JSON.stringify(error), "");
