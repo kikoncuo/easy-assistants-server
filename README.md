@@ -193,6 +193,28 @@ Server-side tools are designed to work in tandem with client tools automatically
 
 Note on Persistent Data Store: If your code operates in a serverless environment or any scenario where the run state could be lost from memory, consider transitioning to a persistent data store. This change will ensure that the state of tool responses remains consistent across different instances or invocations of your server.
 
+## 📝 Saving Data for Training Other Models
+
+The chat data can be saved to a database table, such as the chat_data table, to train other models or perform analysis. To create the chat_data table in your database, you can use the following SQL code:
+
+```sql
+CREATE TABLE chat_data (
+  id SERIAL PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  function_name TEXT,
+  function_arguments JSONB
+);
+```
+
+Once the table is created, you will need to modify your .env dile or set environment variables to include the following:
+
+```dotenv
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_KEY=your_supabase_key_here
+```
+
 ## 🌟 Features
 
     Integration with OpenAI for natural language processing.
