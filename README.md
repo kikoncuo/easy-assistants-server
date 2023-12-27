@@ -204,7 +204,8 @@ CREATE TABLE chat_data (
   role TEXT NOT NULL,
   content TEXT NOT NULL,
   function_name TEXT,
-  function_arguments JSONB
+  function_arguments JSONB,
+  date DATE
 );
 ```
 

@@ -13,9 +13,10 @@ if (isSupabaseEnabled) {
 async function saveChatDataToSupabase(userQuery, toolOutputs, response) {
   const messages = [];
   const threadId = response.threadId;
+  const currentDate = new Date().toISOString().split('T')[0]; // Format as YYYY-MM-DD
 
   if (!toolOutputs || !toolOutputs.calls || toolOutputs.calls.length === 0) {
-    messages.push({ thread_id: threadId||1, role: 'user', content: userQuery });
+    messages.push({ thread_id: threadId||1, role: 'user', content: userQuery, date: currentDate });
   }
 
   if (toolOutputs && toolOutputs.calls && toolOutputs.calls.length > 0) {
@@ -27,7 +28,8 @@ async function saveChatDataToSupabase(userQuery, toolOutputs, response) {
           role: 'function',
           content: 'function_response',
           function_name: functionDetails.name,
-          function_arguments: functionDetails.arguments
+          function_arguments: functionDetails.arguments,
+          date: currentDate
         });
       }
     }
@@ -35,7 +37,7 @@ async function saveChatDataToSupabase(userQuery, toolOutputs, response) {
 
   if (response) {
       if (response.responseContent === 'text'|| response.responseContent[0].type === 'text') {
-        messages.push({ thread_id: threadId, role: 'assistant', content: response.responseContent[0].text.value });
+        messages.push({ thread_id: threadId, role: 'assistant', content: response.responseContent[0].text.value, date: currentDate });
       } else if (response.responseContent === 'requires_action') {
         // for each call in response.tools.calls store a message
         for (const call of response.tools.calls) {
@@ -46,7 +48,8 @@ async function saveChatDataToSupabase(userQuery, toolOutputs, response) {
               role: 'assistant',
               content: 'function_call',
               function_name: functionDetails.name,
-              function_arguments: functionDetails.arguments
+              function_arguments: functionDetails.arguments,
+              date: currentDate
             });
           }
         }
