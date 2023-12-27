@@ -25,7 +25,7 @@ async function saveChatDataToSupabase(userQuery, toolOutputs, response) {
         messages.push({
           thread_id: threadId,
           role: 'function',
-          content: JSON.stringify(functionDetails.arguments),
+          content: 'function_response',
           function_name: functionDetails.name,
           function_arguments: functionDetails.arguments
         });
