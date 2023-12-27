@@ -44,6 +44,15 @@ function logWithThreadId(level, message, threadId = null) {
   });
 }
 
+// Function to log messages normally
+function log(level, message) {
+  logger.log({
+    level,
+    message,
+  });
+}
+
 module.exports = {
   logWithThreadId,
+  log,
 };
