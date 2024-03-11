@@ -1,238 +1,139 @@
-# README.md for Server Setup and Usage
+# OmniAssistant Server
 
-## 🚀 Getting Started
+OmniAssistant Server is a powerful and flexible application built using Bun, TypeScript, and the LangChain library. It allows you to create and manage various agents, each specialized in different tasks and equipped with a set of tools to assist in completing those tasks. The server communicates with clients through WebSockets, enabling real-time communication and collaboration.
 
-This guide explains how to set up and use the server which integrates with OpenAI's services to handle user queries and manage a chat interface.
+## Features
 
-### Prerequisites
+- **Agent Management**: Create and manage multiple agents, each with its own specialized task and set of tools.
+- **Tool Integration**: Integrate various tools into agents, such as calculators, email clients, campaign management tools, and more.
+- **Real-time Communication**: Communicate with clients through WebSockets for efficient and real-time interactions.
+- **Task Processing**: Process and delegate tasks to the appropriate agents, leveraging their specialized knowledge and tools.
+- **User Interaction**: Interact with users through prompts, allowing agents to gather necessary information for task completion.
 
-- Node.js installed
-- dotenv, express, openai, and winston npm packages
-- An OpenAI API key
+## Getting Started
 
-### Installation
+To get started with OmniAssistant Server, follow these steps:
 
-1. Clone the repository.
-2. Navigate to the project directory.
-3. Run `npm install` to install dependencies.
+1. **Clone the Repository**
 
-## 🛠️ Configuration
+```bash
+git clone https://github.com/your-username/omni-assistant-server.git
+cd omni-assistant-server
+```
+## Install Dependencies
 
-Create a `.env` file in the root directory and add your OpenAI API key:
-
-```dotenv
-PORT=3001
-OPENAI_API_KEY=your_api_key_here
-ASSISTANT_ID=asst_id_here
+```bash
+bun install
 ```
 
-## 🖥️ Running the Server
+## Set up Environment Variables
 
-Start the server by running:
+Create a .env file in the root directory of the project and add any required environment variables, such as API keys or credentials.
 
-bash
-
-npm start
-
-The server will be running on http://localhost:3001 or a custom port if defined in .env.
-## 🔌 API Endpoints
-POST /chat
-
-    Description: Handles user queries and manages chat interactions.
-    Request Body:
-        query: The user's query or message.
-        threadId: (Optional) The thread ID for continuing an existing conversation.
-        tool_outputs: (Optional) Outputs from tools required for processing the query.
-
-### Sending a New Query
-
- ```json
-POST /chat
-{
-  "query": "I'm looking for a gaming laptop."
-}
+IE:
+``` bash
+# .env
+OPENAI_API_KEY=sk-*****
+LANGCHAIN_API_KEY=ls__******
+LANGCHAIN_PROJECT=multi-assistant-omniloy
+LANGCHAIN_TRACING_V2=true
+GROQ_API_KEY=gsk_******
+ANTHROPIC_API_KEY=sk-ant-api03-******
 ```
+## Build the Project (Optional)
 
-Return Values
+If you need to build the project, run:
 
-A regular response contains the assistant's text response to the user query. And a threadId to keep the conversation
-    Example:
-
-    Structure: { responseContent: string, threadId: string }
-
- ```json
-    {
-      "responseContent": "Here are some gaming laptops...",
-      "threadId": "thread_AWwEcT5YpdJoD0PDsYdrmvHk"
-    }
+```bash
+bun run build
 ```
+## Start the Server
 
-### Continuing a Conversation
-
-To continue a conversation we need to pass a threadId, the threadId is returned as the response to any message, we recommend you manage those within your app state or sometimes in localstorage (Remember clearing it if you use localstorage)
-
- ```json
-POST /chat
-{
-  "query": "What about laptops for video editing?",
-  "threadId": "thread_AWwEcT5YpdJoD0PDsYdrmvHk"
-}
+```bash
+bun start
 ```
+This will start the WebSocket server on port 8080.
+## Usage
 
-### Passing custom instructions
-
-Sometimes we'll want to give the AI extra context or custom instructions other than the base defined through the assistants UI, we can do that by passing the instructions parameter
-
- ```json
-POST /chat
-{
-  "query": "What about laptops for video editing?",
-  "threadId": "thread_AWwEcT5YpdJoD0PDsYdrmvHk",
-  "instructions": "Continue helping the user find the best laptop. They are currently viewing the following data EXAMPLEDATA"
-}
-```
-
-### Handling Tools 
-NOTE: We recommend the use of the Easy-assistants-SDK to simplify this process, just point that SDK to this server and follow it's guide
-
-Requires Action Response
-
-Sometimes a response may be a request to perform a call, the functions are pre-defined with the AI and depend on the assistant that has been created. The assistant requires a response to the function to proceed and provide the response
-
-    Structure: { responseContent: "requires_action", threadId: string, tools: { calls: Array, runID: string } }
-    
- Example:
-
- ```json
-    {
-      "responseContent": "requires_action",
-      "threadId": "thread_AWwEcT5YpdJoD0PDsYdrmvHk",
-      "tools": {
-        "calls": [
-            {
-                "function": {
-                    "name":"navigate",
-                    "arguments":"http://google.com"
-                },
-                "id": "call_9C0aEJwogmakZy9ncSWOiJht"
-            }
-        ],
-        "runID": "run_14T1HJZoHFrSqr3nrvKsgwwQ"
-      }
-    }
-```
-
-Here is an example of how a reponse to an action can be provided. Keep in mind that a message may request the execution of multiple tools
+To interact with the server, you can use the provided `client.ts` file or create your own client application. The server accepts JSON-formatted messages with the following structure:
 
 ```json
-POST /chat
 {
-  "query": "action_response",
-  "threadId": "thread_AWwEcT5YpdJoD0PDsYdrmvHk",
-  "tool_outputs": {
-    "responses": [
-      {
-        "tool_call_id": "call_9C0aEJwogmakZy9ncSWOiJht",
-        "output": "success"
-      }
-    ],
-    "runId": "run_14T1HJZoHFrSqr3nrvKsgwwQ"
-  }
+  "type": "query",
+  "task": "your task description"
 }
 ```
+The server will process the task and delegate it to the appropriate agent based on the task description. If the agent requires user input or additional information, the server will send a message back to the client with the necessary prompts.
 
-
-GET /files/:fileId
-
-Description: Handles requests for files generated by the assistant.
-Request Path Parameter:
-    fileId: The unique identifier for the requested file.
-
-FileIds are provided by the assistant through the chat when the request should generate a file (e.g., creating a bar diagram with male and female clients). The response will include an object with a type field (e.g., 'image_file') and an image_file object, which contains a file_id parameter. This ID is always in string format, starting with the prefix "file-".
-
-Example response that contains a file
+Example client message:
 
 ```json
-[
-  {
-    "type": "image_file",
-    "image_file": {
-      "file_id": "file-8Hd0y33C1AnWi8bNT0H00CJy"
-    }
-  },
-  {
-    "responseContent": "Here are some gaming laptops...",
-    "threadId": "thread_AWwEcT5YpdJoD0PDsYdrmvHk"
-  }
-]
-
+{
+  "type": "query",
+  "task": "create a new campagin targetting males over 40 years old, with a discount of 20% in all products. Include an email explaining the discount."
+}
 ```
+The server will respond with prompts for the required information, and the client should send back the responses for each prompt.
 
-## 🧰 Setting up and handling custom server-side tools
+## Details on server communication
 
-Custom server-side tools can be integrated and managed to extend the functionality of the chat interface. The openaiServerToolsHandler.js file is central to this process. Below is an example of how to modify this file to handle custom server-side tools:
+The server can send back messages with different types to the client, and the client should handle these messages accordingly. Here's an explanation of the different types and how they are handled in the provided client.ts example:
 
-To add custom server-side tools, modify the openaiServerToolsHandler.js file. Below is an example of how to integrate new tools using the functionMap.
+* plan step:
+    The plan step type is used to show the plan or intermediate steps of the user's task to the user.
+    This type is typically displayed to the user as is, without requiring any additional input or response.
+* result:
+    The result type is used to show the final response or output of the chat.
+    In the provided example, the client handles the result type as follows:
 
 ```javascript
-
-const logger = require('../utils/logger');
-const { getToolResponse, setToolResponse } = require('../data/toolsResponsesData');
-const testtool = require('../tools/testTool');
-
-const functionMap = {
-    // Add any functions here imported from anywhere, make sure that you define a function with the same name and params in the OpenAI assistant's configuration.
-    testTool: testtool.testFunction,
-};
-
-// ... existing functionMap handling code ...
-
+if (data.type === 'result') {
+  // Server has sent a result
+  console.log('Result:', data.message);
+}
 ```
 
-Server-side tools are designed to work in tandem with client tools automatically. However, if a client tool and a server tool are invoked in the same response to a user message, synchronization is managed in toolsResponsesData.js. Currently, this synchronization uses a Map object.
+When the server sends a message with type set to result, the message field contains the final result or output, which is printed to the console in this example.
 
-Note on Persistent Data Store: If your code operates in a serverless environment or any scenario where the run state could be lost from memory, consider transitioning to a persistent data store. This change will ensure that the state of tool responses remains consistent across different instances or invocations of your server.
+* tool:
+    The tool type is used by the AI to request the user to run specific tools and provide a response.
+    These tool requests should be handled sequentially by the client.
+    The server sends a message with type set to tool, containing an array of functions that need to be processed.
+    In the provided example, the client handles the tool type as follows:
 
-## 📝 Saving Data for Training Other Models
 
-The chat data can be saved to a database table, such as the chat_data table, to train other models or perform analysis. To create the chat_data table in your database, you can use the following SQL code:
+```javascript
+if (data.type === 'tool') {
+  // Server is querying the user for input
 
-```sql
-CREATE TABLE chat_data (
-  id SERIAL PRIMARY KEY,
-  thread_id TEXT NOT NULL,
-  role TEXT NOT NULL,
-  content TEXT NOT NULL,
-  function_name TEXT,
-  function_arguments JSONB,
-  date DATE
-);
+  const { functions } = data;
+
+  console.log('Server is querying for functions:', functions);
+
+  // Process each function and send the responses back to the server
+  const responses = functions.map(({ function_name, arguments: args }) => {
+    console.log(`Processing function: ${function_name} with args:`, args);
+
+    // Replace this with your own input mechanism or automated response logic
+    let response;
+
+    // Simplified example: Prompt the user for a response. Here you'd take the params, args and invoke your gunction
+    response = prompt(`Enter your response for ${function_name}:`);
+
+    return { function_name, response };
+  });
+
+  // Send the responses back to the server
+  ws.send(JSON.stringify({ type: 'toolResponse', response: JSON.stringify(responses) }));
+}
 ```
 
-Once the table is created, you will need to modify your .env dile or set environment variables to include the following:
+In this example, the client processes each function received from the server, prompts the user for a response (using the prompt function as a placeholder), and sends the responses back to the server in the format { type: 'toolResponse', response: JSON.stringify(responses) }.
+The actual implementation of how the user input is obtained can be replaced with your own input mechanism or automated response logic.
 
-```dotenv
-SUPABASE_URL=your_supabase_url_here
-SUPABASE_KEY=your_supabase_key_here
-```
 
-## 🌟 Features
+By handling these different message types, the client can effectively communicate with the server, provide user input when requested (through tools), and display the final result or output.
 
-    Integration with OpenAI for natural language processing.
-    Thread management for continuous conversation flow.
-    Custom instructions per message.
-    Interface to handle tool execution and responses on server and client.
-    Simultaneous client and server tool execution.
-    Logging with Winston for error tracking and info logs.
-    File support for handling file-related responses from the assistant.
-    Iterative tool support for complex toolchain execution in a single response.
+## Contributing
 
-## 📚 Additional Information
-
-    For detailed API documentation, refer to OpenAI's official API docs.
-    Ensure your OpenAI API key remains confidential.
-    Adjust logging levels as needed in production environments.
-
-## 📞 Support
-
-For any issues or queries, ask Enrique.
+Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.

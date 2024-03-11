@@ -1,23 +1,27 @@
 {
-  "name": "easy-assistants-server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "omni-assistant-server",
+  "module": "index.ts",
+  "type": "module",
+  "main": "src/server.ts",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "bun": "bun --hot src/index.js"
-  },
-  "author": "Enrique Alcázar",
-  "license": "ISC",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.39.1",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "openai": "^4.17.5",
-    "winston": "^3.11.0"
+    "start": "ts-node src/server.ts",
+    "client": "ts-node src/client.ts"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "bun-types": "^1.0.30"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^0.1.4",
+    "@langchain/community": "^0.0.35",
+    "@langchain/core": "^0.1.43",
+    "@langchain/groq": "^0.0.2",
+    "@langchain/langgraph": "^0.0.10",
+    "@langchain/openai": "^0.0.18",
+    "dotenv": "^16.4.5",
+    "langchain": "^0.1.25",
+    "ts-node": "^10.9.2"
   }
 }
