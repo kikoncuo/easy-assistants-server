@@ -26,7 +26,7 @@ class GraphApplication {
         this.graphManager = new GraphManager(
             fasterModel,
             agents,
-            strongestModel,
+            fasterModel,
             outputHandler,
             agentFunction
         );

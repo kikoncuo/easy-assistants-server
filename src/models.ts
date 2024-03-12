@@ -39,19 +39,19 @@ function getFasterModel(): BaseChatModel {
 }
 
 function groqChatMixtral(): BaseChatModel {
-  return new ChatGroq({ temperature: 0, modelName: 'mixtral-8x7b-32768' });
+  return new ChatGroq({ temperature: 0, modelName: 'mixtral-8x7b-32768', streaming: true });
 }
 
 function groqChatLlama(): BaseChatModel {
-  return new ChatGroq({ temperature: 0, modelName: 'llama2-70b-4096' });
+  return new ChatGroq({ temperature: 0, modelName: 'llama2-70b-4096', streaming: true });
 }
 
 function anthropicOpus(): BaseChatModel {
-  return new ChatAnthropicTools({ temperature: 0, modelName: 'claude-3-opus-20240229' });
+  return new ChatAnthropicTools({ temperature: 0, modelName: 'claude-3-opus-20240229', streaming: true });
 }
 
 function anthropicSonnet(): BaseChatModel {
-  return new ChatAnthropicTools({ temperature: 0, modelName: 'claude-3-sonnet-20240229' });
+  return new ChatAnthropicTools({ temperature: 0, modelName: 'claude-3-sonnet-20240229', streaming: true });
 }
 
 export {
