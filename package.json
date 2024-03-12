@@ -4,8 +4,8 @@
   "type": "module",
   "main": "src/server.ts",
   "scripts": {
-    "start": "ts-node src/server.ts",
-    "client": "ts-node src/client.ts"
+    "start": "bun src/server.ts",
+    "client": "bun src/client.ts"
   },
   "devDependencies": {
     "bun-types": "^1.0.30"
@@ -22,7 +22,6 @@
     "@langchain/openai": "^0.0.18",
     "dotenv": "^16.4.5",
     "langchain": "^0.1.25",
-    "pdf-parse": "^1.1.1",
-    "ts-node": "^10.9.2"
+    "pdf-parse": "^1.1.1"
   }
 }
