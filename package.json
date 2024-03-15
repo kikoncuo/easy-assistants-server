@@ -5,7 +5,7 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "bun src/server.ts",
-    "client": "bun src/client.ts"
+    "test": "bun src/testClient.ts"
   },
   "devDependencies": {
     "bun-types": "^1.0.30"
@@ -20,6 +20,7 @@
     "@langchain/groq": "^0.0.2",
     "@langchain/langgraph": "^0.0.10",
     "@langchain/openai": "^0.0.18",
+    "async_hooks": "^1.0.0",
     "dotenv": "^16.4.5",
     "langchain": "^0.1.25",
     "pdf-parse": "^1.1.1"

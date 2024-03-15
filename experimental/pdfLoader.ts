@@ -10,7 +10,7 @@ async function fetchPDF(url: string): Promise<Blob> {
   return new Blob([buffer], { type: "application/pdf" }) as Blob & { json: () => Promise<any>, formData: () => Promise<any> };
 }
 
-async function semanticPDFSplitter(docs: any[], model: BaseChatModel, pagesPerChunk: number, overlapPages: number, fileUrL: string): Promise<any[]> {
+async function semanticSplitter(docs: any[], model: BaseChatModel, pagesPerChunk: number, overlapPages: number, fileName: string): Promise<any[]> {
     const chunks: any[] = [];
 
     for (let i = 0; i < docs.length; i += pagesPerChunk - overlapPages) {
@@ -27,31 +27,30 @@ async function semanticPDFSplitter(docs: any[], model: BaseChatModel, pagesPerCh
     );
 
     const namePromptTemplate = PromptTemplate.fromTemplate(
-        `Given the following content text found on URL: {url}, give me a name for it. You are only seeing a chunk of the document so only describe exactly the contents of your text.:\n\n Text: {text}`
+        `Given the following content text found on: {fileName}, give me a name for it. You are only seeing a chunk of the document so only describe exactly the contents of your text.:\n\n Text: {text}`
     );
 
     const totalInvokes = chunks.length;
-    console.log(`Total invokes needed: ${totalInvokes}`);
 
     const promises = chunks.map(async (chunk, index) => {
         const describeChain = describePromptTemplate.pipe(model);
         const titleChain = namePromptTemplate.pipe(model);
         console.log(`Invoking ${index + 1}`);
-        //const description = (await chain.invoke({ text: chunk.text })).content;
-        let description = '';
+        const description = (await describeChain.invoke({ text: chunk.text })).content;
+        const title = (await describeChain.invoke({ text: chunk.text, fileName: fileName})).content;
+        /*let description = ''; // TODO: Enable this later, for some reason the stream API is not returning anything right now
         let title = '';
         const stream = await describeChain.stream({ text: chunk.text });
         for await (const output of stream.values()) {
             const chunk = output.content.toString();
             description += chunk;
-            // console.log(chunk);
+            console.log(`Description chunk: ${chunk}`)
         }
-        const stream2 = await titleChain.stream({ text: chunk.text, url: fileUrL});
+        const stream2 = await titleChain.stream({ text: chunk.text, fileName: fileName});
         for await (const output of stream2.values()) {
             const chunk = output.content.toString();
             title += chunk;
-            // console.log(chunk);
-        }
+        }*/
         console.log(`Invoke ${index + 1} of ${totalInvokes} completed`);
         return {
         description,
@@ -76,7 +75,7 @@ async function main() {
     const pagesPerChunk = 10;
     const overlapPages = 1;
 
-    const result = await semanticPDFSplitter(docs, gpt35, pagesPerChunk, overlapPages, pdfUrl);
+    const result = await semanticSplitter(docs, gpt35, pagesPerChunk, overlapPages, pdfUrl);
 
     console.log("Semantic PDF Splitter Result:");
     result.forEach((item, index) => {
