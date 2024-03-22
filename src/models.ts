@@ -85,6 +85,14 @@ function anthropicSonnet(): BaseChatModel {
   });
 }
 
+function anthropicHaiku(): BaseChatModel {
+  return new ChatAnthropicTools({
+    temperature: 0,
+    modelName: "claude-3-haiku-20240307",
+    streaming: true,
+  });
+}
+
 export {
   getStrongestModel,
   getFasterModel,
@@ -93,4 +101,5 @@ export {
   anthropicOpus,
   anthropicSonnet,
   createAgent,
+  anthropicHaiku,
 };

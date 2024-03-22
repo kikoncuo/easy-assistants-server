@@ -1,7 +1,6 @@
 /** @format */
 
 import { ToolDefinition } from "@langchain/core/language_models/base";
-
 const calculatorTool: ToolDefinition = {
   type: "function",
   function: {
@@ -31,14 +30,99 @@ const calculatorTool: ToolDefinition = {
     },
   },
 };
-
 const calculatorToolPlannerDescription =
   "calculate[operation] Perform basic arithmetic operations on two numbers, including powers and roots";
+
+const sqlQuery: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "createSQLquery",
+    description:
+      "Creates a given SQL query with specified parameters and returns the result set.The table's columns definition is provided.",
+    parameters: {
+      type: "object",
+      properties: {
+        sql: {
+          type: "string",
+          description:
+            "The SQL query string to be executed. Can include parameters. Never use HAVING statement, but WHERE.",
+        },
+        sql_insert: {
+          type: "string",
+          description:
+            "The SQL query string to be executing, containing the CREATE TABLE statement based on the 'sql' property, the table columns definition should be generated based on the desired result input by the user.",
+        },
+        chart: {
+          type: "boolean",
+          description:
+            "Indicate if based on the generated query, a chart would be helpful to understand better the data.",
+        },
+        // params: {
+        //   type: "array",
+        //   description:
+        //     "An array of parameters to be injected into the SQL query. These parameters correspond to placeholders in the 'sql' string.",
+        //   items: {
+        //     type: "string",
+        //     description:
+        //       "A parameter value to be safely injected into the SQL query",
+        //   },
+        // },
+      },
+      required: ["sql", "sql_insert", "chart"],
+    },
+  },
+};
+
+const segmentTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "addSegment",
+    description:
+      "Creates a given SQL query with specified parameters and returns the result set",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Name of the segment",
+        },
+        created_by: {
+          type: "string",
+          description: "Name of the user that executed the query",
+        },
+        last_edited: {
+          type: "string",
+          description:
+            "Actual date of the function execution in format YYYY-MM-DD",
+        },
+        condition: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["age", "amount", "gender", "category", "product"],
+          },
+        },
+        table_name: {
+          type: "string",
+          description:
+            "Table name that was used to insert data from the createSQLquery function.",
+        },
+      },
+      required: [
+        "name",
+        "created_by",
+        "last_edited",
+        "condition",
+        "table_name",
+      ],
+    },
+  },
+};
 
 const emailTool: ToolDefinition = {
   type: "function",
   function: {
-    name: "createEmailTemplate",
+    name: "createEmail",
     description:
       "Creates an email for a campaign based on the template_name, the subject and message",
     parameters: {
@@ -61,7 +145,6 @@ const emailTool: ToolDefinition = {
     },
   },
 };
-
 const eventTool: ToolDefinition = {
   type: "function",
   function: {
@@ -99,7 +182,6 @@ const eventTool: ToolDefinition = {
     },
   },
 };
-
 const filterTool: ToolDefinition = {
   type: "function",
   function: {
@@ -110,36 +192,30 @@ const filterTool: ToolDefinition = {
       properties: {
         criteria: {
           type: "array",
-          description: "List of filter criteria",
           items: {
-            type: "object",
-            enum: ["age", "purchaseAmount", "gender"],
-            properties: {
-              criterionType: {
-                type: "string",
-                description: "Filter properties",
-              },
-              details: {
-                type: "object",
-                additionalProperties: true,
-                description:
-                  "Details of the criterion, structure depends on criterionType",
-              },
-            },
-            required: ["criterionType", "details"],
+            type: "string",
+            enum: ["age", "amount", "gender", "category", "product"],
           },
         },
+        value: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          description:
+            "An array containing the value of the criteria that are going to be applied to the campaign. For comparison types, use these ones <x, >x, =, =<, =>, <x> as needed.",
+        },
       },
-      required: ["criteria"],
+      required: ["criteria", "value"],
     },
   },
 };
-
 const rewardTool: ToolDefinition = {
   type: "function",
   function: {
     name: "createReward",
-    description: "Creates a reward for a marketing campaign",
+    description:
+      "Creates a reward for a marketing campaign, allowing for various reward types including coupons for fixed amounts or percentages, products, or points.",
     parameters: {
       type: "object",
       properties: {
@@ -148,10 +224,27 @@ const rewardTool: ToolDefinition = {
           enum: ["coupon", "product", "points"],
           description: "Type of reward (coupon, product, or points)",
         },
-        amount: {
-          type: "string",
-          enum: ["discount", "fixedAmount"],
-          description: "Fixed amount or discount percentage",
+        details: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: {
+                type: "string",
+                enum: ["fixedAmount", "percentage", "productID", "points"],
+                description:
+                  "Specifies the reward detail type: fixed amount, percentage for coupons; product ID for products; or a points value.",
+              },
+              value: {
+                type: "string",
+                description:
+                  "The value associated with the reward detail, such as the coupon value, product ID, or points amount.",
+              },
+            },
+            required: ["type", "value"],
+          },
+          description:
+            "An array containing the details of the reward, accommodating various types and values.",
         },
         validity: {
           type: "object",
@@ -170,7 +263,7 @@ const rewardTool: ToolDefinition = {
           required: ["start", "end"],
         },
       },
-      required: ["rewardType", "amount", "validity"],
+      required: ["rewardType", "details", "validity"],
     },
   },
 };
@@ -178,7 +271,7 @@ const rewardTool: ToolDefinition = {
 const tableTool: ToolDefinition = {
   type: "function",
   function: {
-    name: "createTable",
+    name: "createTableStructure",
     description:
       "Generates a PostgreSQL CREATE TABLE statement from a JSON array representing CSV data. The tool infers and returns the data types for each column, based on the json provided. The result will be returned in this format for the headers: column_name type (int, text, etc), column_name2 type (int, text, etc), and the table name as a string. Don't respond until you have the type of the column following the column name.",
     parameters: {
@@ -203,81 +296,59 @@ const tableTool: ToolDefinition = {
   },
 };
 
-const tableData: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "insertData",
-    description:
-      "Prepares data for insertion into a database table by transforming a JSON array into an array of objects. Each object represents a row, with keys matching column names and values corresponding to the data to be inserted. This format is ideal for bulk insert operations in databases like Supabase, facilitating easy data import from JSON sources.",
-    parameters: {
-      type: "object",
-      properties: {
-        data_rows: {
-          type: "array",
-          description:
-            "The JSON array as a string. Each element of the array should represent a row of data to be inserted into the table.",
-          items: {
-            type: "string",
-          },
-        },
-      },
-      required: ["data_rows"],
-    },
-  },
-};
-
 const chartTool: ToolDefinition = {
   type: "function",
   function: {
     name: "createChart",
     description:
-      "This function extracts data from a provided JSON array to create two arrays: one for chart labels ('labels') and another for the corresponding values ('values'), suitable for chart generation. The chart type (bar, line, doughnut) can be specified; if not, or if 'auto' is selected, the function determines the most appropriate chart type based on the data. The response will be structured as an object with two keys, 'labels' and 'values', each containing an array of strings for labels and an array of numbers for values, respectively, ensuring easy integration with JavaScript charting components.",
+      "Generates a chart based on provided labels, data, and chart type",
     parameters: {
       type: "object",
       properties: {
-        jsonData: {
-          type: "string",
+        labels: {
+          type: "array",
           description:
-            "The JSON array as a string, representing the data rows from which chart data will be extracted.",
+            "The labels for the chart, usually representing the X-axis or categories",
+          items: { type: "string" },
         },
-        dataDescription: {
-          type: "string",
+        data: {
+          type: "array",
           description:
-            "A description of the data to extract for 'labels' and 'values'.",
+            "The data points for the chart, corresponding to the labels",
+          items: { type: "number" },
         },
         chartType: {
           type: "string",
-          enum: ["bar", "line", "doughnut", "auto"],
-          default: "auto",
           description:
-            "Specifies the chart type. If 'auto' or not specified, the chart type is determined based on the input data.",
+            "The type of chart to generate (e.g., 'bar', 'line', 'pie')",
         },
       },
-      required: ["jsonData", "dataDescription"],
+      required: ["labels", "data", "chartType"],
     },
   },
 };
-
-const campaginCreatorDescription =
-  "createCampaing[campaing requirements] Description of the campaign requirements, it returns true if the campaign is created successfully, otherwise it returns false"; // TODO: improve this explaining the required fields and update the prommpt example
-
+const campaignCreatorDescription =
+  "createCampaign[campaign description] Description of the campaign requirements, it returns true if the campaign is created successfully, otherwise it returns false. All 4 must should be used, emailTool, eventTool, filterTool, rewardTool."; // TODO: improve this explaining the required fields and update the prommpt example
 const createTableDescription =
-  "createTable[jsonData, tableName] Generates a PostgreSQL CREATE TABLE statement and corresponding INSERT statements based on a provided JSON array. It automatically identifies column types and sanitizes data to ensure consistency and uniqueness. The table name is specified without any schema prefix.";
-
+  "createTableStructure[jsonData, tableName] Creates and fills the table based on a provided JSON array. It automatically identifies column types and sanitizes data to ensure consistency and uniqueness. The table name is specified without any schema prefix.";
 const createChartDescription =
-  "createChart[jsonData, dataDescription, chartType] Extracts data from a JSON array to create arrays for chart labels and values. If the chart type is not specified, it determines the most suitable chart type ('bar', 'line', 'doughnut') based on the data characteristics. Designed for easy integration with JavaScript charting components.";
+  "createChart[jsonLabel, jsonData, chartType] Extracts data from a JSON array to create arrays for chart labels and values. If the chart type is not specified, it determines the most suitable chart type ('bar', 'line', 'doughnut') based on the data characteristics. Designed for easy integration with JavaScript charting components.";
+const createSQLqueryDescription =
+  "createSQLquery[query description] Description of the desired filtered data.";
+const addSegmentDescription =
+  "addSegment[query description] Description of the desired data to be inserted in the segments table.";
 
 const toolsDescriptions = [
   calculatorToolPlannerDescription,
-  campaginCreatorDescription,
+  campaignCreatorDescription,
   createTableDescription,
   createChartDescription,
+  createSQLqueryDescription,
+  addSegmentDescription,
 ];
-
 function getAllToolsDescriptions() {
   return toolsDescriptions;
 }
-
 export {
   calculatorTool,
   emailTool,
@@ -285,7 +356,8 @@ export {
   filterTool,
   rewardTool,
   tableTool,
-  tableData,
   chartTool,
+  sqlQuery,
+  segmentTool,
   getAllToolsDescriptions,
 };
