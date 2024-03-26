@@ -38,7 +38,8 @@ Task: Return a sql query string so the insert into the table can be done.
 Plan: Generate insert SQL query. #E1 = addSegment[Generate the SQL query neccessary for a new insert in the segments table with user's input as params. ]
 
 Task: Generate a CREATE TABLE statement from JSON data.
-Plan: Analyze the JSON array to infer data types and use my createAndFillTable tool to create the table and fill the data. #E1 = createAndFillTable[jsonData, "table_name"]
+Plan: Analyze the JSON array to infer data types and use my createTableStructure tool to create the table and fill the data. #E1 = createTableStructure[jsonData, "table_name"]
+
 Task: Generate a chart data set from sales data JSON, specifying that we want a bar chart.
 Plan: Extract data for chart labels and values from the sales data JSON. Determine the chart type as 'bar'. Ensure the output is formatted as two arrays: one for labels and another for values, to facilitate easy integration with the JavaScript charting component. #E1 = createChart[jsonData, "monthly sales data", "bar"]
 

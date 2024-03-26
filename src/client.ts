@@ -10,7 +10,7 @@ ws.on("open", () => {
 
   // Send a query to the server
   // const query = `create a new table with this data [["id","created_at","name","created_by","last_edited"],["1","2024-02-22 22:45:22","User action 1","Deactivated User Smith","2024-01-10"]]`;
-  const query = `create a  new campaign for all male users over 30 years old that bought jackets. Reward them with 20% discount in all purchases. The campaign should be triggered on the 7th of april. The campaign should include an email explaining the discount.`;
+  const query = `create a new table with this data [["Name","Created by","Last Edited"],["Avocado sale BigStore123","Flavius","2024-03-02"]]`;
   ws.send(JSON.stringify({ type: "query", task: query }));
 });
 

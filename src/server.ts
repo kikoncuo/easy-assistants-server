@@ -72,13 +72,22 @@ class GraphApplication {
       },
       createTableStructure: {
         agent: createAgent(haiku, [tableTool]),
-        agentPrompt:
-          "You are an LLM specialized in the entire process of transforming JSON data into a fully functional PostgreSQL. This is done by using your createTableStructure tool to create the table. This should return the column name followed by the data type of that column.",
+        agentPrompt: `You are an LLM specialized in the entire process of transforming JSON data into a fully functional PostgreSQL. This is done by using your createTableStructure tool to create the table. This should return the column name followed by the data type of that column.
+          The response should always have this structure and include the columns names and types like in this example: 
+          arguments: {
+            columns: ["[Column ind, Column text, Column date, Column boolean]"],
+            tableName: "my_table",
+          },`,
       },
       createChart: {
-        agent: createAgent(strongestModel, [chartTool]),
-        agentPrompt:
-          "You are an LLM specialized in generating chart data from JSON arrays. Based on the input data, you determine the most suitable chart type (bar, line, doughnut) or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.",
+        agent: createAgent(haiku, [chartTool]),
+        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. Based on the input data, you determine the most suitable chart type (bar, line, doughnut) or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
+          The response should always include the labels property and the data property like this example: 
+          arguments: {
+            labels: [ "Label, Label, Label, Label" ],
+            data: [ "1, 2, 3, 4" ],,
+            chartType: "bar",
+          }.`,
       },
       createSQLquery: {
         agent: createAgent(strongestModel, [sqlQuery, segmentTool]),

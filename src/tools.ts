@@ -280,7 +280,7 @@ const tableTool: ToolDefinition = {
         columns: {
           type: "array",
           description:
-            "The JSON array as a string, representing the column headers. The data types are to be shouwn after each column header name.",
+            "The columns for the table, representing the column headers. The data types are to be shouwn after each column name.",
           items: {
             type: "string",
           },
@@ -320,7 +320,7 @@ const chartTool: ToolDefinition = {
         chartType: {
           type: "string",
           description:
-            "The type of chart to generate (e.g., 'bar', 'line', 'pie')",
+            "The type of chart to generate (e.g., 'bar', 'line', 'doughnut')",
         },
       },
       required: ["labels", "data", "chartType"],
