@@ -337,6 +337,8 @@ const queryUser = async (
     const responses: { [key: string]: string } = {};
     ws.on("message", (message: string) => {
       const data = JSON.parse(message);
+      console.log("🚀 ~ ws.on ~ data:", data);
+
       if (data.type === "toolResponse") {
         // Assuming data.response is a stringified JSON array of responses
         const toolResponses = data.response;

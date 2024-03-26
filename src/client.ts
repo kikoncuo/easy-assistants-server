@@ -45,7 +45,7 @@ ws.on("message", (message: string) => {
     ws.send(
       JSON.stringify({
         type: "toolResponse",
-        response: JSON.stringify(responses),
+        response: responses,
       })
     );
   } else if (data.type === "result") {
