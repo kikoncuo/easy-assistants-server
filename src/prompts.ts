@@ -37,8 +37,11 @@ Plan: Generate a new html code structure based on input code. #E1 = updateHtml[u
 Task: Order this items alphabetically by title ["Banana","Monkey","Apple"]
 Plan: Analyze the stringified array and return a new order for the items inside. #E1 = organizeItems[alphabetically by title,["Apple","Banana","Monkey"]].
 
-Task: Craete a chart based on user's requirements.
-Plan: Create chart array of objects. #E1 = createChart[create a new chart for the indicated keys by the user.]
+Task: Craete a chart with all my users and the total number of transfers they have done.
+Plan: 
+Check data structure. #E1 = getTables[tables that may contain users or transfers]
+Query data. #E2 = getSQL[E1, get all users and their transfers]
+Create chart. #E3 = createChart[E2, "users and transfers", "bar"]
 
 Task: Craete cards information.
 Plan: Create an array of objects #E1 = createCardSQLquery[create an array of cards data with the most optimal information based on all tables passed.]

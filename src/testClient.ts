@@ -7,7 +7,7 @@ ws.on('open', () => {
   console.log('Connected to server');
 
   // Send a query to the server
-  const query = "create a new campagin targetting males over 40 years old, with a discount of 20% in all products. Include an email explaining the discount.";
+  const query = "What's 10 to the power of 20 divided by 40.";
   ws.send(JSON.stringify({ type: 'query', task: query }));
 });
 
