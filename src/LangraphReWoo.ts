@@ -65,49 +65,55 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
 
 function getPlanNode(plannerModel: BaseChatModel, outputHandler: (type: string, message: string) => void) {
     async function plan(state: ReWOO): Promise<{ steps: any, plan_string: string }> {
-      const task = state.task;
-      let allChunks = '';
-      let tempChunk = '';
-      let instructionNumber = 0;
+      try {
+        const task = state.task;
+        let allChunks = '';
+        let tempChunk = '';
+        let instructionNumber = 0;
 
-      const chatPromptTemplate = ChatPromptTemplate.fromMessages([
-        ["human", planPrompt],
-      ]);
+        const chatPromptTemplate = ChatPromptTemplate.fromMessages([
+          ["human", planPrompt],
+        ]);
 
-      const chain = chatPromptTemplate.pipe(plannerModel);
-      
-      const stream = await chain.stream({ task: task });
-      for await (const output of stream.values()) {
-          const chunk = output.content.toString();
-          allChunks += chunk;
-          if (chunk.endsWith('.')) {
-            instructionNumber += 1;
-            tempChunk += chunk;
-            try {
-              const desiredText = tempChunk.split('Plan:')[1].split('.')[0] + '.';
-              outputHandler('plan step', `#E${instructionNumber}: ${desiredText.trim()}`);
-            } catch (error) {
-                console.warn('Warning: Failed to extract desired text.', error);
+        const chain = chatPromptTemplate.pipe(plannerModel);
+        
+        const stream = await chain.stream({ task: task });
+        for await (const output of stream.values()) {
+            const chunk = output.content.toString();
+            allChunks += chunk;
+            if (chunk.endsWith('.')) {
+              instructionNumber += 1;
+              tempChunk += chunk;
+              try {
+                const desiredText = tempChunk.split('Plan:')[1].split('.')[0] + '.';
+                outputHandler('plan step', `#E${instructionNumber}: ${desiredText.trim()}`);
+              } catch (error) {
+                  console.warn('Warning: Failed to extract the text in chunks, the model may not be using streaming.', error);
+              }
+              tempChunk = '';
             }
-            tempChunk = '';
-          }
-          tempChunk += chunk;
+            tempChunk += chunk;
+        }
+    
+        const regex = /Plan:\s*(.+)\s*(#E\d+)\s*=\s*(\w+)\s*\[([^\]]+)\]/g;
+        const matches = [...allChunks.matchAll(regex)];
+        // Ensure we're correctly extracting the four required pieces of information for each step
+        const steps = matches.map(match => {
+          // Destructure the match to extract the needed parts. Note that `match[0]` is the entire matched string, which we don't need here.
+          const [, plan, stepName, tool, toolInput] = match;
+          return [plan, stepName, tool, toolInput];
+        });      
+        return { steps:steps, plan_string: allChunks };
+      } catch (error) {
+        console.warn('Error in plan node:', error);
+        return { steps:'We had a problem creating a plan for your requests. Please try again or contact support.', plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.' };
       }
-  
-      const regex = /Plan:\s*(.+)\s*(#E\d+)\s*=\s*(\w+)\s*\[([^\]]+)\]/g;
-      const matches = [...allChunks.matchAll(regex)];
-      // Ensure we're correctly extracting the four required pieces of information for each step
-      const steps = matches.map(match => {
-        // Destructure the match to extract the needed parts. Note that `match[0]` is the entire matched string, which we don't need here.
-        const [, plan, stepName, tool, toolInput] = match;
-        return [plan, stepName, tool, toolInput];
-      });      
-      return { steps:steps, plan_string: allChunks };
     }
   
     return plan;
   }
 
+/*
 function getToolExecutionNode(toolsMap: { [key: string]: { invoke: (input: string) => Promise<any> } }) {
  async function toolExecution(state: ReWOO): Promise<{ results: { [key: string]: string } }> {
    const _step = _getCurrentTask(state);
@@ -132,10 +138,11 @@ function getToolExecutionNode(toolsMap: { [key: string]: { invoke: (input: strin
 
  return toolExecution;
 }
-
+*/
 
 function getAgentNode(agent: Runnable, agentFunction: Function, agentPrompt: string) {
   async function agentNode(state: ReWOO, agent: Runnable, agentFunction: Function, agentPrompt: string) {
+    try {
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
       let [, stepName, tool, toolInput] = state.steps[_step - 1];
@@ -143,27 +150,26 @@ function getAgentNode(agent: Runnable, agentFunction: Function, agentPrompt: str
       for (const [k, v] of Object.entries(_results)) {
           toolInput = toolInput.replace(k, v);
       }
-      console.log("Step name: ", stepName);
-      console.log(state.steps[_step - 1]);
-      console.log('Invoking agent with toolInput');
-      console.log(toolInput);
       const result = await agent.invoke([
           new SystemMessage(agentPrompt),
           new HumanMessage(toolInput)
       ]);
       const functions = extractFunctionDetails(result);
-      console.log('Agent extracted functions:\n');
-      console.log(functions);
       const results = await agentFunction('tool', functions);
       _results[stepName] = results.toString();
       console.log(`Agent executed step ${stepName} with tool ${tool} and input ${toolInput}`);
       return { results: _results };
+    } catch (error) {
+      console.warn('Error in agent execution:', error);
+      return { results: "Error in agent execution, please try again or contact support."};
+    }
   }
   return agentNode;
 }
 
 function getSolveNode(solverModel: BaseChatModel) {
     async function solve(state: ReWOO): Promise<{ result: string }> {
+    try {
       let plan = '';
       for (let [_plan, stepName, tool, toolInput] of state.steps) {
         const _results = state.results || {};
@@ -185,13 +191,18 @@ function getSolveNode(solverModel: BaseChatModel) {
       }
   
       return { result: allChunks };
+    } catch (error) {
+      console.warn('Error in agent execution:', error);
+      return { result: "Error producing the final answer, please try again or contact support."};
     }
+  }
   
     return solve;
   }
 
 function getRouteEdge() {
  function route(state: ReWOO): string {
+  try {
    const _step = _getCurrentTask(state);
    if (_step === null) {
      return 'solve';
@@ -199,6 +210,10 @@ function getRouteEdge() {
    const index = state.results ? Object.keys(state.results).length : 0;
    const step = state.steps[index][2];
    return step;
+  } catch (error) {
+    console.error('Error in routing your request, we redirected directly to solve:', error);
+    return 'solve';
+  }
  }
 
  return route;

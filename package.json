@@ -2,9 +2,9 @@
   "name": "omni-assistant-server",
   "module": "index.ts",
   "type": "module",
-  "main": "src/server.ts",
+  "main": "src/websocketServer.ts",
   "scripts": {
-    "start": "bun src/server.ts",
+    "start": "bun src/websocketServer.ts",
     "test": "bun src/testClient.ts"
   },
   "devDependencies": {
