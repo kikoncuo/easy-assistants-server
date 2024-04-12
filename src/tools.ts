@@ -296,6 +296,68 @@ const tableTool: ToolDefinition = {
   },
 };
 
+const getTables: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getTables",
+    description:
+      "Given a list of table names, identify those with a possible relation to user's request.",
+    parameters: {
+      type: "object",
+      properties: {
+        tables: {
+          type: "string",
+          description: "The list of selected tables.",
+        },
+        explanation: {
+          type: "string",
+          descrption: "Explanation of why those tables were selected",
+        },
+      },
+      required: ["tables", "explanation"],
+    },
+  },
+};
+
+const getSegmentDetails: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSegmentDetails",
+    description:
+      "Given an array of table columns, evaluate them and select the columns from each of them to match the user's necessities and create a segment",
+    parameters: {
+      type: "object",
+      properties: {
+        sqlQuery: {
+          type: "string",
+          description:
+            "The unique SQL query with all the columns from all the different tables.",
+        },
+      },
+      required: ["sqlQuery"],
+    },
+  },
+};
+
+// const getSegmentTool: ToolDefinition = {
+//   type: "function",
+//   function: {
+//     name: "getSegment",
+//     description:
+//       "Given a list of columns, return a SQL query to ",
+//     parameters: {
+//       type: "object",
+//       properties: {
+//         users: {
+//           type: "string",
+//           description: "The list of users for the segment.",
+//         },
+//       },
+//       required: ["users"],
+//     },
+//   },
+// }
+
 const pageHtmlTool: ToolDefinition = {
   type: "function",
   function: {
@@ -422,25 +484,28 @@ const createSQLqueryDescription =
   "createSQLquery[query description] Description of the desired filtered data.";
 const createCardSQLqueryDescription =
   "createCardSQLquery[query description] Description of the desired filtered data.";
-const addSegmentDescription =
-  "addSegment[query description] Description of the desired data to be inserted in the segments table.";
 const createInfoCardDescription =
   "createInfoCard[title, data, percentage] Creates an array of elements that will display data based on inputs.";
 const editHtmlDescription =
   "updateHtml[html] Updates an existing html code for better organization.";
 const organizeItemsDescription =
   "organizeItems[cards] Organize an array of items based on user's input requirements.";
+const getTablesDescription =
+  "getTables[tables, explanation] Filter a list of table names to ensure best ones for user's needs. Also describe why those tables were selected.";
+const getSegmentDetailsDescription =
+  "getSegmentDetails[sqlQuery] Returns a SQL query for the segment view to be generated.";
 const toolsDescriptions = [
   calculatorToolPlannerDescription,
   campaignCreatorDescription,
   createTableDescription,
   createChartDescription,
   createSQLqueryDescription,
-  addSegmentDescription,
   createInfoCardDescription,
   createCardSQLqueryDescription,
   editHtmlDescription,
   organizeItemsDescription,
+  getTablesDescription,
+  getSegmentDetailsDescription,
 ];
 function getAllToolsDescriptions() {
   return toolsDescriptions;
@@ -459,5 +524,7 @@ export {
   segmentTool,
   pageHtmlTool,
   organizeItemTool,
+  getTables,
+  getSegmentDetails,
   getAllToolsDescriptions,
 };
