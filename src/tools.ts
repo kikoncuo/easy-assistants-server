@@ -396,6 +396,25 @@ const organizeItemTool: ToolDefinition = {
   },
 };
 
+const redirectMessage: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "redirectMessage",
+    description:
+      "A message indicating the user that a redirect is about to happen when confirmed.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: {
+          type: "string",
+          description: "The servers's response for the redirect.",
+        },
+      },
+      required: ["message"],
+    },
+  },
+};
+
 const chartTool: ToolDefinition = {
   type: "function",
   function: {
@@ -494,6 +513,8 @@ const getTablesDescription =
   "getTables[tables, explanation] Filter a list of table names to ensure best ones for user's needs. Also describe why those tables were selected.";
 const getSegmentDetailsDescription =
   "getSegmentDetails[sqlQuery] Returns a SQL query for the segment view to be generated.";
+const getRedirectMessageDescription =
+  "redirectMessage[message] A message sent to the user indicating a redirect.";
 const toolsDescriptions = [
   calculatorToolPlannerDescription,
   campaignCreatorDescription,
@@ -506,6 +527,7 @@ const toolsDescriptions = [
   organizeItemsDescription,
   getTablesDescription,
   getSegmentDetailsDescription,
+  getRedirectMessageDescription,
 ];
 function getAllToolsDescriptions() {
   return toolsDescriptions;
@@ -526,5 +548,6 @@ export {
   organizeItemTool,
   getTables,
   getSegmentDetails,
+  redirectMessage,
   getAllToolsDescriptions,
 };

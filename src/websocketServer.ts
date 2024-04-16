@@ -1,9 +1,15 @@
+/** @format */
+
 import { WebSocketServer } from "ws";
-import { GraphApplication, customOutputHandler, queryUser } from "./graphApplication";
+import {
+  GraphApplication,
+  customOutputHandler,
+  queryUser,
+} from "./graphApplication";
 import fs from "fs";
 import https from "https";
 import http from "http";
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 const {
@@ -19,25 +25,31 @@ const {
 const missingApiKeys: string[] = [];
 
 if (!OPENAI_API_KEY) {
-  missingApiKeys.push('OPENAI_API_KEY');
+  missingApiKeys.push("OPENAI_API_KEY");
 }
 
 if (!GROQ_API_KEY) {
-  missingApiKeys.push('GROQ_API_KEY');
+  missingApiKeys.push("GROQ_API_KEY");
 }
 
 if (!ANTHROPIC_API_KEY) {
-  missingApiKeys.push('ANTHROPIC_API_KEY');
+  missingApiKeys.push("ANTHROPIC_API_KEY");
 }
 
 if (missingApiKeys.length === 3) {
-  throw new Error('All API keys (OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY) are missing. Please provide at least one API key.');
+  throw new Error(
+    "All API keys (OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY) are missing. Please provide at least one API key."
+  );
 } else if (missingApiKeys.length > 0) {
-  console.warn(`Warning: The following API keys are missing: ${missingApiKeys.join(', ')}`);
+  console.warn(
+    `Warning: The following API keys are missing: ${missingApiKeys.join(", ")}`
+  );
 }
 
 if (!LANGCHAIN_API_KEY) {
-  console.warn('Warning: LANGCHAIN_API_KEY is not set. Activity logging will be disabled.');
+  console.warn(
+    "Warning: LANGCHAIN_API_KEY is not set. Activity logging will be disabled."
+  );
 }
 const isProd = process.env.BUN_ENV === "production";
 
@@ -52,7 +64,9 @@ const wss = new WebSocketServer({ server });
 
 if (isProd) {
   const options = {
-    cert: fs.readFileSync("/etc/letsencrypt/live/chat.omniloy.com/fullchain.pem"),
+    cert: fs.readFileSync(
+      "/etc/letsencrypt/live/chat.omniloy.com/fullchain.pem"
+    ),
     key: fs.readFileSync("/etc/letsencrypt/live/chat.omniloy.com/privkey.pem"),
   };
 

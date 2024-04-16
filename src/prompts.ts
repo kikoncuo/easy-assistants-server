@@ -19,6 +19,7 @@ If the user ask for a campaign update, only update the object that is passed by 
 For all SQL query requests, the user will also provide the table's columns definition so the query is based on that information.\
 If the user ask for a html update, use updateHtml to do so, returning the same html code content but organized in a different way, even removing unnecessary items if needed. \
 If the user ask for a items ordering, use organizeItems, returning the same array of items but in the new order. \
+The redirectMessage tool shall always be used when asking for a table or chart creation. \
 You can only use the following tools to solve the problem:
 ` +
   toolsDescriptions +
@@ -37,7 +38,7 @@ Plan: Generate a new html code structure based on input code. #E1 = updateHtml[u
 
 Task: Create a segment for all users who didn't bought shoes last year.
 Plan: Based on a list of tables, filter those that will be used for the segment creation. #E1 = getTables[transactions,members,refunds]
-Plan: Create segment query based on user's table column list array. #E2 = getSegmentDetails[#E1, SQL query for segment view creation]
+Plan: Create segment query based on user's table column list array. #E2 = getSegmentDetails[E1, SQL query for segment view creation]
 
 
 Task: Order this items alphabetically by title ["Banana","Monkey","Apple"]
@@ -45,9 +46,10 @@ Plan: Analyze the stringified array and return a new order for the items inside.
 
 Task: Craete a chart with all my users and the total number of transfers they have done.
 Plan: 
-Check data structure. #E1 = getTables[tables that may contain users or transfers]
-Query data. #E2 = getSQL[E1, get all users and their transfers]
-Create chart. #E3 = createChart[E2, "users and transfers", "bar"]
+Redirect message. #E1 = redirectMessage[Sure! Let's go to the chart generator to get started.]
+Check data structure. #E2 = getTables[tables that may contain users or transfers]
+Query data. #E3 = getSQL[E2, get all users and their transfers]
+Create chart. #E4 = createChart[E3, "users and transfers", "bar"]
 
 Task: Craete cards information.
 Plan: Create an array of objects #E1 = createCardSQLquery[create an array of cards data with the most optimal information based on all tables passed.]
@@ -60,9 +62,6 @@ Plan: Generate insert SQL query. #E1 = addSegment[Generate the SQL query neccess
 
 Task: Generate a CREATE TABLE statement from JSON data.
 Plan: Analyze the JSON array to infer data types and use my createTableStructure tool to create the table and fill the data. #E1 = createTableStructure[jsonData, "table_name"]
-
-Task: Generate a chart data set from sales data JSON, specifying that we want a bar chart.
-Plan: Extract data for chart labels and values from the sales data JSON. Determine the chart type as 'bar'. Ensure the output is formatted as two arrays: one for labels and another for values, to facilitate easy integration with the JavaScript charting component. #E1 = createChart[jsonData, "monthly sales data", "bar"]
 
 
 Begin!

@@ -26,6 +26,7 @@ import {
   organizeItemTool,
   getTables,
   getSegmentDetails,
+  redirectMessage,
 } from "./tools";
 
 export class GraphApplication {
@@ -97,6 +98,13 @@ export class GraphApplication {
             tableName: "my_table",
           },
           Column names should never include whitespaces, but rather underscore for separating works.`,
+      },
+      redirectMessage: {
+        agent: createAgent(strongestModel, [redirectMessage]),
+        agentPrompt: `You are an LLM specialized sending custom messages based on task required. This tool should always be true in order to continue with next steps. This should always responde with something similar: 
+          arguments: {
+            message: ["Sure! Let's go to the chart generator to get started."],
+          },`,
       },
       createChart: {
         agent: createAgent(strongestModel, [chartTool]),
@@ -196,18 +204,23 @@ export const queryUser = async (
   functions: Array<{ function_name: string; arguments: any }>,
   ws: WebSocket
 ) => {
+  ws.send(JSON.stringify({ type: type, functions }));
   return new Promise<{ [key: string]: string }>((resolve) => {
     const responses: { [key: string]: string } = {};
     ws.on("message", (message: string) => {
       const data = JSON.parse(message);
+      console.log("🚀 ~ ws.on ~ data:", data);
+
       if (data.type === "toolResponse") {
         const toolResponses = data.response;
-        toolResponses.forEach(
-          (toolResponse: { function_name: string; response: string }) => {
-            responses[toolResponse.function_name] =
-              toolResponse.response.trim();
-          }
-        );
+        if (Array.isArray(toolResponses)) {
+          toolResponses.forEach((toolResponse) => {
+            responses[toolResponse.function_name] = toolResponse.response;
+          });
+        } else {
+          responses[toolResponses.function_name] = toolResponses.response;
+        }
+
         if (Object.keys(responses).length === functions.length) {
           resolve(responses);
         }
