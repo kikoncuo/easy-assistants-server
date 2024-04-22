@@ -31,7 +31,7 @@ const calculatorTool: ToolDefinition = {
   },
 };
 const calculatorToolPlannerDescription =
-  "calculate[operation] Perform basic arithmetic operations on two numbers, including powers and roots";
+  "calculate[operation] Perform basic arithmetic operations on two numbers, including powers and roots, you can only do this with 2 numbers at the time, so separate the operations in steps";
 
 const sqlQuery: ToolDefinition = {
   type: "function",

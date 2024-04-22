@@ -25,13 +25,13 @@ class GraphApplication {
         const anthropicModel = anthropicSonnet();
 
         const agents = {
-          "calculate": {agent: createAgent(fasterModel, [calculatorTool]), agentPrompt:"You are an LLM specialized on math operations with access to a calculator tool."},
+          "calculate": {agent: createAgent(groqModel, [calculatorTool]), agentPrompt:"You are an LLM specialized on math operations with access to a calculator tool."},
           "createCampaing" : {agent: createAgent(fasterModel, [emailTool, rewardTool, filterTool, eventTool]), agentPrompt:"You are an LLM specialized on creating campaings, in order to create a campaing you will need to call all your tools once to get all the components of a campaign"}
       };
 
 
         this.graphManager = new GraphManager(
-            strongestModel,
+            groqModel,
             agents,
             fasterModel,
             outputHandler,

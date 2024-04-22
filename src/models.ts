@@ -40,7 +40,7 @@ function createAgent(
 function getStrongestModel(): BaseChatModel {
   return new ChatOpenAI({
     modelName: "gpt-4-turbo-preview",
-    streaming: true,
+    streaming: false,
     temperature: 0,
   });
 }
@@ -48,7 +48,7 @@ function getStrongestModel(): BaseChatModel {
 function getFasterModel(): BaseChatModel {
   return new ChatOpenAI({
     modelName: "gpt-3.5-turbo",
-    streaming: true,
+    streaming: false,
     temperature: 0,
   });
 }
@@ -57,15 +57,16 @@ function groqChatMixtral(): BaseChatModel {
   return new ChatGroq({
     temperature: 0,
     modelName: "mixtral-8x7b-32768",
-    streaming: true,
+    streaming: false,
   });
 }
+
 
 function groqChatLlama(): BaseChatModel {
   return new ChatGroq({
     temperature: 0,
-    modelName: "llama2-70b-4096",
-    streaming: true,
+    modelName: "llama3-70b-8192",
+    streaming: false,
   });
 }
 
@@ -73,7 +74,7 @@ function anthropicOpus(): BaseChatModel {
   return new ChatAnthropicTools({
     temperature: 0,
     modelName: "claude-3-opus-20240229",
-    streaming: true,
+    streaming: false,
   });
 }
 
@@ -81,7 +82,7 @@ function anthropicSonnet(): BaseChatModel {
   return new ChatAnthropicTools({
     temperature: 0,
     modelName: "claude-3-sonnet-20240229",
-    streaming: true,
+    streaming: false,
   });
 }
 
@@ -89,7 +90,7 @@ function anthropicHaiku(): BaseChatModel {
   return new ChatAnthropicTools({
     temperature: 0,
     modelName: "claude-3-haiku-20240307",
-    streaming: true,
+    streaming: false,
   });
 }
 

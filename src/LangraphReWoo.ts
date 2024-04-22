@@ -37,13 +37,27 @@ interface FunctionDetails {
 // internal function
 function _getCurrentTask(state: ReWOO): number | null {
  if (state.results === null) {
-   return 1;
+    return 1;
  }
+
  if (state.results && Object.keys(state.results).length === state.steps.length) {
-   return null;
+
+    return null;
  } else {
-   return Object.keys(state.results || {}).length + 1;
+    return Object.keys(state.results || {}).length + 1;
  }
+}
+
+function preprocessPlanText(planText: string) {
+  const lines = planText.split('\n');
+  let lineNumber = 1;
+  const processedLines = lines.map(line => {
+    if (line.trim().match(/^[A-Za-z]+/)) {
+      return `${lineNumber++}. ${line.trim()}`;
+    }
+    return line;
+  });
+  return processedLines.join('\n');
 }
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
@@ -77,15 +91,17 @@ function getPlanNode(plannerModel: BaseChatModel, outputHandler: (type: string, 
 
         const chain = chatPromptTemplate.pipe(plannerModel);
         
-        const stream = await chain.stream({ task: task });
+        /*const stream = await chain.stream({ task: task }); // TODO: This parsing on the stream is not working, we should disable streaming for now, and use structured output with dynamic json parsing later
         for await (const output of stream.values()) {
             const chunk = output.content.toString();
             allChunks += chunk;
             if (chunk.endsWith('.')) {
               instructionNumber += 1;
               tempChunk += chunk;
+              console.log('tempChunk: ', tempChunk)
               try {
                 const desiredText = tempChunk.split('Plan:')[1].split('.')[0] + '.';
+                console.log('desiredText: ', desiredText)
                 outputHandler('plan step', `#E${instructionNumber}: ${desiredText.trim()}`);
               } catch (error) {
                   console.warn('Warning: Failed to extract the text in chunks, the model may not be using streaming.', error);
@@ -93,17 +109,29 @@ function getPlanNode(plannerModel: BaseChatModel, outputHandler: (type: string, 
               tempChunk = '';
             }
             tempChunk += chunk;
-        }
-    
-        const regex = /Plan:\s*(.+)\s*(#E\d+)\s*=\s*(\w+)\s*\[([^\]]+)\]/g;
-        const matches = [...allChunks.matchAll(regex)];
+        }*/
+        const plan = await chain.invoke({ task: task });
+        const planText = plan.content.toString();
+
+        
+        const regex = /^(\d+\.\s*[^#]+)#(E\d+)\s*=\s*(\w+)\s*\[([^\]]+)\]/gm;
+
+        const processedPlanText = preprocessPlanText(planText);
+        outputHandler('plan', processedPlanText);
+
+        console.log('Processed plan text: ', processedPlanText)
+        //const matches = [...allChunks.matchAll(regex)];
+        const matches = [...processedPlanText.matchAll(regex)];
+        console.log('Matches: ', matches)
         // Ensure we're correctly extracting the four required pieces of information for each step
         const steps = matches.map(match => {
           // Destructure the match to extract the needed parts. Note that `match[0]` is the entire matched string, which we don't need here.
           const [, plan, stepName, tool, toolInput] = match;
           return [plan, stepName, tool, toolInput];
         });      
-        return { steps:steps, plan_string: allChunks };
+        //return { steps:steps, plan_string: allChunks };
+        console.log('Plan steps: ', steps)
+        return { steps:steps, plan_string: processedPlanText };
       } catch (error) {
         console.warn('Error in plan node:', error);
         return { steps:'We had a problem creating a plan for your requests. Please try again or contact support.', plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.' };
@@ -112,33 +140,6 @@ function getPlanNode(plannerModel: BaseChatModel, outputHandler: (type: string, 
   
     return plan;
   }
-
-/*
-function getToolExecutionNode(toolsMap: { [key: string]: { invoke: (input: string) => Promise<any> } }) {
- async function toolExecution(state: ReWOO): Promise<{ results: { [key: string]: string } }> {
-   const _step = _getCurrentTask(state);
-   if (_step === null) throw new Error('No more steps to execute.');
-   let [, stepName, tool, toolInput] = state.steps[_step - 1];
-   console.log(`Executing step ${stepName} with tool ${tool} and input ${toolInput}`);
-
-   const _results = state.results || {};
-   for (const [k, v] of Object.entries(_results)) {
-     toolInput = toolInput.replace(k, v);
-   }
-
-   if (tool in toolsMap) {
-     const result = await toolsMap[tool].invoke(toolInput);
-     _results[stepName] = result.toString();
-   } else {
-     throw new Error(`Tool ${tool} is not recognized.`);
-   }
-
-   return { results: _results };
- }
-
- return toolExecution;
-}
-*/
 
 function getAgentNode(agent: Runnable, agentFunction: Function, agentPrompt: string) {
   async function agentNode(state: ReWOO, agent: Runnable, agentFunction: Function, agentPrompt: string) {
@@ -156,8 +157,8 @@ function getAgentNode(agent: Runnable, agentFunction: Function, agentPrompt: str
       ]);
       const functions = extractFunctionDetails(result);
       const results = await agentFunction('tool', functions);
-      _results[stepName] = results.toString();
-      console.log(`Agent executed step ${stepName} with tool ${tool} and input ${toolInput}`);
+      _results[stepName] = JSON.stringify(results);
+      console.log(`Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`);
       return { results: _results };
     } catch (error) {
       console.warn('Error in agent execution:', error);
@@ -181,7 +182,7 @@ function getSolveNode(solverModel: BaseChatModel) {
       }
   
       const prompt = solvePrompt.replace('{plan}', plan).replace('{task}', state.task);
-      const stream = await solverModel.stream([new HumanMessage(prompt)]);
+      const stream = await solverModel.stream([new HumanMessage(prompt)]); // TODO: send the chunks one by one
       let allChunks = '';
   
       for await (const output of stream) {
@@ -212,7 +213,7 @@ function getRouteEdge() {
    return step;
   } catch (error) {
     console.error('Error in routing your request, we redirected directly to solve:', error);
-    return 'solve';
+    return 'solve'; // TODO: add a default error node
   }
  }
 
@@ -258,6 +259,7 @@ class GraphManager {
     graph.addEdge('solve', END);
 
     for (const [name, { agent, agentPrompt }] of Object.entries(this.agents)) {
+
       const agentNodePartial = getAgentNode(agent, this.agentFunction, agentPrompt);
       graph.addNode(name, (state: ReWOO) => agentNodePartial(state, agent, this.agentFunction, agentPrompt));
       graph.addConditionalEdges(name, getRouteEdge());

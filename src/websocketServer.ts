@@ -81,10 +81,7 @@ wss.on("connection", (ws) => {
 
   const graphApp = new GraphApplication(
     (type: string, message: string) => customOutputHandler(type, message, ws),
-    (
-      type: string,
-      functions: Array<{ function_name: string; arguments: any }>
-    ) => queryUser(type, functions, ws)
+    (type: string, functions: Array<{ function_name: string; arguments: any }>) => queryUser(type, functions, ws)
   );
 
   ws.on("message", async (message: string) => {

@@ -7,6 +7,7 @@ import {
   anthropicOpus,
   createAgent,
   anthropicHaiku,
+  groqChatLlama,
 } from "./models";
 import {
   calculatorTool,
@@ -35,22 +36,22 @@ export class GraphApplication {
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
-    const groqModel = groqChatMixtral();
+    const groqModel = groqChatLlama();
     const anthropicModel = anthropicSonnet();
     const anthropicAdvancedModel = anthropicOpus();
 
     const agents = {
       calculate: {
-        agent: createAgent(strongestModel, [calculatorTool]),
+        agent: createAgent(fasterModel, [calculatorTool]),
         agentPrompt:
           "You are an LLM specialized on math operations with access to a calculator tool.",
       },
     };
 
     this.graphManager = new GraphManager(
-      strongestModel,
+      groqModel,
       agents,
-      strongestModel,
+      groqModel,
       outputHandler,
       agentFunction
     );
@@ -70,18 +71,20 @@ export const customOutputHandler = (type: string, message: string, ws: WebSocket
   ws.send(JSON.stringify({ type, message }));
 };
 
-// This function is called when the agent needs to query the user to get the answer of a tool, Currently it just sends it to the user via the WS and expects a response
+// This function is called when the agent needs to query the user to get the answer of a tool, Currently it just sends it to the user via the WS and expects a response, it can ask for multiple tools at once
 export const queryUser = async (
   type: string,
   functions: Array<{ function_name: string; arguments: any }>,
   ws: WebSocket
 ) => {
+  console.log(`Querying user for ${type} with function:`, functions);
+  ws.send(JSON.stringify({ type, functions }));
   return new Promise<{ [key: string]: string }>((resolve) => {
     const responses: { [key: string]: string } = {};
     ws.on("message", (message: string) => {
       const data = JSON.parse(message);
       if (data.type === "toolResponse") {
-        const toolResponses = data.response;
+        const toolResponses = JSON.parse(data.response); // TODO: Check if we can send JSONs directly
         toolResponses.forEach(
           (toolResponse: { function_name: string; response: string }) => {
             responses[toolResponse.function_name] =
