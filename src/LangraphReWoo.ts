@@ -4,7 +4,7 @@ import { HumanMessage, AIMessage, SystemMessage } from 'langchain/schema';
 import { BaseChatModel} from "@langchain/core/language_models/chat_models";
 import { planPrompt, solvePrompt } from './prompts';
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { Runnable } from 'langchain/runnables'; // Models with tools are runnables because fuck me
+import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
 
 
 
@@ -48,22 +48,63 @@ function _getCurrentTask(state: ReWOO): number | null {
  }
 }
 
-function preprocessPlanText(planText: string) {
-  const lines = planText.split('\n');
-  let lineNumber = 1;
-  const processedLines = lines.map(line => {
-    if (line.trim().match(/^[A-Za-z]+/)) {
-      return `${lineNumber++}. ${line.trim()}`;
-    }
-    return line;
-  });
-  return processedLines.join('\n');
+interface Step {
+  stepId: string;
+  description: string;
+  toolName: string;
+  toolParameters: string[];
 }
+
+interface InputData {
+  steps: Step[];
+}
+
+function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][], fullPlan: string } {
+  let steps: any[];
+  // Sometimes models return an AIMessage, instead of returning the structured data directly
+  if (inputData instanceof AIMessage) {
+    try {
+      steps = JSON.parse(inputData.content.toString()).steps;
+    } catch (error) {
+      console.warn('Warning: Failed to parse the AIMessage content as JSON.', error);
+      return { stepsArray: [], fullPlan: '' };
+    }
+  } else {
+    steps = inputData.steps;
+  }
+  // Anthropic tends to return the steps as a string, so we need to parse it
+  if (typeof steps[0] === 'string') {
+    try {
+      steps = JSON.parse(steps[0]);
+    } catch (error) {
+      console.warn('Warning: Failed to parse the input data as JSON, using it as a string.', error);
+    }
+  }
+
+  const stepsArray: string[][] = steps.map(step => [
+    step.description,
+    step.stepId,
+    step.toolName,
+    step.toolParameters.join(', '),
+  ]);
+
+  const fullPlan: string = steps
+    .map(step => `${step.stepId} ${step.description}`)
+    .join('\n');
+
+  return { stepsArray, fullPlan };
+}
+
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
     const functionDetails: FunctionDetails[] = [];
   
     const toolCalls = input_data.additional_kwargs?.tool_calls ?? [];
+
+    // if toolCalls is empty, we trigger an error
+    if (toolCalls.length === 0) {
+      throw new Error('No tool calls found in the response, this model is not using the tooling feature.');
+    }
   
     for (const call of toolCalls) {
       const functionName = call.function.name;
@@ -77,7 +118,7 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
 
 // nodes
 
-function getPlanNode(plannerModel: BaseChatModel, outputHandler: (type: string, message: string) => void) {
+function getPlanNode(plannerModel: Runnable, outputHandler: (type: string, message: string) => void) {
     async function plan(state: ReWOO): Promise<{ steps: any, plan_string: string }> {
       try {
         const task = state.task;
@@ -110,31 +151,18 @@ function getPlanNode(plannerModel: BaseChatModel, outputHandler: (type: string, 
             }
             tempChunk += chunk;
         }*/
+
         const plan = await chain.invoke({ task: task });
-        const planText = plan.content.toString();
 
-        
-        const regex = /^(\d+\.\s*[^#]+)#(E\d+)\s*=\s*(\w+)\s*\[([^\]]+)\]/gm;
+        const { stepsArray, fullPlan } = processSteps(plan);
 
-        const processedPlanText = preprocessPlanText(planText);
-        outputHandler('plan', processedPlanText);
+        outputHandler('plan', fullPlan);
 
-        console.log('Processed plan text: ', processedPlanText)
-        //const matches = [...allChunks.matchAll(regex)];
-        const matches = [...processedPlanText.matchAll(regex)];
-        console.log('Matches: ', matches)
-        // Ensure we're correctly extracting the four required pieces of information for each step
-        const steps = matches.map(match => {
-          // Destructure the match to extract the needed parts. Note that `match[0]` is the entire matched string, which we don't need here.
-          const [, plan, stepName, tool, toolInput] = match;
-          return [plan, stepName, tool, toolInput];
-        });      
-        //return { steps:steps, plan_string: allChunks };
-        console.log('Plan steps: ', steps)
-        return { steps:steps, plan_string: processedPlanText };
+        console.log('Plan steps: ', stepsArray)
+        return { steps:stepsArray, plan_string: fullPlan };
       } catch (error) {
         console.warn('Error in plan node:', error);
-        return { steps:'We had a problem creating a plan for your requests. Please try again or contact support.', plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.' };
+        return { steps:[["Error running query", "#E1", "solve", "we had a problem creating the plan"]], plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.' }; // TODO: Create a dedicated error node
       }
     }
   
@@ -229,7 +257,7 @@ class GraphManager {
   graph: Graph<any, any>;
 
   constructor(
-    planModel: BaseChatModel,
+    planModel: Runnable,
     agents: { [key: string]: { agent: Runnable; agentPrompt: string } },
     solveModel: BaseChatModel,
     outputHandler: (type: string, message: string) => void,

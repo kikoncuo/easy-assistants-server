@@ -10,6 +10,32 @@ import {
   BaseLanguageModelCallOptions,
   ToolDefinition,
 } from "@langchain/core/language_models/base";
+import { z } from 'zod';
+
+const StepSchema = z.object({
+  stepId: z.string()
+    .regex(/^#E\d+$/)
+    .describe("The step ID in the format #ENumber (e.g., #E1, #E2)"),
+  description: z.string()
+    .min(1)
+    .max(100)
+    .describe("A description of the step, should be concise yet informative"),
+  toolName: z.string()
+    .min(1)
+    .max(50)
+    .describe("The name of the tool to be used in the step, should match one of the available tools"),
+  toolParameters: z.array(z.string())
+    .min(1)
+    .max(10)
+    .describe("An array of tool parameters, which can include step results or other step IDs"),
+}).describe("An object representing a single step in the process");
+
+const planSchema = z.object({
+  steps: z.array(StepSchema)
+    .min(1)
+    .max(20)
+    .describe("An array of step objects, representing the entire process"),
+}).describe("The root object containing the array of steps");
 
 export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
   tools?: ToolDefinition[];
@@ -21,6 +47,13 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
         };
         type: "function";
       };
+}
+
+function createPlanner(
+  llm: BaseChatModel<ChatToolsCallOptions>,
+): Runnable {
+  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(planSchema) : llm;
+  return bindedLLM;
 }
 
 // Helper functions:
@@ -70,6 +103,14 @@ function groqChatLlama(): BaseChatModel {
   });
 }
 
+function groqChatSmallLlama(): BaseChatModel {
+  return new ChatGroq({
+    temperature: 0,
+    modelName: "llama3-8b-8192",
+    streaming: false,
+  });
+}
+
 function anthropicOpus(): BaseChatModel {
   return new ChatAnthropicTools({
     temperature: 0,
@@ -99,8 +140,10 @@ export {
   getFasterModel,
   groqChatMixtral,
   groqChatLlama,
+  groqChatSmallLlama,
   anthropicOpus,
   anthropicSonnet,
-  createAgent,
   anthropicHaiku,
+  createAgent,
+  createPlanner,
 };

@@ -1,6 +1,51 @@
 /** @format */
 
 import { ToolDefinition } from "@langchain/core/language_models/base";
+/* TODO: Double check if we can delete this because we are using structurized output
+const planningTool: ToolDefinition = { 
+  type: "function",
+  function: {
+    name: "createPlan",
+    description: "Creates an array of steps, where each step is an object containing a step ID, description, tool name, and an array of tool parameters",
+    parameters: {
+      type: "object",
+      properties: {
+        steps: {
+          type: "array",
+          description: "An array of step objects",
+          items: {
+            type: "object",
+            properties: {
+              stepId: {
+                type: "string",
+                pattern: "^#E\\d+$",
+                description: "The step ID in the format #ENumber (e.g., #E1, #E2)",
+              },
+              description: {
+                type: "string",
+                description: "A description of the step",
+              },
+              toolName: {
+                type: "string",
+                description: "The name of the tool to be used in the step",
+              },
+              toolParameters: {
+                type: "array",
+                description: "An array of tool parameters, which can include step results",
+                items: {
+                  type: "string",
+                },
+              },
+            },
+            required: ["stepId", "description", "toolName", "toolParameters"],
+          },
+        },
+      },
+      required: ["steps"],
+    },
+  },
+};*/
+
 const calculatorTool: ToolDefinition = {
   type: "function",
   function: {
@@ -30,8 +75,6 @@ const calculatorTool: ToolDefinition = {
     },
   },
 };
-const calculatorToolPlannerDescription =
-  "calculate[operation] Perform basic arithmetic operations on two numbers, including powers and roots, you can only do this with 2 numbers at the time, so separate the operations in steps";
 
 const sqlQuery: ToolDefinition = {
   type: "function",
@@ -431,7 +474,6 @@ const editHtmlDescription =
 const organizeItemsDescription =
   "organizeItems[cards] Organize an array of items based on user's input requirements.";
 const toolsDescriptions = [
-  calculatorToolPlannerDescription,
   campaignCreatorDescription,
   createTableDescription,
   createChartDescription,
@@ -446,6 +488,7 @@ function getAllToolsDescriptions() {
   return toolsDescriptions;
 }
 export {
+  //planningTool,
   calculatorTool,
   emailTool,
   eventTool,

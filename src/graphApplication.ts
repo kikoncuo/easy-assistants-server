@@ -3,11 +3,13 @@ import {
   getStrongestModel,
   getFasterModel,
   groqChatMixtral,
+  groqChatSmallLlama,
   anthropicSonnet,
   anthropicOpus,
   createAgent,
   anthropicHaiku,
   groqChatLlama,
+  createPlanner,
 } from "./models";
 import {
   calculatorTool,
@@ -33,25 +35,26 @@ export class GraphApplication {
     agentFunction: Function
   ) {
     this.outputHandler = outputHandler;
-    const haiku = anthropicHaiku();
+    const haiku = anthropicHaiku(); 
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
-    const groqModel = groqChatLlama();
-    const anthropicModel = anthropicSonnet();
-    const anthropicAdvancedModel = anthropicOpus();
+    const llama70bGroq = groqChatLlama(); 
+    const llama8bGroq = groqChatSmallLlama(); 
+    const sonnet = anthropicSonnet();
+    const opus = anthropicOpus();
 
     const agents = {
       calculate: {
         agent: createAgent(fasterModel, [calculatorTool]),
         agentPrompt:
-          "You are an LLM specialized on math operations with access to a calculator tool.",
+          "You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time",
       },
     };
 
     this.graphManager = new GraphManager(
-      groqModel,
+      createPlanner(llama8bGroq),
       agents,
-      groqModel,
+      llama8bGroq,
       outputHandler,
       agentFunction
     );
@@ -87,6 +90,7 @@ export const queryUser = async (
         const toolResponses = JSON.parse(data.response); // TODO: Check if we can send JSONs directly
         toolResponses.forEach(
           (toolResponse: { function_name: string; response: string }) => {
+            console.log(`Received response for ${toolResponse.function_name}: ${toolResponse.response}`);
             responses[toolResponse.function_name] =
               toolResponse.response.trim();
           }

@@ -17,10 +17,19 @@ function connectToServer() {
       // Server is querying the user for input
       const { functions } = data;
       // Process each function and send the responses back to the server
-      const responses = functions.map(({ function_name, arguments: args }: { function_name: string, arguments: { template_name: string, subject: string, message: string } }) => {
+      const responses = functions.map(({ function_name, arguments: args }: { function_name: string, arguments: any }) => {
         console.log(`Processing function: ${function_name} with args:`, args);
 
-        let response = prompt(`Enter your response for ${function_name}:`);
+        let response;
+        if (function_name === 'calculate') {
+          const result = calculateResult(args);
+          console.log(`Result of calculation: ${result}`);
+          response = result.toString()
+        } else {
+          const result = prompt(`Enter your response for ${function_name}:`);
+          console.log(`Response for ${function_name}: ${result}`);
+          response = result;
+        }
         
         return { function_name, response };
       });
@@ -29,10 +38,11 @@ function connectToServer() {
     } else if (data.type === 'result') {
       // Server has sent a result
       console.log('Result:', data.message);
+      console.timeEnd('planTimer'); // Stop the timer
       promptUserInput();
     } else if (data.type === 'plan') {
       // Server has sent a result
-      console.log('Here is the plan:', data.message);
+      console.log('Here is the plan:\n', data.message);
     } else {
       // Handle other message types if needed
       console.log('Received message:', data);
@@ -49,7 +59,35 @@ function connectToServer() {
 function promptUserInput() {
   const query = prompt('Enter your message:');
   if (query && ws) {
+    console.time('planTimer'); // Start the timer
     ws.send(JSON.stringify({ type: 'query', task: query }));
+  }
+}
+
+function calculateResult(args: { a: number | string, b: number | string, operator: string }): number {
+  let a = typeof args.a === 'string' ? parseFloat(args.a) : args.a;
+  let b = typeof args.b === 'string' ? parseFloat(args.b) : args.b;
+  
+  switch (args.operator) {
+    case 'add':
+    case '+':
+      return a + b;
+    case 'subtract':
+    case '-':
+      return a - b;
+    case 'multiply':
+    case '*':
+      return a * b;
+    case 'divide':
+    case '/':
+      return a / b;
+    case 'power':
+    case '^':
+      return Math.pow(a, b);
+    case 'root':
+      return Math.pow(a, 1 / b);
+    default:
+      throw new Error(`Unknown operator: ${args.operator}`);
   }
 }
 
