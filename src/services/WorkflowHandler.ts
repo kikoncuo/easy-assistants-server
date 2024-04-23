@@ -78,7 +78,7 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
 
 // nodes
 
-export function getPlanNode(plannerModel: Runnable, outputHandler: (type: string, message: string) => void) {
+export function getPlanNode(plannerModel: Runnable, outputHandler: Function) {
   async function plan(state: TaskState): Promise<{ steps: any; plan_string: string }> {
     try {
       const task = state.task;
@@ -156,7 +156,7 @@ export function getAgentNode(agent: Runnable, agentFunction: Function, agentProm
   return agentNode;
 }
 
-export function getSolveNode(solverModel: BaseChatModel) {
+export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
   async function solve(state: TaskState): Promise<{ result: string }> {
     try {
       let plan = '';
@@ -179,9 +179,12 @@ export function getSolveNode(solverModel: BaseChatModel) {
         }
       }
 
+      outputHandler('result', allChunks);
       return { result: allChunks };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
+      
+      outputHandler('result', 'Error producing the final answer, please try again or contact support.');
       return { result: 'Error producing the final answer, please try again or contact support.' };
     }
   }

@@ -29,10 +29,8 @@ import Logger from '../utils/Logger';
 
 export class GraphApplication {
   private graphManager: GraphManager;
-  private outputHandler: (type: string, message: string, ws: WebSocket) => void;
 
-  constructor(outputHandler: (type: string, message: string) => void = Logger.log, agentFunction: Function) {
-    this.outputHandler = outputHandler;
+  constructor(outputHandler: Function, agentFunction: Function) {
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
@@ -54,8 +52,6 @@ export class GraphApplication {
 
   async processTask(task: string, ws: WebSocket) {
     const finalResult = await this.graphManager.getApp().invoke({ task });
-    if (finalResult) {
-      this.outputHandler('result', finalResult.result, ws);
-    }
+    Logger.log('Final result:', finalResult);
   }
 }

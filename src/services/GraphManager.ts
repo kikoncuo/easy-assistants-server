@@ -15,13 +15,13 @@ export class GraphManager {
     planModel: Runnable,
     agents: { [key: string]: { agent: Runnable; agentPrompt: string } },
     solveModel: BaseChatModel,
-    outputHandler: (type: string, message: string) => void,
+    outputHandler: Function,
     agentFunction: Function,
   ) {
     this.planNode = getPlanNode(planModel, outputHandler);
     this.agentFunction = agentFunction;
     this.agents = agents;
-    this.solveNode = getSolveNode(solveModel);
+    this.solveNode = getSolveNode(solveModel, outputHandler);
     this.graph = this._constructGraph();
   }
 
