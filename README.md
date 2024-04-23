@@ -20,6 +20,7 @@ To get started with OmniAssistant Server, follow these steps:
 git clone https://github.com/your-username/omni-assistant-server.git
 cd omni-assistant-server
 ```
+
 ## Install Dependencies
 
 ```bash
@@ -31,7 +32,8 @@ bun install
 Create a .env file in the root directory of the project and add any required environment variables, such as API keys or credentials.
 
 IE:
-``` bash
+
+```bash
 # .env
 OPENAI_API_KEY=sk-*****
 LANGCHAIN_API_KEY=ls__******
@@ -40,6 +42,7 @@ LANGCHAIN_TRACING_V2=true
 GROQ_API_KEY=gsk_******
 ANTHROPIC_API_KEY=sk-ant-api03-******
 ```
+
 ## Build the Project (Optional)
 
 If you need to build the project, run:
@@ -47,12 +50,15 @@ If you need to build the project, run:
 ```bash
 bun run build
 ```
+
 ## Start the Server
 
 ```bash
 bun start
 ```
+
 This will start the WebSocket server on port 8080.
+
 ## Usage
 
 To interact with the server, you can use the provided `client.ts` file or create your own client application. The server accepts JSON-formatted messages with the following structure:
@@ -63,6 +69,7 @@ To interact with the server, you can use the provided `client.ts` file or create
   "task": "your task description"
 }
 ```
+
 The server will process the task and delegate it to the appropriate agent based on the task description. If the agent requires user input or additional information, the server will send a message back to the client with the necessary prompts.
 
 Example client message:
@@ -73,18 +80,19 @@ Example client message:
   "task": "create a new campagin targetting males over 40 years old, with a discount of 20% in all products. Include an email explaining the discount."
 }
 ```
+
 The server will respond with prompts for the required information, and the client should send back the responses for each prompt.
 
 ## Details on server communication
 
 The server can send back messages with different types to the client, and the client should handle these messages accordingly. Here's an explanation of the different types and how they are handled in the provided client.ts example:
 
-* plan step:
-    The plan step type is used to show the plan or intermediate steps of the user's task to the user.
-    This type is typically displayed to the user as is, without requiring any additional input or response.
-* result:
-    The result type is used to show the final response or output of the chat.
-    In the provided example, the client handles the result type as follows:
+- plan step:
+  The plan step type is used to show the plan or intermediate steps of the user's task to the user.
+  This type is typically displayed to the user as is, without requiring any additional input or response.
+- result:
+  The result type is used to show the final response or output of the chat.
+  In the provided example, the client handles the result type as follows:
 
 ```javascript
 if (data.type === 'result') {
@@ -95,12 +103,11 @@ if (data.type === 'result') {
 
 When the server sends a message with type set to result, the message field contains the final result or output, which is printed to the console in this example.
 
-* tool:
-    The tool type is used by the AI to request the user to run specific tools and provide a response.
-    These tool requests should be handled sequentially by the client.
-    The server sends a message with type set to tool, containing an array of functions that need to be processed.
-    In the provided example, the client handles the tool type as follows:
-
+- tool:
+  The tool type is used by the AI to request the user to run specific tools and provide a response.
+  These tool requests should be handled sequentially by the client.
+  The server sends a message with type set to tool, containing an array of functions that need to be processed.
+  In the provided example, the client handles the tool type as follows:
 
 ```javascript
 if (data.type === 'tool') {
@@ -130,7 +137,6 @@ if (data.type === 'tool') {
 
 In this example, the client processes each function received from the server, prompts the user for a response (using the prompt function as a placeholder), and sends the responses back to the server in the format { type: 'toolResponse', response: JSON.stringify(responses) }.
 The actual implementation of how the user input is obtained can be replaced with your own input mechanism or automated response logic.
-
 
 By handling these different message types, the client can effectively communicate with the server, provide user input when requested (through tools), and display the final result or output.
 

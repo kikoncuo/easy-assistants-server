@@ -1,6 +1,6 @@
 /** @format */
 
-import { getAllToolsDescriptions } from "./tools";
+import { getAllToolsDescriptions } from './Tools';
 const toolsDescriptions = getAllToolsDescriptions();
 const planPrompt =
   `

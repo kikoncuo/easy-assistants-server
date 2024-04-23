@@ -131,3 +131,4 @@ dist
 
 # Bun lock file
 bun.lockb
+package-lock.json
