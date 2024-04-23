@@ -6,7 +6,7 @@ import { ChatGroq } from '@langchain/groq';
 import { ChatAnthropicTools } from '@langchain/anthropic/experimental';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { Runnable } from 'langchain/runnables';
-import { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
+import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
 
 const StepSchema = z
