@@ -1,11 +1,12 @@
 {
   "name": "omni-assistant-server",
-  "module": "index.ts",
+  "module": "server.ts",
   "type": "module",
-  "main": "src/websocketServer.ts",
+  "main": "src/server.ts",
   "scripts": {
-    "start": "bun src/websocketServer.ts",
-    "test": "bun src/testClient.ts"
+    "start": "bun src/server.ts",
+    "test-calculate": "bun tests/calculator.ts",
+    "prettier": "npx prettier --write ."
   },
   "devDependencies": {
     "bun-types": "^1.0.30"
@@ -23,6 +24,7 @@
     "async_hooks": "^1.0.0",
     "dotenv": "^16.4.5",
     "langchain": "^0.1.25",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "prettier": "^3.2.5"
   }
 }
