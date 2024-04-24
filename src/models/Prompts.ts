@@ -55,10 +55,6 @@ When responding, please respond using only the following JSON format:
   "value": "your solution goes here" (optional, only if the response has a value)
 }}
 
-The "status" field should indicate whether you were able to successfully solve the problem or not. If you were able to provide a solution, set the status to "successful". If you were unable to solve the problem or encountered any issues, set the status to "failed".
-
-The "value" field is optional and should only be included if your response contains a specific value or solution. If there is no specific value to return, you can omit the "value" field.
-
 Please remember not to answer with anything other than just the JSON directly.
 `;
 export { planPrompt, solvePrompt };
