@@ -27,6 +27,8 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
     try {
+      console.log("🚀 ~inputData STEPS:", inputData)
+      
       steps = JSON.parse(inputData.content.toString()).steps;
     } catch (error) {
       Logger.warn('Warning: Failed to parse the AIMessage content as JSON.', error);
@@ -57,6 +59,7 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
 }
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
+  console.log("🚀 ~ INPUUUUUUUUUUUUUUUUUUUUT", input_data)
   const functionDetails: FunctionDetails[] = [];
 
   const toolCalls = input_data.additional_kwargs?.tool_calls ?? [];
