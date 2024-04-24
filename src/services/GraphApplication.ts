@@ -10,6 +10,7 @@ import {
   anthropicHaiku,
   groqChatLlama,
   createPlanner,
+  createSolver,
 } from '../models/Models';
 import {
   calculatorTool,
@@ -45,9 +46,14 @@ export class GraphApplication {
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
       },
+      organize: {
+        agent: createAgent(fasterModel, [organizeItemTool]),
+        agentPrompt:
+          'You are an LLM specialized on rearranging items in an array as requested by the user',
+      },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, llama8bGroq, outputHandler, agentFunction);
+    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, createSolver(llama8bGroq), outputHandler, agentFunction);
   }
 
   async processTask(task: string, ws: WebSocket) {

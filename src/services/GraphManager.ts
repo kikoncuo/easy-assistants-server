@@ -14,7 +14,7 @@ export class GraphManager {
   constructor(
     planModel: Runnable,
     agents: { [key: string]: { agent: Runnable; agentPrompt: string } },
-    solveModel: BaseChatModel,
+    solveModel: Runnable,
     outputHandler: Function,
     agentFunction: Function,
   ) {

@@ -23,18 +23,24 @@ function _getCurrentTask(state: TaskState): number | null {
 }
 
 function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string } {
+  console.log(inputData)
   let steps: any[];
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
     try {
-      steps = JSON.parse(inputData.content.toString()).steps;
+      steps = JSON.parse(inputData.content.toString());
     } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON.', error);
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
+      Logger.warn('This was the AIMessage:', inputData.content.toString());
+      Logger.warn('Error:', error);
       return { stepsArray: [], fullPlan: '' };
     }
   } else {
     steps = inputData.steps;
   }
+  console.log(inputData)
+  console.log(steps)
+  console.log(steps[0])
   // Anthropic tends to return the steps as a string, so we need to parse it
   if (typeof steps[0] === 'string') {
     try {
@@ -54,6 +60,21 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   const fullPlan: string = steps.map(step => `${step.stepId} ${step.description}`).join('\n');
 
   return { stepsArray, fullPlan };
+}
+
+
+function processResults(results: any | AIMessage): string {
+  if (results instanceof AIMessage) {
+    try {
+      results = JSON.parse(results.content.toString());
+    } catch (error) {
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while processing your results. (Using a different solver may help).', error);
+      Logger.warn('This was the AIMessage:', results);
+      Logger.warn('Error:', error);
+      return "Error processing your results, please try again or contact support.";
+    }
+  } 
+  return results;
 }
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
@@ -90,27 +111,7 @@ export function getPlanNode(plannerModel: Runnable, outputHandler: Function) {
 
       const chain = chatPromptTemplate.pipe(plannerModel);
 
-      /*const stream = await chain.stream({ task: task }); // TODO: This parsing on the stream is not working, we should disable streaming for now, and use structured output with dynamic json parsing later
-      for await (const output of stream.values()) {
-          const chunk = output.content.toString();
-          allChunks += chunk;
-          if (chunk.endsWith('.')) {
-            instructionNumber += 1;
-            tempChunk += chunk;
-            Logger.log('tempChunk: ', tempChunk)
-            try {
-              const desiredText = tempChunk.split('Plan:')[1].split('.')[0] + '.';
-              Logger.log('desiredText: ', desiredText)
-              outputHandler('plan step', `#E${instructionNumber}: ${desiredText.trim()}`);
-            } catch (error) {
-                Logger.warn('Warning: Failed to extract the text in chunks, the model may not be using streaming.', error);
-            }
-            tempChunk = '';
-          }
-          tempChunk += chunk;
-      }*/
-
-      const plan = await chain.invoke({ task: task });
+      const plan = await chain.invoke({ task: task }); 
 
       const { stepsArray, fullPlan } = processSteps(plan);
 
@@ -156,7 +157,7 @@ export function getAgentNode(agent: Runnable, agentFunction: Function, agentProm
   return agentNode;
 }
 
-export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
+export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
   async function solve(state: TaskState): Promise<{ result: string }> {
     try {
       let plan = '';
@@ -169,18 +170,17 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
         plan += `Plan: ${_plan}\n${stepName} = ${tool}[${toolInput}]`;
       }
 
-      const prompt = solvePrompt.replace('{plan}', plan).replace('{task}', state.task);
-      const stream = await solverModel.stream([new HumanMessage(prompt)]); // TODO: send the chunks one by one
-      let allChunks = '';
+      const chatPromptTemplate = ChatPromptTemplate.fromMessages([['human', solvePrompt]]);
 
-      for await (const output of stream) {
-        for (const chunk of output.content) {
-          allChunks += chunk;
-        }
-      }
+      const chain = chatPromptTemplate.pipe(solverModel);
 
-      outputHandler('result', allChunks);
-      return { result: allChunks };
+      const responseResult = await chain.invoke({task: state.task, plan: state.plan_string, results: state.results}); 
+
+      const finalResponse = JSON.stringify(processResults(responseResult));
+
+      outputHandler('result', finalResponse);
+      console.log('Final response:', finalResponse)
+      return { result: finalResponse };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
       

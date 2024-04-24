@@ -35,6 +35,11 @@ const planSchema = z
   })
   .describe('The root object containing the array of steps');
 
+const solverSchema = z.object({
+  status: z.enum(['successful', 'failed']).describe('The status of the solver, either successful or failed'),
+  value: z.string().optional().describe('The optional, final, concise, value returned to the user if the response has a value.'),
+});
+
 export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
   tools?: ToolDefinition[];
   tool_choice?:
@@ -47,13 +52,18 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
       };
 }
 
+// Helper functions:
 function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(planSchema) : llm;
   return bindedLLM;
 }
 
-// Helper functions:
-function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[]): Runnable {
+function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
+  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(solverSchema) : llm;
+  return bindedLLM;
+}
+
+function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[]): Runnable { // TODO: add support for agents who perform the task themselves without querying the frontend for the result
   const bindedLLM = llm.bind({
     tools: tools,
     tool_choice: 'auto',
@@ -138,4 +148,5 @@ export {
   anthropicHaiku,
   createAgent,
   createPlanner,
+  createSolver,
 };
