@@ -3,7 +3,7 @@
 // models.ts
 import { ChatOpenAI } from 'langchain/chat_models/openai';
 import { ChatGroq } from '@langchain/groq';
-import { ChatAnthropicTools } from '@langchain/anthropic/experimental';
+import { ChatAnthropic } from '@langchain/anthropic';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { Runnable } from 'langchain/runnables';
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
@@ -114,7 +114,7 @@ function groqChatSmallLlama(): BaseChatModel {
 }
 
 function anthropicOpus(): BaseChatModel {
-  return new ChatAnthropicTools({
+  return new ChatAnthropic({
     temperature: 0,
     modelName: 'claude-3-opus-20240229',
     streaming: false,
@@ -122,7 +122,7 @@ function anthropicOpus(): BaseChatModel {
 }
 
 function anthropicSonnet(): BaseChatModel {
-  return new ChatAnthropicTools({
+  return new ChatAnthropic({
     temperature: 0,
     modelName: 'claude-3-sonnet-20240229',
     streaming: false,
@@ -130,7 +130,7 @@ function anthropicSonnet(): BaseChatModel {
 }
 
 function anthropicHaiku(): BaseChatModel {
-  return new ChatAnthropicTools({
+  return new ChatAnthropic({
     temperature: 0,
     modelName: 'claude-3-haiku-20240307',
     streaming: false,
