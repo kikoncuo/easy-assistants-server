@@ -31,11 +31,11 @@ const planPrompt =
       toolParameters: [ "*", "E1", 5 ],
     }}
   ]
-  
+
   Remember to only output the JSON object with the steps array, do not add any text before or after.
   Remember never to provide the solution to the task, only define the steps to solve the plan plan.
   
-  Begin generating the step-by-step solution now for the following task: {task}`;
+  Here is the task: {task}`;
 const solvePrompt = `You are an economics, statistics and marketing expert who communicates through a chatbot with a user.
 Solve the following task. 
 Task: {task}
