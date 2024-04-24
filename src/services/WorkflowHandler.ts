@@ -142,7 +142,7 @@ export function getAgentNode(agent: Runnable, agentFunction: Function, agentProm
       const result = await agent.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
       const functions = extractFunctionDetails(result);
       const results = await agentFunction('tool', functions);
-      _results[stepName] = JSON.stringify(results);
+      _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
         `Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`,
       );
@@ -172,8 +172,8 @@ export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
 
       const chain = chatPromptTemplate.pipe(solverModel);
 
-      const responseResult = await chain.invoke({task: state.task, plan: state.plan_string, results: state.results}); 
-
+      const responseResult = await chain.invoke({task: state.task, plan: plan, results: state.results});
+      
       const finalResponse = JSON.stringify(processResults(responseResult));
 
       outputHandler('result', finalResponse);
