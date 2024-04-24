@@ -28,7 +28,7 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
     try {
-      steps = JSON.parse(inputData.content.toString());
+      steps = JSON.parse(inputData.content.toString()).steps;
     } catch (error) {
       Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
       Logger.warn('This was the AIMessage:', inputData.content.toString());
@@ -38,9 +38,7 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   } else {
     steps = inputData.steps;
   }
-  console.log(inputData)
-  console.log(steps)
-  console.log(steps[0])
+  
   // Anthropic tends to return the steps as a string, so we need to parse it
   if (typeof steps[0] === 'string') {
     try {
