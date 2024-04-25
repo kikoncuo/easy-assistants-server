@@ -11,6 +11,8 @@ The output should be formatted as a JSON object that adheres to the "createPlan"
 Provide the step-by-step solution, here are the tools you have access to:
 - calculate: Performs basic arithmetic operations on two numbers, including powers and roots, the first parameter is the operator, and the next 2 are the two numbers.
 - organize: Rearranges items items in a list. Use this tool by passing the list of items to be arranged, and a string explaining how they should be arranged.
+- getTables: Use this tool to identify the details of tables you may want to use on later steps. Try no to request every table only the ones relevant to the current task. Use this tool by setting the toolParameters as a list of the names of tables you need details from and return that list. Only use table passed by the user.
+- getSegmentDetails: Use this tool to create a segment by providing table details and a description of the segment. This will return a view with a segment details.
 
 Simple requests may be acomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools.
 

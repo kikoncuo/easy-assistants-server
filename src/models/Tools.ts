@@ -435,6 +435,46 @@ const cardTool: ToolDefinition = {
   },
 };
 
+const getTables: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getTables",
+    description:
+      "Given a list of table names, identify those with a possible relation to user's request.",
+    parameters: {
+      type: "object",
+      properties: {
+        tables: {
+          type: "array",
+          description: "The list of selected tables.",
+          items: { type: 'string' },
+        },
+      },
+      required: ["tables"],
+    },
+  },
+};
+
+const getSegmentDetails: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSegmentDetails",
+    description:
+      "Given an array of table columns and query description, evaluate them and create an SQL query to match the user's necessities and create a segment",
+    parameters: {
+      type: "object",
+      properties: {
+        sqlQuery: {
+          type: "string",
+          description:
+            "The unique SQL query with all the columns from all the different tables.",
+        },
+      },
+      required: ["sqlQuery"],
+    },
+  },
+};
+
 const campaignCreatorDescription =
   'createCampaign[campaign description] Description of the campaign requirements, it returns true if the campaign is created successfully, otherwise it returns false. All 4 must should be used, emailTool, eventTool, filterTool, rewardTool.'; // TODO: improve this explaining the required fields and update the prommpt example
 const createTableDescription =
@@ -478,5 +518,7 @@ export {
   segmentTool,
   pageHtmlTool,
   organizeItemTool,
+  getTables,
+  getSegmentDetails,
   getAllToolsDescriptions,
 };

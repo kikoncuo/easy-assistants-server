@@ -25,6 +25,8 @@ import {
   sqlQuery,
   segmentTool,
   organizeItemTool,
+  getTables,
+  getSegmentDetails
 } from '../models/Tools';
 import Logger from '../utils/Logger';
 
@@ -51,9 +53,21 @@ export class GraphApplication {
         agentPrompt:
           'You are an LLM specialized on rearranging items in an array as requested by the user',
       },
+      getTables: {
+        agent: createAgent(strongestModel, [getTables], true),
+        agentPrompt: `You are an LLM with advanced capabilities in analyzing database schemas. 
+        You are provided with a list of table definitions and your task is to determine the most suitable tables based on the context of the user's needs. 
+        Assess the table names to identify the most relevant and useful tables that align with the user's objectives for data analysis, reporting.
+        Always use the tool you have access to.`,
+      },
+      getSegmentDetails: {
+        agent: createAgent(strongestModel, [getSegmentDetails], true),
+        agentPrompt: `You are an LLM with advanced capabilities in analyzing database schemas. 
+        Based on that list of table columns that the user will provide and his request, generate the SQL query to adquire the user's needs`,
+      },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, createSolver(llama8bGroq), outputHandler, agentFunction);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama8bGroq), outputHandler, agentFunction);
   }
 
   async processTask(task: string, ws: WebSocket) {

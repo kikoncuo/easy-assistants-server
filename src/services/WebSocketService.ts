@@ -20,12 +20,27 @@ export class WebSocketService {
       ws.on('message', (message: string) => {
         const data = JSON.parse(message);
         if (data.type === 'toolResponse') {
-          const toolResponses = JSON.parse(data.response); // Consider checking if you can send JSON directly to avoid parsing.
-          toolResponses.forEach((toolResponse: { function_name: string; response: string }) => {
+          let toolResponse = data.response;
+
+          if (typeof toolResponse === 'string') {
+            try {
+              toolResponse = JSON.parse(toolResponse);
+            } catch (error) {
+              Logger.error("Error parsing toolResponse: ", error);
+              return; 
+            }
+          }
+          if (Array.isArray(toolResponse)) {
+            toolResponse.forEach((response: { function_name: string; response: string }) => {
+              Logger.log(`Received response for ${response.function_name}: ${response.response}`);
+              responses[response.function_name] = response.response.trim();
+            });
+          } else if (toolResponse && toolResponse.function_name) {
             Logger.log(`Received response for ${toolResponse.function_name}: ${toolResponse.response}`);
             responses[toolResponse.function_name] = toolResponse.response.trim();
-          });
-
+          } else {
+            Logger.error("Unexpected toolResponse format: ", toolResponse);
+          }
           if (Object.keys(responses).length === functions.length) {
             resolve(responses);
           }
