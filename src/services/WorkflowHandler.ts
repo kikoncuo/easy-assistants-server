@@ -23,13 +23,14 @@ function _getCurrentTask(state: TaskState): number | null {
 }
 
 function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string } {
+  console.log(inputData)
   let steps: any[];
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
     try {
       steps = JSON.parse(inputData.content.toString()).steps;
     } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).');
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
       Logger.warn('This was the AIMessage:', inputData.content.toString());
       Logger.warn('Error:', error);
       return { stepsArray: [], fullPlan: '' };
@@ -59,20 +60,32 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   return { stepsArray, fullPlan };
 }
 
-
-function processResults(results: any | AIMessage): string {
+function processResults(results: any | AIMessage): any {
   if (results instanceof AIMessage) {
     try {
-      results = JSON.parse(results.content.toString());
+      const content = results.content.toString();
+      // Find the start and end indices of the JSON object
+      const jsonStart = content.indexOf('{');
+      const jsonEnd = content.lastIndexOf('}') + 1; // include the closing brace
+      if (jsonStart === -1 || jsonEnd === -1) {
+        throw new Error("No JSON object found in the content.");
+      }
+      const jsonString = content.substring(jsonStart, jsonEnd);
+      const parsedResults = JSON.parse(jsonString);
+      return parsedResults; // Return as a JSON object
     } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while processing your results. (Using a different solver may help).', error);
-      Logger.warn('This was the AIMessage:', results);
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while processing your results.', error);
+      Logger.warn('This was the AIMessage:', results.content.toString());
       Logger.warn('Error:', error);
-      return "Error processing your results, please try again or contact support.";
+      return {
+        error: "Error processing your results, please try again or contact support."
+      };
     }
   } 
-  return results;
+  return results; // Assume results are already a JSON object if not an AIMessage
 }
+
+
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
   const functionDetails: FunctionDetails[] = [];
@@ -128,8 +141,8 @@ export function getPlanNode(plannerModel: Runnable, outputHandler: Function) {
   return plan;
 }
 
-export function getAgentNode(model: Runnable, agentPrompt: string, toolFunction: Function) {
-  async function agentNode(state: TaskState) {
+export function getAgentNode(agent: Runnable, agentFunction: Function, agentPrompt: string) {
+  async function agentNode(state: TaskState, agent: Runnable, agentFunction: Function, agentPrompt: string) {
     try {
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
@@ -138,9 +151,9 @@ export function getAgentNode(model: Runnable, agentPrompt: string, toolFunction:
       for (const [k, v] of Object.entries(_results)) {
         toolInput = toolInput.replace(k, v);
       }
-      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
+      const result = await agent.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
       const functions = extractFunctionDetails(result);
-      const results = await toolFunction('tool', functions);
+      const results = await agentFunction('tool', functions);
       _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
         `Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`,
@@ -148,7 +161,7 @@ export function getAgentNode(model: Runnable, agentPrompt: string, toolFunction:
       return { results: _results };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { results: 'Error in agent execution, please try again or contact support.'};
+      return { results: 'Error in agent execution, please try again or contact support.' };
     }
   }
   return agentNode;
@@ -172,11 +185,11 @@ export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
       const chain = chatPromptTemplate.pipe(solverModel);
 
       const responseResult = await chain.invoke({task: state.task, plan: plan, results: state.results});
-
+      
       const finalResponse = JSON.stringify(processResults(responseResult));
 
       outputHandler('result', finalResponse);
-      Logger.log('Final response:', finalResponse)
+      console.log('Final response:', finalResponse)
       return { result: finalResponse };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);

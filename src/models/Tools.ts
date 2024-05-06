@@ -381,10 +381,23 @@ const chartTool: ToolDefinition = {
         },
         chartType: {
           type: 'string',
-          description: "The type of chart to generate (e.g., 'bar', 'line', 'doughnut')",
+          description: "The type of chart to generate",
+        },
+        explanation: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "The title for the explanation.",
+            },
+            description: {
+              type: "string",
+              descrption: "Explanation of why that SQL was generated.",
+            },
+          },
         },
       },
-      required: ['labels', 'data', 'chartType'],
+      required: ['labels', 'data', 'chartType', "explanation"],
     },
   },
 };
@@ -435,6 +448,141 @@ const cardTool: ToolDefinition = {
   },
 };
 
+const getTables: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getTables",
+    description:
+      "Given a list of table names, identify those with a possible relation to user's request.",
+    parameters: {
+      type: "object",
+      properties: {
+        tables: {
+          type: "array",
+          description: "The list of selected tables.",
+          items: { type: 'string' },
+        },
+        explanation: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "The title for the explanation.",
+            },
+            description: {
+              type: "string",
+              descrption: "Explanation of why those tables were selected",
+            },
+          },
+        },
+      },
+      required: ["tables", "explanation"],
+    },
+  },
+};
+
+const filterData: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "filterData",
+    description:
+      "Given a JSON array, filter it based on user's request.",
+    parameters: {
+      type: "object",
+      properties: {
+        users: {
+          type: "array",
+          description: "The list of selected objects from the array.",
+          items: { 
+            type: "object",
+            properties: {
+              email: {
+                type: "string",
+                description: "User's email.",
+              },
+              name: {
+                type: "string",
+                descrption: "User's name",
+              },
+              recently_engaged: {
+                type: "string",
+                description: "Boolean indicating if the user is recently engaged.",
+              },
+              social_media: {
+                type: "string",
+                descrption: "Social media from which data was collected",
+              },
+            },
+           },
+        },
+        explanation: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "The title for the explanation.",
+            },
+            description: {
+              type: "string",
+              descrption: "Explanation of why those objects were selected",
+            },
+          },
+        },
+      },
+      required: ["users", "explanation"],
+    },
+  },
+};
+
+
+const getSegmentDetails: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSegmentDetails",
+    description:
+      "Given an array of table columns and query description, evaluate them and create an SQL query to match the user's necessities and create a segment",
+    parameters: {
+      type: "object",
+      properties: {
+        sqlQuery: {
+          type: "string",
+          description:
+            `The unique SQL query with all the columns from all the different tables. All column names and tables names, even when using renames, should be in between double commas (I.E.: select name from users, should be select "name" from "users")`,
+        },
+        sqlTitle: {
+          type: "string",
+          description:
+            "Title that will have the table created with that SQL query.",
+        },
+        sqlDescription: {
+          type: "string",
+          description:
+            "A simple description giving more context of the sqlTitle text.",
+        },
+        headers: {
+          type: "array",
+          description: "The list of headers for the sqlQuery statement.",
+          items: { type: 'string' },
+        },
+        explanation: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "The title for the explanation.",
+            },
+            description: {
+              type: "string",
+              descrption: "Explanation of why that SQL was generated.",
+            },
+          },
+        },
+      },
+      required: ["sqlQuery", "sqlDescription", "headers", "explanation"],
+    },
+  },
+};
+
 const campaignCreatorDescription =
   'createCampaign[campaign description] Description of the campaign requirements, it returns true if the campaign is created successfully, otherwise it returns false. All 4 must should be used, emailTool, eventTool, filterTool, rewardTool.'; // TODO: improve this explaining the required fields and update the prommpt example
 const createTableDescription =
@@ -478,5 +626,8 @@ export {
   segmentTool,
   pageHtmlTool,
   organizeItemTool,
+  getTables,
+  getSegmentDetails,
+  filterData,
   getAllToolsDescriptions,
 };
