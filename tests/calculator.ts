@@ -61,8 +61,14 @@ function connectToServer() {
 }
 
 function promptUserInput() {
-  const query = prompt('Enter your message:');
-  if (query && ws) {
+  let query = prompt('Enter your message:');
+  if (!query) {
+    // If the query is empty, set it to the result of 3*6 divided by 2
+    query = "what's 3*6 divided by 2"
+    Logger.log(`No input provided. what's 3*6 divided by 2`);
+  }
+
+  if (ws) {
     Logger.time('planTimer'); // Start the timer
     ws.send(JSON.stringify({ type: 'query', task: query }));
   }

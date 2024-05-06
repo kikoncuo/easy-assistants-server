@@ -140,8 +140,8 @@ export function getPlanNode(plannerModel: Runnable, outputHandler: Function) {
   return plan;
 }
 
-export function getAgentNode(agent: Runnable, agentFunction: Function, agentPrompt: string) {
-  async function agentNode(state: TaskState, agent: Runnable, agentFunction: Function, agentPrompt: string) {
+export function getAgentNode(model: Runnable, agentPrompt: string, toolFunction: Function) {
+  async function agentNode(state: TaskState) {
     try {
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
@@ -150,9 +150,9 @@ export function getAgentNode(agent: Runnable, agentFunction: Function, agentProm
       for (const [k, v] of Object.entries(_results)) {
         toolInput = toolInput.replace(k, v);
       }
-      const result = await agent.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
+      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
       const functions = extractFunctionDetails(result);
-      const results = await agentFunction('tool', functions);
+      const results = await toolFunction('tool', functions);
       _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
         `Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`,
@@ -160,7 +160,7 @@ export function getAgentNode(agent: Runnable, agentFunction: Function, agentProm
       return { results: _results };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { results: 'Error in agent execution, please try again or contact support.' };
+      return { results: 'Error in agent execution, please try again or contact support.'};
     }
   }
   return agentNode;

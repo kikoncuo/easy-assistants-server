@@ -29,12 +29,12 @@ import {
   getSegmentDetails,
   filterData
 } from '../models/Tools';
-import Logger from '../utils/Logger';
+import Logger from '../utils/Logger'; 
 
 export class GraphApplication {
   private graphManager: GraphManager;
 
-  constructor(outputHandler: Function, agentFunction: Function) {
+  constructor(outputHandler: Function, clientAgentFunction: Function) {
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
@@ -48,11 +48,13 @@ export class GraphApplication {
         agent: createAgent(fasterModel, [calculatorTool]),
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
+        toolFunction: clientAgentFunction, 
       },
       organize: {
         agent: createAgent(fasterModel, [organizeItemTool], true),
         agentPrompt:
           'You are an LLM specialized on rearranging items in an array as requested by the user',
+        toolFunction: clientAgentFunction,
       },
       filterData: {
         agent: createAgent(fasterModel, [filterData], true),
@@ -87,7 +89,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(strongestModel), outputHandler, agentFunction);
+    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
