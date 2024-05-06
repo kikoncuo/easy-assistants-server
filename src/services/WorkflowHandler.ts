@@ -6,7 +6,7 @@ import { planPrompt, solvePrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
 import { TaskState } from '../models/TaskState';
-import { FunctionDetails, InputData } from '../interfaces/types';
+import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
 
 // internal function
@@ -29,7 +29,7 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
     try {
       steps = JSON.parse(inputData.content.toString()).steps;
     } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).');
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
       Logger.warn('This was the AIMessage:', inputData.content.toString());
       Logger.warn('Error:', error);
       return { stepsArray: [], fullPlan: '' };
@@ -59,20 +59,32 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   return { stepsArray, fullPlan };
 }
 
-
-function processResults(results: any | AIMessage): string {
+function processResults(results: any | AIMessage): ErrorResponse | Record<string, unknown> {
   if (results instanceof AIMessage) {
     try {
-      results = JSON.parse(results.content.toString());
+      const content = results.content.toString();
+      // Find the start and end indices of the JSON object
+      const jsonStart = content.indexOf('{');
+      const jsonEnd = content.lastIndexOf('}') + 1; // include the closing brace
+      if (jsonStart === -1 || jsonEnd === -1) {
+        throw new Error("No JSON object found in the content.");
+      }
+      const jsonString = content.substring(jsonStart, jsonEnd);
+      const parsedResults = JSON.parse(jsonString);
+      return parsedResults; // Return as a JSON object
     } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while processing your results. (Using a different solver may help).', error);
-      Logger.warn('This was the AIMessage:', results);
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while processing your results.', error);
+      Logger.warn('This was the AIMessage:', results.content.toString());
       Logger.warn('Error:', error);
-      return "Error processing your results, please try again or contact support.";
+      return {
+        error: "Error processing your results, please try again or contact support."
+      };
     }
   } 
   return results;
 }
+
+
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
   const functionDetails: FunctionDetails[] = [];
