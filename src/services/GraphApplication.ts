@@ -60,6 +60,7 @@ export class GraphApplication {
         agent: createAgent(fasterModel, [filterData], true),
         agentPrompt:
           'You are an LLM specialized on filtering items in an array as requested by the user. Based on a stringified JSON array of data, use this tool to filter it based on user`s field request. Return the filtered array of objects.',
+        toolFunction: clientAgentFunction,
       },
       getTables: {
         agent: createAgent(strongestModel, [getTables], true),
@@ -68,6 +69,7 @@ export class GraphApplication {
         Assess the table names to identify the most relevant and useful tables that align with the user's objectives for data analysis, reporting.
         Always use the tool you have access to. 
         Only use the table names that were given to you, don't use anything outside that list and don't generate new names.`,
+        toolFunction: clientAgentFunction,
       },
       getSegmentDetails: {
         agent: createAgent(strongestModel, [getSegmentDetails], true),
@@ -76,6 +78,7 @@ export class GraphApplication {
         Remember to not alterate any table name or column name and maintain their format.
         Try to return as much details as possible based on the request.
         Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", "EMAIL", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "REVENUE" order by total_revenue desc;`,
+        toolFunction: clientAgentFunction,
       },
       createChart: {
         agent: createAgent(strongestModel, [chartTool], true),
@@ -86,6 +89,7 @@ export class GraphApplication {
             data: [ "1, 2, 3, 4" ],
             chartType: "line",
           }.`,
+        toolFunction: clientAgentFunction,
       },
     };
 
