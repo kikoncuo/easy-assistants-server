@@ -6,7 +6,7 @@ import { planPrompt, solvePrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
 import { TaskState } from '../models/TaskState';
-import { FunctionDetails, InputData } from '../interfaces/types';
+import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
 
 // internal function
@@ -23,7 +23,6 @@ function _getCurrentTask(state: TaskState): number | null {
 }
 
 function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string } {
-  console.log(inputData)
   let steps: any[];
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
@@ -60,7 +59,7 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   return { stepsArray, fullPlan };
 }
 
-function processResults(results: any | AIMessage): any {
+function processResults(results: any | AIMessage): ErrorResponse | Record<string, unknown> {
   if (results instanceof AIMessage) {
     try {
       const content = results.content.toString();
@@ -82,7 +81,7 @@ function processResults(results: any | AIMessage): any {
       };
     }
   } 
-  return results; // Assume results are already a JSON object if not an AIMessage
+  return results;
 }
 
 
@@ -185,11 +184,11 @@ export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
       const chain = chatPromptTemplate.pipe(solverModel);
 
       const responseResult = await chain.invoke({task: state.task, plan: plan, results: state.results});
-      
+
       const finalResponse = JSON.stringify(processResults(responseResult));
 
       outputHandler('result', finalResponse);
-      console.log('Final response:', finalResponse)
+      Logger.log('Final response:', finalResponse)
       return { result: finalResponse };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);

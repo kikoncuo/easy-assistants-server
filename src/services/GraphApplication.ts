@@ -72,7 +72,8 @@ export class GraphApplication {
         agentPrompt: `You are an LLM with advanced capabilities in analyzing database schemas. Use this tool only if asked for, it's not mandatory for other tools to be used alongside this one.
         Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
         Remember to not alterate any table name or column name and maintain their format.
-        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "REVENUE" order by total_revenue desc;`,
+        Try to return as much details as possible based on the request.
+        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", "EMAIL", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "REVENUE" order by total_revenue desc;`,
       },
       createChart: {
         agent: createAgent(strongestModel, [chartTool], true),
