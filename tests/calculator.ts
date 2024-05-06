@@ -64,9 +64,8 @@ function promptUserInput() {
   let query = prompt('Enter your message:');
   if (!query) {
     // If the query is empty, set it to the result of 3*6 divided by 2
-    const result = (3 * 6) / 2;
-    query = result.toString();
-    Logger.log(`No input provided. Using default calculation: 3 * 6 / 2 = ${query}`);
+    query = "what's 3*6 divided by 2"
+    Logger.log(`No input provided. what's 3*6 divided by 2`);
   }
 
   if (ws) {
