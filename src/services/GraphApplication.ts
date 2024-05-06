@@ -42,18 +42,20 @@ export class GraphApplication {
 
     const agents = {
       calculate: {
-        agent: createAgent(fasterModel, [calculatorTool], clientAgentFunction),
+        agent: createAgent(fasterModel, [calculatorTool]),
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
+        toolFunction: clientAgentFunction, 
       },
       organize: {
-        agent: createAgent(fasterModel, [organizeItemTool], clientAgentFunction),
+        agent: createAgent(fasterModel, [organizeItemTool]),
         agentPrompt:
           'You are an LLM specialized on rearranging items in an array as requested by the user',
+        toolFunction: clientAgentFunction,
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, createSolver(llama8bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {

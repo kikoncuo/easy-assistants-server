@@ -64,22 +64,13 @@ function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
   return bindedLLM;
 }
 
-interface RunnableConfig {
-  model: Runnable;
-  toolFunction: Function;
-}
-
-function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], agentFunction: Function, forceTool: boolean = false): RunnableConfig { 
+function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], forceTool: boolean = false): Runnable { 
   const bindedLLM = llm.bind({
     tools: tools,
     tool_choice: forceTool ? tools[0] : 'auto',
   });
 
-  // Return an object containing both the bound LLM and the custom function
-  return {
-    model: bindedLLM,
-    toolFunction: Function,
-  };
+  return bindedLLM;
 }
 
 
