@@ -36,6 +36,53 @@ function parseJsonString(jsonString: string): any {
   return result;
 }
 
+// Performs better when there are arrays of objects inside the JSON-like strings
+function parseJsonString2(jsonString: string): any {
+  // Regular expression to match JSON-like strings within double quotes
+  const jsonRegex = /"(\[.*?\])"/g;
+
+  // Replace JSON-like strings with placeholders
+  const modifiedString = jsonString.replace(jsonRegex, (match, jsonLike) => {
+    return "${encodeURIComponent(jsonLike)}";
+  });
+
+  // Parse the modified string as JSON
+  const parsedObject = JSON.parse(modifiedString);
+
+  console.log('Parsed object:', parsedObject);
+
+  // Recursively replace placeholders with parsed JSON objects
+  function replacePlaceholders(obj: any): any {
+    if (Array.isArray(obj)) {
+      return obj.map(replacePlaceholders);
+    } else if (typeof obj === 'object' && obj !== null) {
+      return Object.entries(obj).reduce((acc, [key, value]) => {
+        acc[key] = replacePlaceholders(value);
+        return acc;
+      }, {} as any);
+    } else if (typeof obj === 'string') {
+      try {
+        const decodedString = decodeURIComponent(obj);
+        if (decodedString.startsWith('[') && decodedString.endsWith(']')) {
+          return JSON.parse(decodedString.replace(/\\/g, ''));
+        }
+      } catch (error) {
+        // Ignore decoding errors and return the original string
+      }
+      return obj;
+    } else {
+      return obj;
+    }
+  }
+
+  // Replace placeholders in the parsed object
+  const result = replacePlaceholders(parsedObject);
+
+  console.log('Result:', result);
+
+  return result;
+}
+
 // Example usage
 const jsonString = `{
   "steps": [
