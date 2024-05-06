@@ -64,14 +64,25 @@ function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
   return bindedLLM;
 }
 
-function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], forceTool: boolean = false): Runnable { // TODO: add support for agents who perform the task themselves without querying the frontend for the result
+interface RunnableConfig {
+  model: Runnable;
+  toolFunction: Function;
+}
+
+function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], agentFunction: Function, forceTool: boolean = false): RunnableConfig { 
   const bindedLLM = llm.bind({
     tools: tools,
     tool_choice: forceTool ? tools[0] : 'auto',
   });
 
-  return bindedLLM;
+  // Return an object containing both the bound LLM and the custom function
+  return {
+    model: bindedLLM,
+    toolFunction: Function,
+  };
 }
+
+
 
 // Models:
 function getStrongestModel(): BaseChatModel {
