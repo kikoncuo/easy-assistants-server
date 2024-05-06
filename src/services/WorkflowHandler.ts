@@ -23,14 +23,13 @@ function _getCurrentTask(state: TaskState): number | null {
 }
 
 function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string } {
-  console.log(inputData)
   let steps: any[];
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
     try {
       steps = JSON.parse(inputData.content.toString()).steps;
     } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
+      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).');
       Logger.warn('This was the AIMessage:', inputData.content.toString());
       Logger.warn('Error:', error);
       return { stepsArray: [], fullPlan: '' };
@@ -173,11 +172,11 @@ export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
       const chain = chatPromptTemplate.pipe(solverModel);
 
       const responseResult = await chain.invoke({task: state.task, plan: plan, results: state.results});
-      
+
       const finalResponse = JSON.stringify(processResults(responseResult));
 
       outputHandler('result', finalResponse);
-      console.log('Final response:', finalResponse)
+      Logger.log('Final response:', finalResponse)
       return { result: finalResponse };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
