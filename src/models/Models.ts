@@ -78,7 +78,7 @@ function getStrongestModel(): BaseChatModel {
   return new ChatOpenAI({
     modelName: 'gpt-4-turbo-preview',
     streaming: false,
-    temperature: 0,
+    temperature: 0.1,
   });
 }
 

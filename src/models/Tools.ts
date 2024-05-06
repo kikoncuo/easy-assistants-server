@@ -547,7 +547,7 @@ const getSegmentDetails: ToolDefinition = {
         sqlQuery: {
           type: "string",
           description:
-            `The unique SQL query with all the columns from all the different tables. All column names and tables names, even when using renames, should be in between double commas (I.E.: select name from users, should be select "name" from "users")`,
+            `The unique SQL query with all the columns from all the different tables. All column names and tables names, even when using renames, should be in between double commas (I.E.: select name from users, should be select "name" from "users").`,
         },
         sqlTitle: {
           type: "string",

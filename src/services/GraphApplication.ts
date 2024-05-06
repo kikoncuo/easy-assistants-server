@@ -70,7 +70,9 @@ export class GraphApplication {
       getSegmentDetails: {
         agent: createAgent(strongestModel, [getSegmentDetails], true),
         agentPrompt: `You are an LLM with advanced capabilities in analyzing database schemas. Use this tool only if asked for, it's not mandatory for other tools to be used alongside this one.
-        Based on that list of table columns that the user will provide and his request, generate the SQL query to adquire the user's needs. Sanitize the data so there are no special characters except the SQL query itself, don't use line breakers. This tool will be called only if it's asked for, there is not always need for a segment. Remember to not alterate any table name or column name and maintain their format. All column names are in capitals.`,
+        Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
+        Remember to not alterate any table name or column name and maintain their format.
+        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "REVENUE" order by total_revenue desc;`,
       },
       createChart: {
         agent: createAgent(strongestModel, [chartTool], true),
