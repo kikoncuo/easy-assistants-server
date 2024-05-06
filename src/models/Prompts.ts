@@ -60,5 +60,6 @@ When responding, please respond using only the following JSON format:
 }}
 
 Please remember not to answer with anything other than just the JSON directly.
+If you see any error message in the results like "Error in agent execution, please try again or contact support.", identify the status as "failed" and provide an explanation of the error.
 `;
 export { planPrompt, solvePrompt };
