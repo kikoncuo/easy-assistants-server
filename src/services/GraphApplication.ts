@@ -19,7 +19,7 @@ import {
   filterTool,
   eventTool,
   tableTool,
-  chartTool,
+  createChart,
   infoCardTool,
   pageHtmlTool,
   sqlQuery,
@@ -81,8 +81,8 @@ export class GraphApplication {
         toolFunction: clientAgentFunction,
       },
       createChart: {
-        agent: createAgent(strongestModel, [chartTool], true),
-        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. Based on the input data, if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
+        agent: createAgent(strongestModel, [createChart], true),
+        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. This Based on the input data, if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
           The response should always include the labels property and the data property like this example: 
           arguments: {
             labels: [ "Label, Label, Label, Label" ],
@@ -90,6 +90,13 @@ export class GraphApplication {
             chartType: "line",
           }.`,
         toolFunction: clientAgentFunction,
+      },
+      sqlQuery: {
+        agent: createAgent(strongestModel, [sqlQuery], true),
+        agentPrompt: `You are an LLM specialized in generating postgreSQL queries based on the input text. The postgreSQL query will be used to filter database tables. The user will provide the table's columns definition so the query is based on that information.
+       This should return 2 queries, one with the results of the select part based on the user's input and also a query to create a table with a generated definition based on the result, so the first results of the query can be inserted. The table name and column names should be related to the first query.
+       Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "NAME", "REVENUE" order by total_revenue desc limit 10;`,
+       toolFunction: clientAgentFunction,
       },
     };
 
