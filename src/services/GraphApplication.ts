@@ -93,7 +93,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama8bGroq), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
