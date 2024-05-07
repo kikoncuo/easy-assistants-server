@@ -13,26 +13,6 @@ RUN bun install --production
 # Final stage to create the executable image
 FROM oven/bun:latest
 
-# Arguments that can be passed during the build step
-ARG OPENAI_API_KEY
-ARG TAVILY_API_KEY
-ARG LANGCHAIN_API_KEY
-ARG LANGCHAIN_PROJECT
-ARG LANGCHAIN_TRACING_V2
-ARG GROQ_API_KEY
-ARG ANTHROPIC_API_KEY
-ARG BUN_ENV
-
-# Environment variables based on ARG to make them persistent
-ENV OPENAI_API_KEY=$OPENAI_API_KEY \
-    TAVILY_API_KEY=$TAVILY_API_KEY \
-    LANGCHAIN_API_KEY=$LANGCHAIN_API_KEY \
-    LANGCHAIN_PROJECT=$LANGCHAIN_PROJECT \
-    LANGCHAIN_TRACING_V2=$LANGCHAIN_TRACING_V2 \
-    GROQ_API_KEY=$GROQ_API_KEY \
-    ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
-    BUN_ENV=$BUN_ENV
-
 # Set the working directory in the final image
 WORKDIR /usr/src/app
 
