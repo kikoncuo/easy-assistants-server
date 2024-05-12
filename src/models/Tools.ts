@@ -535,12 +535,12 @@ const filterData: ToolDefinition = {
 };
 
 
-const getSegmentDetails: ToolDefinition = {
+const getData: ToolDefinition = {
   type: "function",
   function: {
-    name: "getSegmentDetails",
+    name: "getData",
     description:
-      "Given an array of table columns and query description, evaluate them and create an SQL query to match the user's necessities and create a segment",
+      "Given an array of table columns and query description, evaluate them and create an SQL query to match the user's necessities to query the requested data",
     parameters: {
       type: "object",
       properties: {
@@ -583,36 +583,8 @@ const getSegmentDetails: ToolDefinition = {
   },
 };
 
-const campaignCreatorDescription =
-  'createCampaign[campaign description] Description of the campaign requirements, it returns true if the campaign is created successfully, otherwise it returns false. All 4 must should be used, emailTool, eventTool, filterTool, rewardTool.'; // TODO: improve this explaining the required fields and update the prommpt example
-const createTableDescription =
-  'createTableStructure[jsonData, tableName] Creates and fills the table based on a provided JSON array. It automatically identifies column types and sanitizes data to ensure consistency and uniqueness. The table name is specified without any schema prefix. Returns true if the table was created successfully and the user is seeing table.';
-const createChartDescription =
-  "createChart[jsonLabel, jsonData, chartType] Extracts data from a JSON array to create arrays for chart labels and values. If the chart type is not specified, it determines the most suitable chart type ('bar', 'line', 'doughnut') based on the data characteristics. Designed for easy integration with JavaScript charting components.";
-const createSQLqueryDescription = 'createSQLquery[query description] Description of the desired filtered data.';
-const createCardSQLqueryDescription = 'createCardSQLquery[query description] Description of the desired filtered data.';
-const addSegmentDescription =
-  'addSegment[query description] Description of the desired data to be inserted in the segments table.';
-const createInfoCardDescription =
-  'createInfoCard[title, data, percentage] Creates an array of elements that will display data based on inputs.';
-const editHtmlDescription = 'updateHtml[html] Updates an existing html code for better organization.';
-const organizeItemsDescription = "organizeItems[cards] Organize an array of items based on user's input requirements.";
-const toolsDescriptions = [
-  campaignCreatorDescription,
-  createTableDescription,
-  createChartDescription,
-  createSQLqueryDescription,
-  addSegmentDescription,
-  createInfoCardDescription,
-  createCardSQLqueryDescription,
-  editHtmlDescription,
-  organizeItemsDescription,
-];
-function getAllToolsDescriptions() {
-  return toolsDescriptions;
-}
+
 export {
-  //planningTool,
   calculatorTool,
   emailTool,
   eventTool,
@@ -627,7 +599,6 @@ export {
   pageHtmlTool,
   organizeItemTool,
   getTables,
-  getSegmentDetails,
+  getData,
   filterData,
-  getAllToolsDescriptions,
 };
