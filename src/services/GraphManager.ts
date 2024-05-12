@@ -3,17 +3,18 @@ import { TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode } from './WorkflowHandler';
 import { Runnable } from 'langchain/runnables';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<{ steps: Array<[string, string, string, string]>; plan_string: string }>;
-  agents: { [key: string]: { agent: Runnable, agentPrompt: string, toolFunction: Function } };
+  agents: { [key: string]: { agent: BaseChatModel, agentPrompt: string, toolFunction: Function } };
   solveNode: (state: TaskState) => Promise<{ result: string }>;
   graph: Graph<any, any>;
 
   constructor(
-    planModel: Runnable,
-    agents: { [key: string]: { agent: Runnable, agentPrompt: string, toolFunction: Function } },
-    solveModel: Runnable,
+    planModel: BaseChatModel,
+    agents: { [key: string]: { agent: BaseChatModel, agentPrompt: string, toolFunction: Function } },
+    solveModel: BaseChatModel,
     outputHandler: Function,
   ) {
     this.planNode = getPlanNode(planModel, outputHandler);

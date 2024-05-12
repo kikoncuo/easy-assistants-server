@@ -8,6 +8,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { Runnable } from 'langchain/runnables';
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
+import { BaseMessageChunk } from '@langchain/core/messages';
 
 const StepSchema = z
   .object({
@@ -54,23 +55,23 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
 }
 
 // Helper functions:
-function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
+function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(planSchema) : llm;
-  return bindedLLM;
+  return bindedLLM as BaseChatModel;
 }
 
-function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
+function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(solverSchema) : llm;
-  return bindedLLM;
+  return bindedLLM as BaseChatModel;
 }
 
-function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], forceTool: boolean = false): Runnable { 
+function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], forceTool: boolean = false): BaseChatModel { 
   const bindedLLM = llm.bind({
     tools: tools,
     tool_choice: forceTool ? tools[0] : 'auto',
   });
 
-  return bindedLLM;
+  return bindedLLM as BaseChatModel;
 }
 
 

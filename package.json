@@ -5,7 +5,8 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "bun src/server.ts",
-    "test-calculate": "bun tests/calculator.ts",
+    "test:calculate": "bun tests/calculator.ts",
+    "test:manual": "bun tests/manual.ts",
     "prettier": "npx prettier --write ."
   },
   "devDependencies": {
@@ -23,7 +24,7 @@
     "@langchain/openai": "^0.0.18",
     "async_hooks": "^1.0.0",
     "dotenv": "^16.4.5",
-    "langchain": "^0.1.25",
+    "langchain": "^0.1.37",
     "pdf-parse": "^1.1.1",
     "prettier": "^3.2.5"
   }
