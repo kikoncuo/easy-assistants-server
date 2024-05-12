@@ -1,6 +1,7 @@
 // client.ts
 import WebSocket from 'ws';
 import Logger from '../src/utils/Logger';
+import TestTables from "./helpers"
 
 let ws: WebSocket | null = null;
 
@@ -9,6 +10,7 @@ function connectToServer() {
 
   ws.on('open', () => {
     Logger.log('Connected to server');
+    ws?.send(JSON.stringify({ type: 'configure', configData: ["My company's name is theCalculatorCompany", TestTables] }));
     promptUserInput();
   });
 

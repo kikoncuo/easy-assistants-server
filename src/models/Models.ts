@@ -16,7 +16,7 @@ const StepSchema = z
       .string()
       .regex(/^#E\d+$/)
       .describe('The step ID in the format #ENumber (e.g., #E1, #E2)'),
-    description: z.string().min(1).max(100).describe('A description of the step, should be concise yet informative'),
+    description: z.string().min(1).max(1000).describe('A description of the step, should be concise yet informative'),
     toolName: z
       .string()
       .min(1)

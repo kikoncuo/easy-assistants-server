@@ -540,7 +540,7 @@ const getData: ToolDefinition = {
   function: {
     name: "getData",
     description:
-      "Given an array of table columns and query description, evaluate them and create an SQL query to match the user's necessities to query the requested data",
+      "Create an SQL query based on the user's request.",
     parameters: {
       type: "object",
       properties: {

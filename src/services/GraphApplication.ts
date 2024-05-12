@@ -34,7 +34,7 @@ import Logger from '../utils/Logger';
 export class GraphApplication {
   private graphManager: GraphManager;
 
-  constructor(outputHandler: Function, clientAgentFunction: Function) {
+  constructor(outputHandler: Function, clientAgentFunction: Function, clientData: string[]) { // TODO: Find a better structure for clientData
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
@@ -42,6 +42,11 @@ export class GraphApplication {
     const llama8bGroq = groqChatSmallLlama();
     const sonnet = anthropicSonnet();
     const opus = anthropicOpus();
+
+    // If clientData is smaller than 2 elements, throw an error
+    if (clientData.length < 2) {
+      throw new Error('When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure');
+    }
 
     const agents = {
       calculate: {
@@ -72,36 +77,13 @@ export class GraphApplication {
         toolFunction: clientAgentFunction,
       },
       getData: {
-        agent: createAgent(strongestModel, [getData], true),
-        agentPrompt: `You are an LLM specialized in generating SQL queries based on user's needs.
+        agent: createAgent(fasterModel, [getData], true),
+        agentPrompt: `You are an LLM specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
         Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
         Remember to not alterate any table name or column name and maintain their format.
         Here are the relevant tables: 
-        Transactions Table
-            TransactionID: A unique identifier for each transaction (Primary Key).
-            UserID: The identifier for the user who made the transaction, linking to the Users table (Foreign Key).
-            ProductID: The identifier for the product involved in the transaction, linking to the Products table (Foreign Key).
-            Quantity: The number of products purchased in the transaction.
-            Price: The price of the product at the time of the transaction.
-            Date: The date and time when the transaction took place.
-            PaymentMethod: The method of payment used (e.g., credit card, PayPal, etc.).
-
-        Users Table
-            UserID: A unique identifier for each user (Primary Key).
-            FirstName: The first name of the user.
-            LastName: The last name of the user.
-            Email: The email address of the user.
-            SignUpDate: The date when the user created their account.
-            LastLogin: The date and time of the user's last login.
-
-        Products Table
-            ProductID: A unique identifier for each product (Primary Key).
-            ProductName: The name of the product.
-            Description: A brief description of the product.
-            Price: The current price of the product.
-            StockQuantity: The number of units of the product currently in stock.
-            Category: The category or type of the product.
-        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", "EMAIL", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "REVENUE" order by total_revenue desc;`,
+        ${clientData[1]}
+        `,
         toolFunction: clientAgentFunction,
       },
       createChart: {
@@ -117,7 +99,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(fasterModel), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(fasterModel), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {

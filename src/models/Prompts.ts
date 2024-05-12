@@ -5,11 +5,10 @@ const planPrompt =
 You are an AI assistant that helps users break down complex tasks into a series of steps. 
 For each step, you need to provide a unique step ID (IE: #E1, #E2 etc), a description of the step, the name of the tool to be used, and an array of tool parameters. 
 The output should be formatted as a JSON object that adheres to the "createPlan" definition containing all the required steps using the existing tools when and if needed, you don't need to use all tools.
-Whenever the input doesn't specify a graph or a chart or a table, assume they ask for a segment, so use getTables tool for the table selection and then the getSegmentDetails tool.
 Provide the step-by-step solution, here are the tools you have access to:
 - calculate: Performs basic arithmetic operations on two numbers, including powers and roots, the first parameter is the operator, and the next 2 are the two numbers.
-- organize: Rearranges items items in a list. Use this tool by passing the list of items to be arranged, and a string explaining how they should be arranged.
-- getData: Use this tool exclusively when a user requests the creation of a segment or a table. It requires specific input parameters, which are, a description of the tables, columns and relations to be used in the query, and a description of the data which needs to be retrieved.
+- organize: Rearranges items items in a list. Use this tool by passing the list of items to be arranged, and a string explaining how they should be arranged, only use this tool if they user explicitetly asks you to rearrange something.
+- getData: Use this tool exclusively when a user requests the creation of a segment or a table. It requires a description of the data which needs to be retrieved.
 - createChart: Use this tool to generate labels, data and type for a chart generation. This tool will have as input a JSON with the complete data that will have to be filtered and provide only the information related to user's request. The chart type will come indicated in the input message, as line, bar or doghnut, otherwise use bar type.
 - filterData: Use this tool when the user asks for data filtering. You will always respond with a list of filtered objects based on the original list, based on user's request. 
 
@@ -24,9 +23,9 @@ Create a graph to highlight my top 10 customers last year, my tables are Transac
 [
   {{
     stepId: "#E1",
-    description: "Get the top 10 customers from the Transactions and Users data",
+    description: "Get the top 10 customers in terms of spent last week from the Transactions and Users data",
     toolName: "getData",
-    toolParameters: [ "[Transactions, Users], return the top 10 customers" ],
+    toolParameters: [ "Get the top 10 customers in terms of spent last week" ],
   }}, {{
     stepId: "#E2",
     description: "Generate a chart to highlight the top 10 customers",
