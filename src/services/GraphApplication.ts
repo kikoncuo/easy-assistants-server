@@ -50,7 +50,7 @@ export class GraphApplication {
 
     const agents = {
       calculate: {
-        agent: createAgent(fasterModel, [calculatorTool]),
+        agent: createAgent(llama70bGroq, [calculatorTool]),
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
         toolFunction: clientAgentFunction, 
@@ -91,15 +91,15 @@ export class GraphApplication {
         agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. Based on the input data, if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
           The response should always include the labels property and the data property like this example: 
           arguments: {
-            labels: [ "Label, Label, Label, Label" ],
-            data: [ "1, 2, 3, 4" ],
+            labels: [ "Label", "Label", "Label", "Label" ],
+            data: [ "1", "2", "3", "4" ],
             chartType: "line",
           }.`,
         toolFunction: clientAgentFunction,
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(fasterModel), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
