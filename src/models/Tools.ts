@@ -282,7 +282,7 @@ const rewardTool: ToolDefinition = {
   },
 };
 
-const tableTool: ToolDefinition = {
+const createTableStructure: ToolDefinition = {
   type: 'function',
   function: {
     name: 'createTableStructure',
@@ -611,7 +611,7 @@ export {
   eventTool,
   filterTool,
   rewardTool,
-  tableTool,
+  createTableStructure,
   createChart,
   infoCardTool,
   cardTool,
