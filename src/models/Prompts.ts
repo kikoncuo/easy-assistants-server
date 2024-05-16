@@ -5,6 +5,7 @@ const planPrompt =
 
 Here are the tools you have access to:
 
+
     calculate: Performs basic arithmetic operations on two numbers, including powers and roots. The first parameter is the operator, and the next two are the numbers, all values as strings.
     organize: Rearranges items in a list. Use this tool by passing the list of items to be arranged and a string explaining how they should be arranged. Only use this tool if the user explicitly asks you to rearrange something.
     getData: Use this tool exclusively when a user requests the creation of a segment or a table. It requires a description of the data that needs to be retrieved.

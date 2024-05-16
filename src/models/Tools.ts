@@ -77,7 +77,7 @@ const calculatorTool: ToolDefinition = {
 const sqlQuery: ToolDefinition = {
   type: 'function',
   function: {
-    name: 'createSQLquery',
+    name: 'sqlQuery',
     description:
       "Creates a given SQL query with specified parameters and returns the result set.The table's columns definition is provided.",
     parameters: {
@@ -88,28 +88,13 @@ const sqlQuery: ToolDefinition = {
           description:
             'The SQL query string to be executed. Can include parameters. Never use HAVING statement, but WHERE.',
         },
-        sql_insert: {
-          type: 'string',
-          description:
-            "The SQL query string to be executing, containing the CREATE TABLE statement based on the 'sql' property, the table columns definition should be generated based on the desired result input by the user.",
-        },
         chart: {
           type: 'boolean',
           description:
             'Indicate if based on the generated query, a chart would be helpful to understand better the data.',
         },
-        // params: {
-        //   type: "array",
-        //   description:
-        //     "An array of parameters to be injected into the SQL query. These parameters correspond to placeholders in the 'sql' string.",
-        //   items: {
-        //     type: "string",
-        //     description:
-        //       "A parameter value to be safely injected into the SQL query",
-        //   },
-        // },
       },
-      required: ['sql', 'sql_insert', 'chart'],
+      required: ['sql', 'chart'],
     },
   },
 };
