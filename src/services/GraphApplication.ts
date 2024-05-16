@@ -19,7 +19,7 @@ import {
   filterTool,
   eventTool,
   tableTool,
-  chartTool,
+  createChart,
   infoCardTool,
   pageHtmlTool,
   sqlQuery,
@@ -77,7 +77,7 @@ export class GraphApplication {
         toolFunction: clientAgentFunction,
       },
       getData: {
-        agent: createAgent(fasterModel, [getData], true),
+        agent: createAgent(strongestModel, [getData], true),
         agentPrompt: `You are an LLM specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
         Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
         Remember to not alterate any table name or column name and maintain their format.
@@ -87,14 +87,10 @@ export class GraphApplication {
         toolFunction: clientAgentFunction,
       },
       createChart: {
-        agent: createAgent(strongestModel, [chartTool], true),
-        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. Based on the input data, if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
-          The response should always include the labels property and the data property like this example: 
-          arguments: {
-            labels: [ "Label", "Label", "Label", "Label" ],
-            data: [ "1", "2", "3", "4" ],
-            chartType: "line",
-          }.`,
+        agent: createAgent(strongestModel, [createChart], true),
+        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. This Based on the input data, 
+        if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. 
+        You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.`,
         toolFunction: clientAgentFunction,
       },
     };

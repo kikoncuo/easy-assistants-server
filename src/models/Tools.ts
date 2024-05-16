@@ -361,7 +361,7 @@ const organizeItemTool: ToolDefinition = {
   },
 };
 
-const chartTool: ToolDefinition = {
+const createChart: ToolDefinition = {
   type: 'function',
   function: {
     name: 'createChart',
@@ -386,6 +386,14 @@ const chartTool: ToolDefinition = {
         explanation: {
           type: "object",
           properties: {
+            chartTitle: {
+              type: "string",
+              description: "The title for the chart.",
+            },
+            chartLabel: {
+              type: "string",
+              description: "The label for the chart.",
+            },
             title: {
               type: "string",
               description: "The title for the explanation.",
@@ -591,7 +599,7 @@ export {
   filterTool,
   rewardTool,
   tableTool,
-  chartTool,
+  createChart,
   infoCardTool,
   cardTool,
   sqlQuery,

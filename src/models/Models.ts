@@ -7,7 +7,6 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/language_models/chat_models";
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
-import { BaseMessageChunk } from '@langchain/core/messages';
 
 const StepSchema = z
   .object({
@@ -73,12 +72,10 @@ function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefini
   return bindedLLM as BaseChatModel;
 }
 
-
-
 // Models:
 function getStrongestModel(): BaseChatModel { // TODO: Fix the type error here after full release 0.2 of langchain, after hours of work we've confirmed that this is a bug in the langchain package and it does work as expected
   return new ChatOpenAI({
-    modelName: 'gpt-4-turbo-preview',
+    modelName: 'gpt-4o',
     streaming: false,
     temperature: 0.1,
   });
