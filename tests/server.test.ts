@@ -19,7 +19,7 @@ afterAll(() => {
   ws?.close();
 });
 
-/*test("WebSocket connection and multiple messages", async () => {
+test("WebSocket connection and multiple messages", async () => {
   const query = "what's 3*6 divided by 2";
   const message = JSON.stringify({ type: 'query', task: query });
 
@@ -42,7 +42,7 @@ afterAll(() => {
   expect(resultMessage).toBeDefined();
   expect(resultMessage.message).toContain('9'); // 3*6/2 = 9
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
-*/
+
 
 test("WebSocket configuration and custom query", async () => {
   const configData = ["My company's name is theManualTestCompany", testTables];
