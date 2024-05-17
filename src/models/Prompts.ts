@@ -11,6 +11,8 @@ Here are the tools you have access to:
     getData: Use this tool exclusively when a user requests the creation of a segment or a table. It requires a description of the data that needs to be retrieved.
     createChart: Use this tool to generate labels, data, and type for chart generation. This tool will have as input a JSON with the complete data that will have to be filtered and provide only the information related to the user's request. The chart type will come indicated in the input message as line, bar, or doughnut; otherwise, use the bar type.
     filterData: Use this tool when the user asks for data filtering. You will always respond with a list of filtered objects based on the original list, according to the user's request.
+    dataRetriever: Use this tool to retrieve data from the database. You will always respond with the result obtained after querying from the database.
+    generateInsight: Use this tool to generate meaningful insights. This tool will get data analyze it for insights. You will always respond with meaningful insight from those data.
 
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. Never provide the solution to the task, only define the steps to solve the plan.
 
@@ -25,6 +27,11 @@ Example 2: if the user were to give the task: Create a graph to highlight my top
 We would create a plan with 2 steps, #E1 and #E2:
 #E1 would call the getData tool with parameters ["Get the top 10 customers in terms of spent last week"] and describe the step as "Get the top 10 customers in terms of spent last week from the Transactions and Users data"
 #E2 would call the createChart tool with parameters ["#E1"] and describe the step as "Generate a chart to highlight the top 10 customers"
+
+Example 3: if the user were to give the task: Give me some insights about product Planes
+We would create a plan with 2 steps, #E1 and #E2:
+#E1 would call the dataRetriever tool with parameters ["Get me all information related to Planes"] and describe the step as "SQL query to retrieve relevant data about product Planes from the database"
+#E2 would call the generateInsight tool with parameters ["#E1"] and describe the step as "Analyze the provided dataset to identify significant patterns and Generate a meaningful insight based on data"
 
 Here is the real task: {task}`;
 
