@@ -99,6 +99,46 @@ const sqlQuery: ToolDefinition = {
   },
 };
 
+const dataRetriever: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'dataRetriever',
+    description:
+      "creates a sql query to retrieve data from database.",
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'SQL query executes to retrieve relevant data from the database.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+};
+
+const generateInsight: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'generateInsight',
+    description:
+      "call this to generate meaningful insights from the data.",
+    parameters: {
+      type: 'object',
+      properties: {
+        insights: {
+          type: 'string',
+          description:
+            'meaningful insights that we can extract from the data.'
+        },
+      },
+      required: ['insights'],
+    },
+  },
+};
+
 const segmentTool: ToolDefinition = {
   type: 'function',
   function: {
@@ -594,4 +634,6 @@ export {
   getTables,
   getData,
   filterData,
+  dataRetriever,
+  generateInsight
 };

@@ -141,3 +141,16 @@ export function getData(): string {
 export function createChart(): string {
   return "Chart created successfully"
 }
+
+export function dataRetriever(): string {
+  const data = [
+    { TRANSACTION_ID: 1, USER_ID: 101, USER_NAME: "John Doe", PRODUCT_ID: 201, PRODUCT_NAME: "Thriller Novel", CATEGORY: "Books", PRICE: 14.99, TRANSACTION_DATE: "2024-05-10" },
+    { TRANSACTION_ID: 2, USER_ID: 102, USER_NAME: "Jane Smith", PRODUCT_ID: 201, PRODUCT_NAME: "Thriller Novel", CATEGORY: "Books", PRICE: 14.99, TRANSACTION_DATE: "2024-05-11" },
+    { TRANSACTION_ID: 3, USER_ID: 103, USER_NAME: "Alice Johnson", PRODUCT_ID: 201, PRODUCT_NAME: "Thriller Novel", CATEGORY: "Books", PRICE: 14.99, TRANSACTION_DATE: "2024-05-12" }
+  ];
+  return JSON.stringify(data, null, 2);
+}
+
+export function generateInsight(): string {
+  return 'Insight generated successfully'
+}

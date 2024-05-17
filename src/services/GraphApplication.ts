@@ -27,7 +27,9 @@ import {
   organizeItemTool,
   getTables,
   getData,
-  filterData
+  filterData,
+  dataRetriever,
+  generateInsight
 } from '../models/Tools';
 import Logger from '../utils/Logger'; 
 
@@ -100,9 +102,20 @@ export class GraphApplication {
        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "NAME", "REVENUE" order by total_revenue desc limit 10;`,
        toolFunction: clientAgentFunction,
       },
+      dataRetriever: {
+        agent: createAgent(strongestModel, [dataRetriever], true),
+        agentPrompt: `You are an LLM specialized in retrieving data from database using sql queries. Your task is to efficiently gather relevant data based on the user's inputs. Utilize your expertise to collect the necessary information while considering data accuracy and completeness.
+       Example: if the user asks for insights about product Planes, try to generate a query like this: select "id", "name", "price", "features" from "products" where "name" like '%Planes%';`,
+       toolFunction: clientAgentFunction,
+      },
+      generateInsight: {
+        agent: createAgent(strongestModel, [generateInsight], true),
+        agentPrompt: `You are an LLM specialized in generating insights based on the provided data. Analyze the provided dataset to identify significant patterns, trends, and actionable insights. Generate clear and concise recommendations to help business teams make informed decisions. Focus on highlighting key performance indicators, customer insights, market trends, and operational efficiencies, and present findings in an easy-to-understand format.`,
+        toolFunction: clientAgentFunction,
+      }
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
