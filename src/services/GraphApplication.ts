@@ -83,12 +83,7 @@ export class GraphApplication {
       createChart: {
         agent: createAgent(strongestModel, [createChart], true),
         agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. This Based on the input data, if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
-          The response should always include the labels property and the data property like this example: 
-          arguments: {
-            labels: [ "Label, Label, Label, Label" ],
-            data: [ "1, 2, 3, 4" ],
-            chartType: "line",
-          }.`,
+          The response should always include the labels property, the data property and the chartType property.`,
         toolFunction: clientAgentFunction,
       },
       sqlQuery: {
@@ -101,11 +96,7 @@ export class GraphApplication {
       createTableStructure: {
         agent: createAgent(strongestModel, [createTableStructure], true),
         agentPrompt: `You are an LLM specialized in the entire process of transforming JSON data into a fully functional PostgreSQL. This is done by using your createTableStructure tool to create the table. This should return the column name followed by the data type of that column.
-          The response should always have this structure and include the columns names and types like in this example: 
-          arguments: {
-            columns: ["[Column int, Column text, Column date, Column boolean]"],
-            tableName: "my_table",
-          },
+          The response should always have  the columns names and types.
           Column names should never include whitespaces, but rather underscore for separating words, ensure there are no whitespaces in the items inside columns array.`,
           toolFunction: clientAgentFunction,
       },
