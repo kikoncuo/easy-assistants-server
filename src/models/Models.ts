@@ -4,8 +4,7 @@
 import { ChatOpenAI } from 'langchain/chat_models/openai';
 import { ChatGroq } from '@langchain/groq';
 import { ChatAnthropic } from '@langchain/anthropic';
-import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { Runnable } from 'langchain/runnables';
+import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/language_models/chat_models";
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
 
@@ -15,7 +14,7 @@ const StepSchema = z
       .string()
       .regex(/^#E\d+$/)
       .describe('The step ID in the format #ENumber (e.g., #E1, #E2)'),
-    description: z.string().min(1).max(100).describe('A description of the step, should be concise yet informative'),
+    description: z.string().min(1).max(1000).describe('A description of the step, should be concise yet informative'),
     toolName: z
       .string()
       .min(1)
@@ -54,31 +53,29 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
 }
 
 // Helper functions:
-function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
+function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(planSchema) : llm;
-  return bindedLLM;
+  return bindedLLM as BaseChatModel;
 }
 
-function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): Runnable {
+function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(solverSchema) : llm;
-  return bindedLLM;
+  return bindedLLM as BaseChatModel;
 }
 
-function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], forceTool: boolean = false): Runnable { 
+function createAgent(llm: BaseChatModel<ChatToolsCallOptions>, tools: ToolDefinition[], forceTool: boolean = false): BaseChatModel { 
   const bindedLLM = llm.bind({
     tools: tools,
     tool_choice: forceTool ? tools[0] : 'auto',
   });
 
-  return bindedLLM;
+  return bindedLLM as BaseChatModel;
 }
 
-
-
 // Models:
-function getStrongestModel(): BaseChatModel {
+function getStrongestModel(): BaseChatModel { // TODO: Fix the type error here after full release 0.2 of langchain, after hours of work we've confirmed that this is a bug in the langchain package and it does work as expected
   return new ChatOpenAI({
-    modelName: 'gpt-4-turbo-preview',
+    modelName: 'gpt-4o',
     streaming: false,
     temperature: 0.1,
   });
