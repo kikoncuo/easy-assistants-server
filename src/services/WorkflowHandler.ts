@@ -59,29 +59,12 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   return { stepsArray, fullPlan };
 }
 
-function processResults(results: any | AIMessage): ErrorResponse | Record<string, unknown> {
-  if (results instanceof AIMessage) {
-    try {
-      const content = results.content.toString();
-      // Find the start and end indices of the JSON object
-      const jsonStart = content.indexOf('{');
-      const jsonEnd = content.lastIndexOf('}') + 1; // include the closing brace
-      if (jsonStart === -1 || jsonEnd === -1) {
-        throw new Error("No JSON object found in the content.");
-      }
-      const jsonString = content.substring(jsonStart, jsonEnd);
-      const parsedResults = JSON.parse(jsonString);
-      return parsedResults; // Return as a JSON object
-    } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while processing your results.', error);
-      Logger.warn('This was the AIMessage:', results.content.toString());
-      Logger.warn('Error:', error);
-      return {
-        error: "Error processing your results, please try again or contact support."
-      };
-    }
-  } 
-  return results;
+function processResults(results: any): any {
+  if (results && results.content) { 
+    return JSON.parse(results.content);
+  } else {
+    return results;
+  }
 }
 
 
@@ -108,7 +91,7 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
 
 // nodes
 
-export function getPlanNode(plannerModel: Runnable, outputHandler: Function) {
+export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
   async function plan(state: TaskState): Promise<{ steps: any; plan_string: string }> {
     try {
       const task = state.task;
@@ -140,7 +123,7 @@ export function getPlanNode(plannerModel: Runnable, outputHandler: Function) {
   return plan;
 }
 
-export function getAgentNode(model: Runnable, agentPrompt: string, toolFunction: Function) {
+export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) {
   async function agentNode(state: TaskState) {
     try {
       const _step = _getCurrentTask(state);
@@ -166,7 +149,7 @@ export function getAgentNode(model: Runnable, agentPrompt: string, toolFunction:
   return agentNode;
 }
 
-export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
+export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
   async function solve(state: TaskState): Promise<{ result: string }> {
     try {
       let plan = '';
@@ -185,7 +168,13 @@ export function getSolveNode(solverModel: Runnable, outputHandler: Function) {
 
       const responseResult = await chain.invoke({task: state.task, plan: plan, results: state.results});
 
-      const finalResponse = JSON.stringify(processResults(responseResult));
+      let finalResponse = "";
+
+      if (responseResult.content) { 
+        finalResponse = responseResult.content as string;
+      } else {
+        finalResponse = JSON.stringify(responseResult);
+      }
 
       outputHandler('result', finalResponse);
       Logger.log('Final response:', finalResponse)

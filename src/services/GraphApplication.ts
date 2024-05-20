@@ -26,7 +26,7 @@ import {
   segmentTool,
   organizeItemTool,
   getTables,
-  getSegmentDetails,
+  getData,
   filterData
 } from '../models/Tools';
 import Logger from '../utils/Logger'; 
@@ -34,7 +34,7 @@ import Logger from '../utils/Logger';
 export class GraphApplication {
   private graphManager: GraphManager;
 
-  constructor(outputHandler: Function, clientAgentFunction: Function) {
+  constructor(outputHandler: Function, clientAgentFunction: Function, clientData: string[]) { // TODO: Find a better structure for clientData
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
@@ -43,9 +43,14 @@ export class GraphApplication {
     const sonnet = anthropicSonnet();
     const opus = anthropicOpus();
 
+    // If clientData is smaller than 2 elements, throw an error
+    if (clientData.length < 2) {
+      throw new Error('When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure');
+    }
+
     const agents = {
       calculate: {
-        agent: createAgent(fasterModel, [calculatorTool]),
+        agent: createAgent(llama70bGroq, [calculatorTool]),
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
         toolFunction: clientAgentFunction, 
@@ -71,19 +76,22 @@ export class GraphApplication {
         Only use the table names that were given to you, don't use anything outside that list and don't generate new names.`,
         toolFunction: clientAgentFunction,
       },
-      getSegmentDetails: {
-        agent: createAgent(strongestModel, [getSegmentDetails], true),
-        agentPrompt: `You are an LLM with advanced capabilities in analyzing database schemas. Use this tool only if asked for, it's not mandatory for other tools to be used alongside this one.
+      getData: {
+        agent: createAgent(strongestModel, [getData], true),
+        agentPrompt: `You are an LLM specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
         Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
         Remember to not alterate any table name or column name and maintain their format.
-        Try to return as much details as possible based on the request.
-        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", "EMAIL", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "REVENUE" order by total_revenue desc;`,
+        Here are the relevant tables: 
+        ${clientData[1]}
+        `,
         toolFunction: clientAgentFunction,
       },
       createChart: {
         agent: createAgent(strongestModel, [createChart], true),
-        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. This Based on the input data, if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
-          The response should always include the labels property, the data property and the chartType property.`,
+        agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. This Based on the input data, 
+        if the chart type is not indicated, you determine the most suitable chart type or adhere to a specific type if provided. 
+        You have access to a tool that facilitates this process, ensuring optimal integration into JavaScript charting components.
+        The response should always include the labels property, the data property and the chartType property.`,
         toolFunction: clientAgentFunction,
       },
       sqlQuery: {
@@ -102,7 +110,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {

@@ -1,6 +1,8 @@
 // client.ts
 import WebSocket from 'ws';
 import Logger from '../src/utils/Logger';
+import {testTables} from "./helpers"
+
 
 let ws: WebSocket | null = null;
 
@@ -9,6 +11,7 @@ function connectToServer() {
 
   ws.on('open', () => {
     Logger.log('Connected to server');
+    ws?.send(JSON.stringify({ type: 'configure', configData: ["My company's name is theManualTestCompany", testTables] }));
     promptUserInput();
   });
 
@@ -28,6 +31,16 @@ function connectToServer() {
             const result = calculateResult(args);
             Logger.log(`Result of calculation: ${result}`);
             response = result.toString();
+          } else if (function_name === 'getData') {
+            const userData: { UserID: number; TotalLifetimeValue: number }[] = [
+              { UserID: 1, TotalLifetimeValue: 1250 },
+              { UserID: 2, TotalLifetimeValue: 940 },
+              { UserID: 3, TotalLifetimeValue: 875 },
+              { UserID: 4, TotalLifetimeValue: 630 },
+              { UserID: 5, TotalLifetimeValue: 560 }
+          ];
+            Logger.log(`Returning mock data: ${JSON.stringify(userData, null, 2)}`);
+            response = JSON.stringify(userData, null, 2)
           } else {
             const result = prompt(`Enter your response for ${function_name}:`);
             Logger.log(`Response for ${function_name}: ${result}`);
@@ -66,6 +79,11 @@ function promptUserInput() {
     // If the query is empty, set it to the result of 3*6 divided by 2
     query = "what's 3*6 divided by 2"
     Logger.log(`No input provided. what's 3*6 divided by 2`);
+  }
+  if (query == "db") {
+    // If the query is empty, set it to the result of 3*6 divided by 2
+    query = "Create a graph to highlight my top 10 customers in terms of their TLV, my tables are Transactions, Users and Products"
+    Logger.log(`Using DB test. Create a graph to highlight my top 10 customers in terms of their TLV, my tables are Transactions, Users and Products`);
   }
 
   if (ws) {

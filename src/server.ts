@@ -83,10 +83,11 @@ if (isProd) {
 wss.on('connection', ws => {
   Logger.log('Client connected');
 
-  const graphApp = new GraphApplication(
+  let graphApp = new GraphApplication( // TODO: Delete this once we've migrated to always calling configure afrter connection
     (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
     (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
       WebSocketService.queryUser(type, functions, ws),
+    ["",""],
   );
 
   ws.on('message', async (message: string) => {
@@ -95,6 +96,17 @@ wss.on('connection', ws => {
       Logger.log('Processing task:', data.task);
       await graphApp.processTask(data.task, ws);
     }
+    else if (data.type === 'configure') {
+      Logger.log('Configuring new graph application');
+      graphApp = new GraphApplication(
+        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+          WebSocketService.queryUser(type, functions, ws),
+        data.configData,
+      );
+    }
+
+
   });
 
   ws.on('close', () => {
