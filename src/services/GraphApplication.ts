@@ -42,7 +42,6 @@ export class GraphApplication {
     const llama8bGroq = groqChatSmallLlama();
     const sonnet = anthropicSonnet();
     const opus = anthropicOpus();
-
     // If clientData is smaller than 2 elements, throw an error
     if (clientData.length < 2) {
       throw new Error('When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure');
@@ -81,8 +80,9 @@ export class GraphApplication {
         agentPrompt: `You are an LLM specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
         Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
         Remember to not alterate any table name or column name and maintain their format.
-        Here are the relevant tables: 
+        Here is the structure of the tables you can use: 
         ${clientData[1]}
+     
         `,
         toolFunction: clientAgentFunction,
       },
@@ -110,7 +110,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
