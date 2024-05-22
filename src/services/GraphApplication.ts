@@ -104,13 +104,17 @@ export class GraphApplication {
       createTableStructure: {
         agent: createAgent(strongestModel, [createTableStructure], true),
         agentPrompt: `You are an LLM specialized in the entire process of transforming JSON data into a fully functional PostgreSQL. This is done by using your createTableStructure tool to create the table. This should return the column name followed by the data type of that column.
-          The response should always have  the columns names and types.
+          The response should always have this structure and include the columns names and types like in this example: 
+          arguments: {
+            columns: ["[Column int, Column text, Column date, Column boolean]"],
+            tableName: "my_table",
+          }.
           Column names should never include whitespaces, but rather underscore for separating words, ensure there are no whitespaces in the items inside columns array.`,
           toolFunction: clientAgentFunction,
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
