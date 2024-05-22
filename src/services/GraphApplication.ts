@@ -42,7 +42,6 @@ export class GraphApplication {
     const llama8bGroq = groqChatSmallLlama();
     const sonnet = anthropicSonnet();
     const opus = anthropicOpus();
-    Logger.log("🚀 ~ GraphApplication ~ constructor ~ clientData:", clientData)
     // If clientData is smaller than 2 elements, throw an error
     if (clientData.length < 2) {
       throw new Error('When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure');
