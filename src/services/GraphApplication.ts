@@ -20,14 +20,14 @@ import {
   eventTool,
   createTableStructure,
   createChart,
-  infoCardTool,
   pageHtmlTool,
   sqlQuery,
   segmentTool,
   organizeItemTool,
   getTables,
   getData,
-  filterData
+  filterData,
+  createDatapoint
 } from '../models/Tools';
 import Logger from '../utils/Logger'; 
 
@@ -113,9 +113,14 @@ export class GraphApplication {
           Column names should never include whitespaces, but rather underscore for separating words, ensure there are no whitespaces in the items inside columns array.`,
           toolFunction: clientAgentFunction,
       },
+      createDatapoint: {
+        agent: createAgent(strongestModel, [createDatapoint], true),
+        agentPrompt: `You are an LLM specialized in generating datapoints data from JSON arrays. This is done by using your createDatapoint tool to create the datapoint card. This should return the title of the datapoint followed by the value as data of that datapoint, and the percentage if applies.`,
+          toolFunction: clientAgentFunction,
+      },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(strongestModel), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
