@@ -395,11 +395,11 @@ const createChart: ToolDefinition = {
   },
 };
 
-const infoCardTool: ToolDefinition = {
+const createDatapoint: ToolDefinition = {
   type: 'function',
   function: {
-    name: 'createInfoCard',
-    description: 'Generates a list of objects based on provided input data',
+    name: 'createDatapoint',
+    description: 'Generates an object based on provided input data',
     parameters: {
       type: 'object',
       properties: {
@@ -585,7 +585,7 @@ export {
   rewardTool,
   createTableStructure,
   createChart,
-  infoCardTool,
+  createDatapoint,
   cardTool,
   sqlQuery,
   segmentTool,

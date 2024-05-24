@@ -14,6 +14,7 @@ Here are the tools you have access to:
     createChart: Use this tool to generate labels, data, and type for chart generation. This tool will have as input a JSON with the complete data that will have to be filtered and provide only the information related to the user's request. The chart type will come indicated in the input message as line, bar, or doughnut; otherwise, use the bar type.
     filterData: Use this tool when the user asks for data filtering. You will always respond with a list of filtered objects based on the original list, according to the user's request.
     createTableStructure: Use this tool when the user ask for a table definition and configuration. If the user sends a csv in format json array as input and asks to create a table from that csv, return a postgresql based on the data input so it can use that and create a table on supabase (with all that data in the json as table data to be inserted) Identify the column type from the json data so you can use that for the postgresql. The table name should not include any schema, just the name, so for example, don't return CREATE TABLE public.table_name, but return CREATE TABLE table_name. In the case of a json array as input. If there is any timestamp column, that should be the type, simple timestamp, no other alterations like TIMESTAMP WITH TIME ZONE NOT NULL for example, just return a timestamp as type. Also the id of the rows should be unique so I don't have duplicates. For a table creation, use both createTable (tableTool) and prepareTableData (tableData) tools. If any column name has 2 or more strings that form it, use undescore instead of whitespaces.
+    createDatapoint: Use this tool when the user ask for a datapoint. It has to return the title, data and percentage (if neeeded). You will receive the data and title from the getData tool.
 
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. Never provide the solution to the task, only define the steps to solve the plan.
 
@@ -28,6 +29,11 @@ Example 2: if the user were to give the task: Create a graph to highlight my top
 We would create a plan with 2 steps, #E1 and #E2:
 #E1 would call the getData tool with parameters ["Get the top 10 customers in terms of spent last week"] and describe the step as "Get the top 10 customers in terms of spent last week from the Transactions and Users data"
 #E2 would call the createChart tool with parameters ["#E1"] and describe the step as "Generate a chart to highlight the top 10 customers"
+
+Example 1: if the user were to give the task: Create a datapoint for my total revenue last year
+We would create a plan with 2 steps, #E1 and #E2:
+#E1 would call the getData tool with parameters ["Get the total revenue"] and describe the step as "Get the total revenue based on last year"
+#E2 would call the createDatapoint tool with parameters ["#E1"] and describe the step as "Generate datapoint to show the total revenue last year"
 
 Here is the real task: {task}`;
 
