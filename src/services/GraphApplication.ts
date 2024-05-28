@@ -27,7 +27,11 @@ import {
   organizeItemTool,
   getTables,
   getData,
-  filterData
+  filterData,
+  dataRetriever,
+  generateInsight,
+  shippingAlertAgent,
+  triggerNotification
 } from '../models/Tools';
 import Logger from '../utils/Logger'; 
 
@@ -100,9 +104,58 @@ export class GraphApplication {
        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "NAME", "REVENUE" order by total_revenue desc limit 10;`,
        toolFunction: clientAgentFunction,
       },
+      dataRetriever: {
+        agent: createAgent(strongestModel, [dataRetriever], true),
+        agentPrompt: `You are an LLM specialized in retrieving data from database using sql queries. Your task is to efficiently gather relevant data based on the user's inputs. Utilize your expertise to collect the necessary information while considering data accuracy and completeness.
+       Example: if the user asks for insights about product Planes, try to generate a query like this: select "id", "name", "price", "features" from "products" where "name" like '%Planes%';`,
+       toolFunction: clientAgentFunction,
+      },
+      generateInsight: {
+        agent: createAgent(strongestModel, [generateInsight], true),
+        agentPrompt: `You are an LLM specialized in generating insights based on the provided data. Analyze the provided dataset to identify significant patterns, trends, and actionable insights. Generate clear and concise recommendations to help business teams make informed decisions. Focus on highlighting key performance indicators, customer insights, market trends, and operational efficiencies, and present findings in an easy-to-understand format.`,
+        toolFunction: clientAgentFunction,
+      },
+      shippingAlertAgent: {
+        agent: createAgent(strongestModel, [shippingAlertAgent], true),
+        agentPrompt: `You are an LLM specialized in generating cron expressions and SQL queries for scheduling alerts. Your task is to create the necessary cron expressions, SQL queries, and other relevant information based on user inputs for alerting when products require shipping.
+        Example: if the user says 'Alert me whenever products require shipping, every 2 minutes', generate the following:
+        {
+          "cron_time": "*/2 * * * *",
+          "sql_query": "SELECT name FROM notifications.products WHERE shipping_required = true",
+          "condition": "COUNT(*) > 0",
+          "message": "These products need to be shipped.",
+          "type": "alert",
+          "description": "Sends an alert when products require shipping."
+        }`,
+        toolFunction: clientAgentFunction,
+      },
+      triggerNotification: {
+        agent: createAgent(strongestModel, [triggerNotification], true),
+        agentPrompt:`You are an LLM specialized in generating SQL queries for based on the provided data. Your task is to create SQL queries to insert data to the notification_triggers table.
+        Example: if get data like this:
+        {
+          "cron_time": "*/2 * * * *",
+          "sql_query": "SELECT name FROM notifications.products WHERE shipping_required = true",
+          "condition": "COUNT(*) > 0",
+          "message": "These products need to be shipped.",
+          "type": "alert",
+          "description": "Sends an alert when products require shipping."
+        }, 
+        Then generate sql query like this:
+        INSERT INTO notifications.notification_triggers (cron_time, sql_query, condition, message, description, type)
+        VALUES (
+          '*/2 * * * *',
+          'SELECT name FROM notifications.products WHERE shipping_required = true',
+          'COUNT(*) > 0',
+          'These products need to be shipped.',
+          'alert',
+          'Sends an alert when products require shipping.'
+        );`,
+        toolFunction: clientAgentFunction,
+      }
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, createSolver(llama70bGroq), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
   }
 
   async processTask(task: string, ws: WebSocket) {
