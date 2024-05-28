@@ -153,13 +153,6 @@ export class GraphApplication {
         );`,
         toolFunction: clientAgentFunction,
       }
-      // const restockAlertAgent = {
-      //   agent: createAgent(strongestModel, [restockAlertAgent], true),
-      //   agentPrompt: `You are an LLM specialized in generating SQL queries for inventory management. Your task is to create queries that identify products requiring restocking based on user inputs. Ensure that the queries are accurate and consider the stock levels and reorder thresholds.
-      //   Example: if the user says 'alert me when product XYZ needs restocking', generate a query like this: 
-      //   INSERT INTO alerts (query, alert_message) VALUES ('SELECT * FROM products WHERE name = ''XYZ'' AND stock < reorder_level', 'Product XYZ needs restocking');`,
-      //   toolFunction: storeAlertQuery,
-      // };
     };
 
     this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(llama70bGroq), outputHandler);
