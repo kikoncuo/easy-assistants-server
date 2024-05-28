@@ -139,6 +139,65 @@ const generateInsight: ToolDefinition = {
   },
 };
 
+const shippingAlertAgent: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'shippingAlertAgent',
+    description:
+      "Generates cron expressions and SQL queries for scheduling alerts based on user inputs.",
+    parameters: {
+      type: 'object',
+      properties: {
+        cron_time: {
+          type: 'string',
+          description: 'The cron expression that defines the alert schedule (e.g., "*/2 * * * *" for every 2 minutes).',
+        },
+        sql_query: {
+          type: 'string',
+          description: 'The SQL query to determine which products require shipping.',
+        },
+        condition: {
+          type: 'string',
+          description: 'The condition to be met for the alert to trigger (e.g., "COUNT(*) > 0").',
+        },
+        message: {
+          type: 'string',
+          description: 'The message to be sent when the alert condition is met.',
+        },
+        type: {
+          type: 'string',
+          description: 'The type of the alert (e.g., "alert").',
+        },
+        description: {
+          type: 'string',
+          description: 'A description of the alert.',
+        },
+      },
+      required: ['cron_time', 'sql_query', 'condition', 'message', 'type', 'description'],
+    },
+  },
+};
+
+const triggerNotification: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'triggerNotification',
+    description:
+      "creates a sql query to insert data into database.",
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'SQL query executes to insert relevant data into the database.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+};
+
 const segmentTool: ToolDefinition = {
   type: 'function',
   function: {
@@ -635,5 +694,7 @@ export {
   getData,
   filterData,
   dataRetriever,
-  generateInsight
+  generateInsight,
+  shippingAlertAgent,
+  triggerNotification
 };
