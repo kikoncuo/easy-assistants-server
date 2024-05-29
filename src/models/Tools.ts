@@ -294,7 +294,7 @@ const createTableStructure: ToolDefinition = {
         columns: {
           type: 'array',
           description:
-            'The columns for the table, representing the column headers. The data types are to be shouwn after each column name.',
+            `The columns for the table, representing the column headers. The data types are to be shouwn after each column name.  If any column name has whitespaces, replace them with underscores. The column name must not have capital letters. For example if the name is 'Column ID', the columns name should be 'column_id'. If the column name corresponds to a restricted or reserved word on SQL, add a underscore at the end of the column name (for example, 'Order' should be 'order_'). `,
           items: {
             type: 'string',
           },
