@@ -134,6 +134,8 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
         toolInput = toolInput.replace(k, v);
       }
       const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
+      Logger.log("🚀 ~ agentNode ~ [new SystemMessage(agentPrompt), new HumanMessage(toolInput)]:", [new SystemMessage(agentPrompt), new HumanMessage(toolInput)])
+      
       const functions = extractFunctionDetails(result);
       const results = await toolFunction('tool', functions);
       _results[stepName] = Object.values(results)[0] as string;
