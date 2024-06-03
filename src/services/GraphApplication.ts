@@ -310,6 +310,7 @@ export class GraphApplication {
         Only use tables from tableName and columns from columnNames
         ${JSON.stringify(clientData[1])}
         Generate the query and remember you can only use provided table names and columns.
+        When explaining the result, include the table names that were used and the connection made between them.
         `,
         toolFunction: clientAgentFunction,
       },
