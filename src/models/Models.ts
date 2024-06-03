@@ -77,7 +77,7 @@ function getStrongestModel(): BaseChatModel { // TODO: Fix the type error here a
   return new ChatOpenAI({
     modelName: 'gpt-4o',
     streaming: false,
-    temperature: 0.1,
+    temperature: 0,
   });
 }
 

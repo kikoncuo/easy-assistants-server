@@ -35,6 +35,7 @@ export class GraphApplication {
   private graphManager: GraphManager;
 
   constructor(outputHandler: Function, clientAgentFunction: Function, clientData: string[]) { // TODO: Find a better structure for clientData
+
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
     const fasterModel = getFasterModel();
@@ -46,7 +47,7 @@ export class GraphApplication {
     if (clientData.length < 2) {
       throw new Error('When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure');
     }
-
+    // Logger.log(JSON.stringify(clientData[1]))
     const agents = {
       calculate: {
         agent: createAgent(llama70bGroq, [calculatorTool]),
@@ -69,23 +70,250 @@ export class GraphApplication {
       getTables: {
         agent: createAgent(strongestModel, [getTables], true),
         agentPrompt: `You are an LLM with advanced capabilities in analyzing database schemas. 
-        You are provided with a list of table names and your task is to determine the most suitable tables based on the context of the user's needs. The table names will always come after this string" 'based on this table names:' so only use the table names that are passed after that string.
+        You are provided with a list of table names and your task is to determine the most suitable tables based on the context of the user's needs.
         Assess the table names to identify the most relevant and useful tables that align with the user's objectives for data analysis, reporting.
         Always use the tool you have access to. 
-        Only use the table names that were given to you, don't use anything outside that list and don't generate new names.`,
+        Only use the table names that were given to you, don't use anything outside that list and don't generate new names. `,
         toolFunction: clientAgentFunction,
       },
       getData: {
         agent: createAgent(strongestModel, [getData], true),
-        agentPrompt: `You are an LLM specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
-        Based on that list of table columns that the user will provide and his request, generate the postgreSQL query to adquire the user's needs. 
+        agentPrompt: `You are an database expert specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
         Remember to not alterate any table name or column name and maintain their format.
-        Here is the structure of the tables you can use: 
-        ${clientData[1]}
-     
+        You will receive a JSON with the table names, each table structured as follows: "tableName" is the table name, the column definition of each table as "columnNames" and detailes rows data as "columnData".
+        For example when the user asks for: "revenue per product" the resulting query should be this one: 
+        "WITH product_prices AS (
+          SELECT
+            p.id AS product_id,
+            p.product_name,
+            sp.price
+          FROM
+            public."at_talentclass_products_tblxtek5koyLNjVSg" p,
+            jsonb_array_elements_text(p.stripe_prices_id) as price_id
+          JOIN
+            public."at_talentclass_stripe_prices_tblE3fWLGHd7t2czT" sp
+            ON price_id = sp.id
+        ),
+        order_products AS (
+          SELECT
+            o.order_id,
+            inner_id::text AS product_id
+          FROM
+            public."at_talentclass_orders_tblgSDyxeoSI0Z5FG" o,
+            jsonb_array_elements(o.product) AS outer_arr,
+            jsonb_array_elements_text(outer_arr) AS inner_id
+        )
+        SELECT
+          pp.product_name AS "Product",
+          SUM(pp.price) AS "Revenue"
+        FROM
+          order_products op
+        JOIN
+          product_prices pp ON op.product_id = pp.product_id
+        GROUP BY
+          pp.product_id, pp.product_name
+        ORDER BY
+          "Revenue" DESC;"
+        
+          since it's based on this tables configuration: 
+          {
+            "tableName": "at_talentclass_products_tblxtek5koyLNjVSg",
+            "columnNames": [
+                "id",
+                "product_id",
+                "description",
+                "product_code",
+                "product_name",
+                "stripe_price",
+                "producto_base",
+                "announncements",
+                "orders_details",
+                "products_convs",
+                "stripe_product",
+                "activate_webhook",
+                "stripe_prices_id",
+                "deactivate_webhook",
+                "evergreen_kajabi_offer_id",
+                "periods__de_stripe_prices_id_"
+            ]
+        },
+        {
+          "tableName": "at_talentclass_stripe_prices_tblE3fWLGHd7t2czT",
+          "columnNames": [
+              "id",
+              "name",
+              "price",
+              "periods",
+              "product",
+              "archived",
+              "currency",
+              "interval",
+              "description",
+              "product_sku",
+              "stripe_product",
+              "stripe_price_id"
+          ]
+      },
+      {
+        "tableName": "at_talentclass_orders_tblgSDyxeoSI0Z5FG",
+        "columnNames": [
+            "phase",
+            "value",
+            "status",
+            "unpaid",
+            "product",
+            "comments",
+            "customer",
+            "order_id",
+            "commercial",
+            "order_date",
+            "order_pays",
+            "unpaid_days",
+            "commissioned",
+            "last_invoice",
+            "last_payment",
+            "order_detail",
+            "customer_name",
+            "customer_email",
+            "payment_method",
+            "commission_date",
+            "suscription_plan",
+            "last_modification",
+            "woocomerce_order_id",
+            "formated_date_string",
+            "purchase_recurrence_number",
+            "payment_installments_number",
+            "announncements__de_customer_",
+            "price_each__de_order_detail_",
+            "type__de_meetings___de_lead___de_customer_"
+        ]
+    }.
+
+    Another example can be the query for: "revenue per sales person" that should return this: 
+
+    WITH product_prices AS (
+      SELECT
+        p.id AS product_id,
+        p.product_name,
+        sp.price
+      FROM
+        public."at_talentclass_products_tblxtek5koyLNjVSg" p,
+        jsonb_array_elements_text(p.stripe_prices_id) AS price_id
+      JOIN
+        public."at_talentclass_stripe_prices_tblE3fWLGHd7t2czT" sp
+        ON price_id = sp.id
+    ),
+    order_products AS (
+      SELECT
+        o.order_id,
+        inner_id::text AS product_id
+      FROM
+        public."at_talentclass_orders_tblgSDyxeoSI0Z5FG" o,
+        jsonb_array_elements(o.product) AS outer_arr,
+        jsonb_array_elements_text(outer_arr) AS inner_id
+    ),
+    order_commercials AS (
+      SELECT
+        o.order_id,
+        inner_commercial::text AS commercial_id,
+        p.price
+      FROM
+        public."at_talentclass_orders_tblgSDyxeoSI0Z5FG" o
+      JOIN order_products op ON o.order_id = op.order_id
+      JOIN product_prices p ON op.product_id = p.product_id,
+        jsonb_array_elements_text(o.commercial) AS inner_commercial
+    )
+    SELECT
+      oc.commercial_id AS "Commercial",
+      SUM(oc.price) AS "Revenue"
+    FROM
+      order_commercials oc
+    GROUP BY
+      oc.commercial_id
+    ORDER BY
+      "Revenue" DESC;
+
+      based on these tables: 
+      {
+        "tableName": "at_talentclass_products_tblxtek5koyLNjVSg",
+        "columnNames": [
+            "id",
+            "product_id",
+            "description",
+            "product_code",
+            "product_name",
+            "stripe_price",
+            "producto_base",
+            "announncements",
+            "orders_details",
+            "products_convs",
+            "stripe_product",
+            "activate_webhook",
+            "stripe_prices_id",
+            "deactivate_webhook",
+            "evergreen_kajabi_offer_id",
+            "periods__de_stripe_prices_id_"
+        ]
+    },
+    {
+      "tableName": "at_talentclass_stripe_prices_tblE3fWLGHd7t2czT",
+      "columnNames": [
+          "id",
+          "name",
+          "price",
+          "periods",
+          "product",
+          "archived",
+          "currency",
+          "interval",
+          "description",
+          "product_sku",
+          "stripe_product",
+          "stripe_price_id"
+      ]
+  },
+  {
+    "tableName": "at_talentclass_orders_tblgSDyxeoSI0Z5FG",
+    "columnNames": [
+        "phase",
+        "value",
+        "status",
+        "unpaid",
+        "product",
+        "comments",
+        "customer",
+        "order_id",
+        "commercial",
+        "order_date",
+        "order_pays",
+        "unpaid_days",
+        "commissioned",
+        "last_invoice",
+        "last_payment",
+        "order_detail",
+        "customer_name",
+        "customer_email",
+        "payment_method",
+        "commission_date",
+        "suscription_plan",
+        "last_modification",
+        "woocomerce_order_id",
+        "formated_date_string",
+        "purchase_recurrence_number",
+        "payment_installments_number",
+        "announncements__de_customer_",
+        "price_each__de_order_detail_",
+        "type__de_meetings___de_lead___de_customer_"
+    ]
+}.
+
+        Only use tables from tableName and columns from columnNames
+        ${JSON.stringify(clientData[1])}
+        Generate the query and remember you can only use provided table names and columns.
         `,
         toolFunction: clientAgentFunction,
       },
+      
       createChart: {
         agent: createAgent(strongestModel, [createChart], true),
         agentPrompt: `You are an LLM specialized in generating chart data from JSON arrays. This Based on the input data, 
@@ -98,7 +326,7 @@ export class GraphApplication {
         agent: createAgent(strongestModel, [sqlQuery], true),
         agentPrompt: `You are an LLM specialized in generating postgreSQL queries based on the input text. The postgreSQL query will be used to filter database tables. The user will provide the table's columns definition so the query is based on that information.
        This should return 2 queries, one with the results of the select part based on the user's input and also a query to create a table with a generated definition based on the result, so the first results of the query can be inserted. The table name and column names should be related to the first query.
-       Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", sum(cast("REVENUE" as numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "NAME", "REVENUE" order by total_revenue desc limit 10;`,
+       Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", sum(cast("REVENUE"::numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "NAME", "REVENUE" order by total_revenue desc limit 10;`,
        toolFunction: clientAgentFunction,
       },
       createTableStructure: {
