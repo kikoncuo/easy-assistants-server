@@ -60,12 +60,18 @@ export function sendMessage(ws: WebSocket, message: string, functionMap: { [key:
 
     ws.send(message);
 
-    ws.on('message', (message: string) => {
+    const messageHandler = (message: string) => {
       const data = JSON.parse(message);
       responses.push(data);
 
       if (data.type === 'plan') {
         Logger.log(`Got plan: \n${data.message}`);
+      }
+
+      if (data.type === 'directResponse') {
+        Logger.log(`Direct response: \n${data.message}`);
+        ws.off('message', messageHandler);  
+        resolve(responses);
       }
 
       if (data.type === 'tool') {
@@ -90,11 +96,15 @@ export function sendMessage(ws: WebSocket, message: string, functionMap: { [key:
 
       if (data.type === 'result') {
         Logger.log(`Result: ${data.message}`);
+        ws.off('message', messageHandler);  
         resolve(responses);
       }
-    });
+    };
+
+    ws.on('message', messageHandler);
 
     ws.on('error', (err) => {
+      ws.off('message', messageHandler);  // Remove the event listener on error
       reject(err);
     });
   });

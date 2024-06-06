@@ -44,7 +44,7 @@ export class GraphApplication {
     // Logger.log(JSON.stringify(clientData[1]))
     const agents = {
       calculate: {
-        agent: createAgent(llama70bGroq, [calculatorTool]),
+        agent: createAgent(fasterModel, [calculatorTool]),
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
         toolFunction: clientAgentFunction, 
@@ -343,11 +343,14 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(strongestModel), outputHandler, createDirectResponse(strongestModel));
+    this.graphManager = new GraphManager(createPlanner(fasterModel), agents, createSolver(fasterModel), outputHandler, createDirectResponse(strongestModel));
   }
 
-  async processTask(task: string, ws: WebSocket) {
-    const finalResult = await this.graphManager.getApp().invoke({ task });
-    Logger.log('Final result:', finalResult);
+  async processTask(task: string, thread_id: string, ws: WebSocket) {
+    let config = { configurable: { thread_id: thread_id } };
+    const finalResult = await this.graphManager.getApp().invoke({ task },{
+      ...config,
+      streamMode: "values",
+    })
   }
 }

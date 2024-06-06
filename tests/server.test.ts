@@ -19,9 +19,22 @@ afterAll(() => {
   ws?.close();
 });
 
+test("Conversational test", async () => {
+  const query = "Hey! I am Pepe";
+  const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
+
+  const responses = await sendMessage(ws as WebSocket, message, functionMap);
+
+  // Check the directResponse message
+  const directResponse = responses.find(response => response.type === 'directResponse');
+  expect(directResponse).toBeDefined();
+
+ 
+}, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
+
 test("WebSocket connection and multiple messages", async () => {
   const query = "what's 3*6 divided by 2";
-  const message = JSON.stringify({ type: 'query', task: query });
+  const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
 
   const responses = await sendMessage(ws as WebSocket, message, functionMap);
 
@@ -43,13 +56,45 @@ test("WebSocket connection and multiple messages", async () => {
   expect(resultMessage.message).toContain('9'); // 3*6/2 = 9
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
 
+test("Memory test", async () => {
+  const query = "what's 3*6";
+  const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
+
+  const responses = await sendMessage(ws as WebSocket, message, functionMap);
+
+  const query2 = "divide that by 2";
+  const message2 = JSON.stringify({ type: 'query', task: query2, thread_id: "test" });
+
+  const responses2 = await sendMessage(ws as WebSocket, message2, functionMap);
+
+  
+
+  // Check the plan message
+  const planMessage = responses2.find(response => response.type === 'plan');
+  expect(planMessage).toBeDefined();
+
+  // Check the tool messages
+  const toolMessages = responses2.filter(response => response.type === 'tool');
+  expect(toolMessages.length).toBeGreaterThan(0);
+  toolMessages.forEach(toolMessage => {
+    expect(toolMessage.functions).toBeDefined();
+  });
+
+  // Check the result message
+  const resultMessage = responses2.find(response => response.type === 'result');
+  expect(resultMessage).toBeDefined();
+  expect(resultMessage.message).toContain('9'); // 3*6/2 = 9
+
+
+}, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
+
 
 test("WebSocket configuration and custom query", async () => {
   const configData = ["My company's name is theManualTestCompany", testTables];
   sendConfigMessage(ws as WebSocket, configData);
 
   const query = "Create a graph to highlight my top 10 customers in terms of their TLV, my tables are Transactions, Users and Products";
-  const message = JSON.stringify({ type: 'query', task: query });
+  const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
 
   const responses = await sendMessage(ws as WebSocket, message, functionMap);
 
