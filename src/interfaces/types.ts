@@ -12,6 +12,7 @@ export interface Step {
 
 export interface InputData {
   steps: Step[];
+  directResponse: string;
 }
 
 export interface ErrorResponse {

@@ -4,6 +4,7 @@ export class TaskState {
   steps: Array<[string, string, string, string]>;
   results: { [key: string]: string } | null;
   result: string;
+  directResponse: string | null;
 
   constructor(
     task: string,
@@ -11,11 +12,13 @@ export class TaskState {
     steps: Array<[string, string, string, string]>,
     results: { [key: string]: string } | null,
     result: string,
+    directResponse: string
   ) {
     this.task = task;
     this.plan_string = plan_string;
     this.steps = steps;
     this.results = results;
     this.result = result;
+    this.directResponse = directResponse;
   }
 }
