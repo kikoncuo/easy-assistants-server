@@ -2,7 +2,6 @@ import { GraphManager } from './GraphManager';
 import {
   getStrongestModel,
   getFasterModel,
-  groqChatMixtral,
   groqChatSmallLlama,
   anthropicSonnet,
   anthropicOpus,
@@ -11,18 +10,13 @@ import {
   groqChatLlama,
   createPlanner,
   createSolver,
+  createDirectResponse
 } from '../models/Models';
 import {
   calculatorTool,
-  emailTool,
-  rewardTool,
-  filterTool,
-  eventTool,
   createTableStructure,
   createChart,
-  pageHtmlTool,
   sqlQuery,
-  segmentTool,
   organizeItemTool,
   getTables,
   getData,
@@ -349,7 +343,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(strongestModel), outputHandler);
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(strongestModel), outputHandler, createDirectResponse(strongestModel));
   }
 
   async processTask(task: string, ws: WebSocket) {

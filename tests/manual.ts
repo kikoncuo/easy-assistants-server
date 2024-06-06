@@ -57,6 +57,10 @@ function connectToServer() {
       Logger.log('Result:', data.message);
       Logger.timeEnd('planTimer');
       promptUserInput();
+    } else if (data.type === 'directResponse') {
+      Logger.log('Result:', data.message);
+      Logger.timeEnd('planTimer');
+      promptUserInput();
     } else if (data.type === 'plan') {
       // Server has sent a result
       Logger.log('Here is the plan:\n', data.message);

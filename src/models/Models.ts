@@ -30,14 +30,19 @@ const StepSchema = z
 
 const planSchema = z
   .object({
-    steps: z.array(StepSchema).min(1).max(20).describe('An array of step objects, representing the entire process'),
+    steps: z.array(StepSchema).min(1).max(20).optional().describe('An array of step objects, representing the entire process'),
+    directResponse: z.string().optional().describe('A string with the response, used when there is no need to create a process with various steps'),
   })
-  .describe('The root object containing the array of steps');
+  .describe('The root object containing the array of steps or the direct response to the user.');
 
 const solverSchema = z.object({
   status: z.enum(['successful', 'failed']).describe('The status of the solver, either successful or failed'),
   explanation: z.string().optional().describe('Explanation of the status and value'),
   value: z.string().optional().describe('The optional, final, concise, value returned to the user if the response has a value.'),
+});
+
+const directResponseSchema = z.object({
+  response: z.string().describe('The response returned to the user'),
 });
 
 export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
@@ -60,6 +65,11 @@ function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel 
 
 function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(solverSchema) : llm;
+  return bindedLLM as BaseChatModel;
+}
+
+function createDirectResponse(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
+  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(directResponseSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
 
@@ -149,4 +159,5 @@ export {
   createAgent,
   createPlanner,
   createSolver,
+  createDirectResponse
 };

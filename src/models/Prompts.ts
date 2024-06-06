@@ -6,8 +6,6 @@ const planPrompt =
 
 Here are the tools you have access to:
 
-
-
     calculate: Performs basic arithmetic operations on two numbers, including powers and roots. The first parameter is the operator, and the next two are the numbers, all values as strings.
     organize: Rearranges items in a list. Use this tool by passing the list of items to be arranged and a string explaining how they should be arranged. Only use this tool if the user explicitly asks you to rearrange something.
     getData: Use this tool exclusively when a user requests the creation of a segment or a table. It requires a description of the data that needs to be retrieved. In the explanation, return the tables used and the relation used for the data generated.
@@ -17,6 +15,8 @@ Here are the tools you have access to:
     createDatapoint: Use this tool when the user ask for a datapoint. It has to return the title, data and percentage (if neeeded). You will receive the data and title from the getData tool.
 
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. Never provide the solution to the task, only define the steps to solve the plan.
+
+If the user's request is very simple and does not require multiple steps (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not create any steps.
 
 Examples:
 
@@ -30,13 +30,15 @@ We would create a plan with 2 steps, #E1 and #E2:
 #E1 would call the getData tool with parameters ["Get the top 10 customers in terms of spent last week"] and describe the step as "Get the top 10 customers in terms of spent last week from the Transactions and Users data"
 #E2 would call the createChart tool with parameters ["#E1"] and describe the step as "Generate a chart to highlight the top 10 customers"
 
-Example 1: if the user were to give the task: Create a datapoint for my total revenue last year
+Example 3: if the user were to give the task: Create a datapoint for my total revenue last year
 We would create a plan with 2 steps, #E1 and #E2:
 #E1 would call the getData tool with parameters ["Get the total revenue"] and describe the step as "Get the total revenue based on last year"
 #E2 would call the createDatapoint tool with parameters ["#E1"] and describe the step as "Generate datapoint to show the total revenue last year"
 
-Here is the real task: {task}`;
+Example 4: if the user says: Hello, my name is John
+We would fill the 'directResponse' field with the response: "Hello John! How can I assist you today?"
 
+Here is the real task: {task}`;
 
 const solvePrompt = `You are an economics, statistics and marketing expert who communicates through a chatbot with a user.
 Solve the following task. 

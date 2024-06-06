@@ -22,22 +22,28 @@ function _getCurrentTask(state: TaskState): number | null {
   }
 }
 
-function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string } {
+function processPlan(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string, directResponse: string } {
   let steps: any[];
+  let directResponse: string;
   // Sometimes models return an AIMessage, instead of returning the structured data directly
   if (inputData instanceof AIMessage) {
     try {
       steps = JSON.parse(inputData.content.toString()).steps;
+      directResponse = JSON.parse(inputData.content.toString()).directResponse;
     } catch (error) {
       Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
       Logger.warn('This was the AIMessage:', inputData.content.toString());
       Logger.warn('Error:', error);
-      return { stepsArray: [], fullPlan: '' };
+      return { stepsArray: [], fullPlan: '', directResponse: '' };
     }
   } else {
     steps = inputData.steps;
+    directResponse = inputData.directResponse;
   }
   
+  if (!steps) {
+    return { stepsArray: [], fullPlan: "", directResponse };
+  }
   // Anthropic tends to return the steps as a string, so we need to parse it
   if (typeof steps[0] === 'string') {
     try {
@@ -56,7 +62,7 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
 
   const fullPlan: string = steps.map(step => `${step.stepId} ${step.description}`).join('\n');
 
-  return { stepsArray, fullPlan };
+  return { stepsArray, fullPlan, directResponse };
 }
 
 function processResults(results: any): any {
@@ -66,8 +72,6 @@ function processResults(results: any): any {
     return results;
   }
 }
-
-
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
   const functionDetails: FunctionDetails[] = [];
@@ -92,7 +96,7 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
 // nodes
 
 export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
-  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string }> {
+  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string }> {
     try {
       const task = state.task;
       let allChunks = '';
@@ -104,18 +108,18 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const chain = chatPromptTemplate.pipe(plannerModel);
 
       const plan = await chain.invoke({ task: task }); 
+      const { stepsArray, fullPlan, directResponse } = processPlan(plan);
 
-      const { stepsArray, fullPlan } = processSteps(plan);
-
-      outputHandler('plan', fullPlan);
+      if (fullPlan) outputHandler('plan', fullPlan);
 
       Logger.log('Plan steps: ', stepsArray);
-      return { steps: stepsArray, plan_string: fullPlan };
+      return { steps: stepsArray, plan_string: fullPlan, directResponse };
     } catch (error) {
       Logger.warn('Error in plan node:', error);
       return {
         steps: [['Error running query', '#E1', 'solve', 'we had a problem creating the plan']],
         plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.',
+        directResponse: 'We had a problem creating a response for your requests. Please try again or contact support.',
       }; // TODO: Create a dedicated error node
     }
   }
@@ -149,6 +153,23 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
     }
   }
   return agentNode;
+}
+
+export function getDirectResponseNode(directResponseModel: BaseChatModel, outputHandler: Function) {
+  async function response(state: TaskState): Promise<{ result: string }> {
+    if (state.directResponse) {
+      const directResponse = state.directResponse;
+      outputHandler('directResponse', directResponse);
+      state.directResponse = null; 
+      Logger.log('Direct response:', directResponse);
+      return { result: directResponse };
+    } else {
+      Logger.warn('No direct response available in state.');
+      return { result: 'No direct response available.' };
+    }
+  }
+
+  return response;
 }
 
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
@@ -195,6 +216,9 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
 export function getRouteEdge() {
   function route(state: TaskState): string {
     try {
+      if (state.steps.length === 0) {
+        return 'direct';
+      }
       const _step = _getCurrentTask(state);
       if (_step === null) {
         return 'solve';
@@ -204,7 +228,7 @@ export function getRouteEdge() {
       return step;
     } catch (error) {
       Logger.error('Error in routing your request, we redirected directly to solve:', error);
-      return 'solve'; // TODO: add a default error node
+      return 'solve'; 
     }
   }
 
