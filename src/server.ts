@@ -94,7 +94,7 @@ wss.on('connection', ws => {
     const data = JSON.parse(message);
     if (data.type === 'query') {
       Logger.log('Processing task:', data.task);
-      await graphApp.processTask(data.task, ws);
+      await graphApp.processTask(data.task, data.thread_id, ws);
     }
     else if (data.type === 'configure') {
       Logger.log('Configuring new graph application');

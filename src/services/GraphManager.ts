@@ -4,6 +4,9 @@ import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode } from './WorkflowHandler';
 import { Runnable } from 'langchain/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { MemorySaver } from "@langchain/langgraph";
+
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<{ steps: Array<[string, string, string, string]>; plan_string: string }>;
@@ -35,6 +38,10 @@ export class GraphManager {
         results: { value: null },
         result: { value: null },
         directResponse: { value: null },
+        messages: {
+          value: (x: ChatPromptTemplate[], y: ChatPromptTemplate[]) => x.concat(y),
+          default: () => [],
+        },
       },
     });
 
@@ -51,8 +58,10 @@ export class GraphManager {
       graph.addConditionalEdges(name, getRouteEdge());
     }
 
+    const memory = new MemorySaver();
+
     graph.setEntryPoint('plan');
-    return graph.compile();
+    return graph.compile(memory);
   }
 
   getApp(): any {

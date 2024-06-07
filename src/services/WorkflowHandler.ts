@@ -1,8 +1,7 @@
 // LangraphReWoo.ts
-import { StateGraph, END } from '@langchain/langgraph';
 import { HumanMessage, AIMessage, SystemMessage } from 'langchain/schema';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { planPrompt, solvePrompt } from '../models/Prompts';
+import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
 import { TaskState } from '../models/TaskState';
@@ -22,7 +21,7 @@ function _getCurrentTask(state: TaskState): number | null {
   }
 }
 
-function processPlan(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string, directResponse: string } {
+function processSteps(inputData: InputData | AIMessage, results: { [key: string]: string } | null): { stepsArray: string[][]; fullPlan: string, directResponse: string } {
   let steps: any[];
   let directResponse: string;
   // Sometimes models return an AIMessage, instead of returning the structured data directly
@@ -40,9 +39,23 @@ function processPlan(inputData: InputData | AIMessage): { stepsArray: string[][]
     steps = inputData.steps;
     directResponse = inputData.directResponse;
   }
-  
+
   if (!steps) {
     return { stepsArray: [], fullPlan: "", directResponse };
+  }
+
+  // Simpler AIs forget to set the stepID to a new step when it has been used on an earlier message, so we do this check and update it to the next available step
+  if (results && Object.keys(results).length > 0) {
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      if (step.stepId in results) {
+        Logger.warn("Step id: ", step.stepId, " was found in the results, updating it to the next available step");
+        Logger.warn("step: ", "#E" + (Object.keys(results).length + 1));
+        step.stepId = "#E" + (Object.keys(results).length + 1);
+      }
+      Logger.log("step: ", step.stepId);
+      Logger.log("results: ", results);
+    }
   }
   // Anthropic tends to return the steps as a string, so we need to parse it
   if (typeof steps[0] === 'string') {
@@ -93,33 +106,49 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
   return functionDetails;
 }
 
+// function that deletes curly brackets from a string
+function removeCurlyBrackets(str: string): string {
+  return str.replace(/{/g, '').replace(/}/g, '');
+}
+
+// function that duplicates curly brackets from a string
+function duplicateCurlyBrackets(str: string): string {
+  return str.replace(/{/g, '{{').replace(/}/g, '}}');
+}
+
 // nodes
 
 export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
-  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string }> {
+  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: ChatPromptTemplate[] }> {
     try {
       const task = state.task;
-      let allChunks = '';
-      let tempChunk = '';
-      let instructionNumber = 0;
+      const results = state.results || {};
+      const messages = state.messages || [];
 
-      const chatPromptTemplate = ChatPromptTemplate.fromMessages([['human', planPrompt]]);
+      const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messages,['human', planPrompt]]);
 
       const chain = chatPromptTemplate.pipe(plannerModel);
 
       const plan = await chain.invoke({ task: task }); 
-      const { stepsArray, fullPlan, directResponse } = processPlan(plan);
 
-      if (fullPlan) outputHandler('plan', fullPlan);
+      const { stepsArray, fullPlan, directResponse } = processSteps(plan, results);
+
+      const planString = duplicateCurlyBrackets(JSON.stringify(plan));
+      // TODO: use actual chain output instead of emulating messages
+      const historyPromptTemplate = ChatPromptTemplate.fromMessages([['human', "Here is a task: "+task],['ai', planString]]); // TODO: This may cause errors if other models than gpt are used for plannerModel, also use prompt format https://js.langchain.com/v0.2/docs/how_to/prompts_partial 
+
+      outputHandler('plan', fullPlan);
 
       Logger.log('Plan steps: ', stepsArray);
-      return { steps: stepsArray, plan_string: fullPlan, directResponse };
+
+      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: [historyPromptTemplate]  };
     } catch (error) {
       Logger.warn('Error in plan node:', error);
       return {
         steps: [['Error running query', '#E1', 'solve', 'we had a problem creating the plan']],
         plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.',
         directResponse: 'We had a problem creating a response for your requests. Please try again or contact support.',
+        messages: [],
       }; // TODO: Create a dedicated error node
     }
   }
@@ -173,7 +202,7 @@ export function getDirectResponseNode(directResponseModel: BaseChatModel, output
 }
 
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
-  async function solve(state: TaskState): Promise<{ result: string }> {
+  async function solve(state: TaskState): Promise<{ result: string, messages: ChatPromptTemplate[]  }> {
     try {
       let plan = '';
       for (let [_plan, stepName, tool, toolInput] of state.steps) {
@@ -201,12 +230,16 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
 
       outputHandler('result', finalResponse);
       Logger.log('Final response:', finalResponse)
-      return { result: finalResponse };
+
+      const historyPromptTemplate = ChatPromptTemplate.fromMessages([['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]); // TODO: clean this up
+
+
+      return { result: finalResponse, messages: [historyPromptTemplate]};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
       
       outputHandler('result', 'Error producing the final answer, please try again or contact support.');
-      return { result: 'Error producing the final answer, please try again or contact support.' };
+      return { result: 'Error producing the final answer, please try again or contact support.', messages: []};
     }
   }
 
@@ -216,7 +249,7 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
 export function getRouteEdge() {
   function route(state: TaskState): string {
     try {
-      if (state.steps.length === 0) {
+      if (state.directResponse || state.steps.length === 0) {
         return 'direct';
       }
       const _step = _getCurrentTask(state);
