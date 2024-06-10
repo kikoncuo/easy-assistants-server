@@ -366,6 +366,7 @@ const createChart: ToolDefinition = {
         },
         chartType: {
           type: 'string',
+          enum: ['bar', 'doughnut', 'line'],
           description: "The type of chart to generate",
         },
         explanation: {
@@ -576,6 +577,26 @@ const getData: ToolDefinition = {
   },
 };
 
+const askHuman: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "askHuman",
+    description:
+      "Ask the human a question or request more info",
+    parameters: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description:
+            "The question the AI should ask the user when additional information is needed. This property contains the query or request for clarification directed to the user.",
+        },
+      },
+      required: ["question"],
+    },
+  },
+}
+
 
 export {
   calculatorTool,
@@ -594,4 +615,5 @@ export {
   getTables,
   getData,
   filterData,
+  askHuman
 };

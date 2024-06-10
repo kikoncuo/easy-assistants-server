@@ -1,6 +1,6 @@
 import { expect, test, beforeAll, afterAll } from "bun:test";
 import { connectToServer, sendMessage, sendConfigMessage} from "./helpers";
-import { calculateResult, getData, createChart, testTables } from "./helpers"; //TODO: separate this to a different file
+import { calculateResult, getData, createChart, testTables, askHuman } from "./helpers"; //TODO: separate this to a different file
 
 let ws: WebSocket | null = null;
 
@@ -8,6 +8,7 @@ const functionMap = { // This maps points to the tool and the function that will
   calculate: calculateResult,
   getData: getData,
   createChart: createChart,
+  askHuman: askHuman
   // Add more functions if needed
 };
 
@@ -29,6 +30,33 @@ test("Conversational test", async () => {
   const directResponse = responses.find(response => response.type === 'directResponse');
   expect(directResponse).toBeDefined();
 
+ 
+}, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
+
+test("Ask Human test", async () => {
+  const query = "Create a graph to show my top customers";
+  const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
+
+  const responses = await sendMessage(ws as WebSocket, message, functionMap);
+
+   // Check if there's a response calling the askHuman function
+   const askHumanResponse = responses.find(response => {
+    return response.type === 'tool' &&
+           response.functions.some((func: { function_name: string; }) => func.function_name === 'askHuman');
+  });
+  expect(askHumanResponse).toBeDefined();
+
+  const getDataResponse = responses.find(response => {
+    return response.type === 'tool' &&
+           response.functions.some((func: { function_name: string; }) => func.function_name === 'getData');
+  });
+  expect(getDataResponse).toBeDefined();
+
+  const createChartResponse = responses.find(response => {
+    return response.type === 'tool' &&
+           response.functions.some((func: { function_name: string; }) => func.function_name === 'createChart');
+  });
+  expect(createChartResponse).toBeDefined();
  
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
 

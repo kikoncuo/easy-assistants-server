@@ -21,9 +21,9 @@ import {
   getTables,
   getData,
   filterData,
-  createDatapoint
+  createDatapoint,
+  askHuman
 } from '../models/Tools';
-import Logger from '../utils/Logger'; 
 
 export class GraphApplication {
   private graphManager: GraphManager;
@@ -308,6 +308,12 @@ export class GraphApplication {
         `,
         toolFunction: clientAgentFunction,
       },
+
+      askHuman: {
+        agent: createAgent(fasterModel, [askHuman], true),
+        agentPrompt: `You are an LLM designed to assist in gathering additional information from the user when the context or provided data is insufficient to complete a task. Your goal is to ask clear and concise questions to obtain the necessary details to proceed with the given task. You should ensure that the questions are relevant to the context and structured in a way that the user can easily understand and respond to.`,
+        toolFunction: clientAgentFunction,
+      },
       
       createChart: {
         agent: createAgent(strongestModel, [createChart], true),
@@ -343,7 +349,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(fasterModel), agents, createSolver(fasterModel), outputHandler, createDirectResponse(strongestModel));
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(fasterModel), outputHandler, createDirectResponse(strongestModel));
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket) {

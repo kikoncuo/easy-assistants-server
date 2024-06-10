@@ -41,6 +41,10 @@ function connectToServer() {
           ];
             Logger.log(`Returning mock data: ${JSON.stringify(userData, null, 2)}`);
             response = JSON.stringify(userData, null, 2)
+          } else if (function_name === 'askHuman') {
+            const result = prompt(`Enter your response for ${function_name}:`);
+            Logger.log(`Response for ${function_name}: ${result}`);
+            response = result;
           } else {
             const result = prompt(`Enter your response for ${function_name}:`);
             Logger.log(`Response for ${function_name}: ${result}`);
