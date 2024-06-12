@@ -151,3 +151,7 @@ export function getData(): string {
 export function createChart(): string {
   return "Chart created successfully"
 }
+
+export function askHuman(): string {
+  return "Doughnut chart with the total revenue per user"
+}
