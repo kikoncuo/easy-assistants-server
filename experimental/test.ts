@@ -53,7 +53,6 @@ const prompt = ChatPromptTemplate.fromMessages([
       organize: Rearranges items in a list. Use this tool by passing the list of items to be arranged and a string explaining how they should be arranged. Only use this tool if the user explicitly asks you to rearrange something.
       getData: Use this tool exclusively when a user requests the creation of a segment or a table. It requires a description of the data that needs to be retrieved.
       createChart: Use this tool to generate labels, data, and type for chart generation. This tool will have as input a JSON with the complete data that will have to be filtered and provide only the information related to the user's request. The chart type will come indicated in the input message as line, bar, or doughnut; otherwise, use the bar type.
-      filterData: Use this tool when the user asks for data filtering. You will always respond with a list of filtered objects based on the original list, according to the user's request.
   
   Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. Never provide the solution to the task, only define the steps to solve the plan.
   

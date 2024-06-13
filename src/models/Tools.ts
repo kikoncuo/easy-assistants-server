@@ -475,58 +475,6 @@ const getTables: ToolDefinition = {
   },
 };
 
-const filterData: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "filterData",
-    description:
-      "Given a JSON array, filter it based on user's request.",
-    parameters: {
-      type: "object",
-      properties: {
-        users: {
-          type: "array",
-          description: "The list of selected objects from the array.",
-          items: { 
-            type: "object",
-            properties: {
-              email: {
-                type: "string",
-                description: "User's email.",
-              },
-              name: {
-                type: "string",
-                descrption: "User's name",
-              },
-              recently_engaged: {
-                type: "string",
-                description: "Boolean indicating if the user is recently engaged.",
-              },
-              social_media: {
-                type: "string",
-                descrption: "Social media from which data was collected",
-              },
-            },
-           },
-        },
-        explanation: {
-          type: "object",
-          properties: {
-            title: {
-              type: "string",
-              description: "The title for the explanation.",
-            },
-            description: {
-              type: "string",
-              descrption: "Explanation of why those objects were selected",
-            },
-          },
-        },
-      },
-      required: ["users", "explanation"],
-    },
-  },
-};
 
 
 const getData: ToolDefinition = {
@@ -614,6 +562,5 @@ export {
   organizeItemTool,
   getTables,
   getData,
-  filterData,
   askHuman
 };
