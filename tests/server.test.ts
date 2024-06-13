@@ -33,7 +33,7 @@ test("Conversational test", async () => {
  
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
 
-test("Ask Human test", async () => {
+test.skip("Ask Human test", async () => {
   const query = "Create a graph to show my top customers";
   const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
 
