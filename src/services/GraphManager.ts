@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { SupabaseSaver } from '../checkpoint/supabase';
 dotenv.config();
 
-const { SUPABASE_URL, SUPABASE_KEY} = process.env;
+const { MEMORY_STORAGE_SUPABASE_URL, MEMORY_STORAGE_SUPABASE_KEY} = process.env;
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<{ steps: Array<[string, string, string, string]>; plan_string: string }>;
@@ -77,11 +77,11 @@ export class GraphManager {
       workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
 
-    if(!SUPABASE_KEY || !SUPABASE_URL) {
+    if(!MEMORY_STORAGE_SUPABASE_URL || !MEMORY_STORAGE_SUPABASE_KEY) {
       throw new Error
     }
     
-    const memory = new SupabaseSaver(SUPABASE_URL,SUPABASE_KEY);
+    const memory = new SupabaseSaver(MEMORY_STORAGE_SUPABASE_URL,MEMORY_STORAGE_SUPABASE_KEY);
     // const memory = new MemorySaver();
 
     return workflow.compile({ checkpointer: memory });
