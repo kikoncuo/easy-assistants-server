@@ -87,8 +87,8 @@ export class GraphManager {
       throw new Error
     }
     // const memory = new SupabaseSaver(SUPABASE_URL,SUPABASE_KEY);
-    // const memory = new SupabaseMemory(SUPABASE_URL,SUPABASE_KEY);
-    const memory = new MemorySaver();
+    const memory = new SupabaseSaver(SUPABASE_URL,SUPABASE_KEY);
+    // const memory = new MemorySaver();
 
     return workflow.compile({ checkpointer: memory });
   }

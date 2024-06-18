@@ -16,6 +16,7 @@ export class MemorySaver extends BaseCheckpointSaver {
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    console.log('configgggggggggggg',config)
     const thread_id = config.configurable?.thread_id;
     const checkpoint_id = config.configurable?.checkpoint_id;
     const checkpoints = this.storage[thread_id];

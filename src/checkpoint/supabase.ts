@@ -57,43 +57,129 @@ export class SupabaseSaver extends BaseCheckpointSaver {
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    const { data, error } = await this.supabase
-      .from("newcheckpoints")
-      .select("*")
-      .eq("thread_id", config.configurable?.thread_id)
-      .eq("checkpoint_id", config.configurable?.checkpoint_id)
-      .single();
-
-    if (error) {
-      console.error("Error retrieving checkpoint:", error);
-      return undefined;
+    const thread_id = config.configurable?.thread_id;
+    const checkpoint_id = config.configurable?.checkpoint_id;
+  
+    if (checkpoint_id !== undefined) {
+      const { data, error } = await this.supabase
+        .from("newcheckpoints")
+        .select("*")
+        .eq("thread_id", thread_id)
+        .eq("checkpoint_id", checkpoint_id)
+        .single();
+  
+      if (error) {
+        console.error("Error retrieving checkpoint:", error);
+        return undefined;
+      }
+  
+      if (data) {
+        console.log('data')
+        const { thread_id, checkpoint_id, parent_id, checkpoint, metadata } = data;
+        return {
+          config,
+          checkpoint: checkpoint as Checkpoint,
+          metadata: metadata as CheckpointMetadata,
+          parentConfig: parent_id
+            ? {
+                configurable: {
+                  thread_id,
+                  checkpoint_id: parent_id,
+                },
+              }
+            : undefined,
+        };
+      }
+    } else {
+      
+      const { data, error } = await this.supabase
+        .from("newcheckpoints")
+        .select("*")
+        .eq("thread_id", thread_id)
+        .order("checkpoint_id", { ascending: false })
+        .limit(1)
+        .single();
+  
+      if (error) {
+        console.error("Error retrieving checkpoint:", error);
+        return undefined;
+      }
+  
+      if (data) {
+        const { thread_id, checkpoint_id, parent_id, checkpoint, metadata } = data;
+        return {
+          config: {
+            configurable: {
+              thread_id,
+              checkpoint_id,
+            },
+          },
+          checkpoint: (JSON.parse(checkpoint)) as Checkpoint,
+          metadata: (JSON.parse(
+            metadata
+          )) as CheckpointMetadata,
+          parentConfig: parent_id
+            ? {
+                configurable: {
+                  thread_id,
+                  checkpoint_id: parent_id,
+                },
+              }
+            : undefined,
+        };
+      }
     }
-
-    if (data) {
-      const { thread_id, checkpoint_id, parent_id, checkpoint, metadata } = data;
-      return {
-        config,
-        checkpoint: checkpoint as Checkpoint,
-        metadata: metadata as CheckpointMetadata,
-        parentConfig: parent_id
-          ? {
-              configurable: {
-                thread_id,
-                checkpoint_id: parent_id,
-              },
-            }
-          : undefined,
-      };
-    }
-
+  
     return undefined;
   }
+
+  // async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+  //   const thread_id = config.configurable?.thread_id
+  //   const checkpoint_id = config.configurable?.checkpoint_id
+  //   console.log("gettinggg configgggggg", config)
+  //   console.log("gettinggg thread_id", thread_id)
+  //   console.log("gettinggg checkpoint_id", checkpoint_id)
+
+  //   const { data, error } = await this.supabase
+  //     .from("newcheckpoints")
+  //     .select("*")
+  //     .eq("thread_id", config.configurable?.thread_id)
+  //     .eq("checkpoint_id", config.configurable?.checkpoint_id)
+  //     .single();
+
+  //   if (error) {
+  //     console.error("Error retrieving checkpoint:", error);
+  //     return undefined;
+  //   }
+
+  //   if (data) {
+  //     const { thread_id, checkpoint_id, parent_id, checkpoint, metadata } = data;
+  //     return {
+  //       config,
+  //       checkpoint: checkpoint as Checkpoint,
+  //       metadata: metadata as CheckpointMetadata,
+  //       parentConfig: parent_id
+  //         ? {
+  //             configurable: {
+  //               thread_id,
+  //               checkpoint_id: parent_id,
+  //             },
+  //           }
+  //         : undefined,
+  //     };
+  //   }
+
+  //   return undefined;
+  // }
 
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
+    console.log("putting configgggggg", config)
+    console.log("putting checkpoint", checkpoint)
+    console.log("putting metadata", metadata)
     const { data, error } = await this.supabase
       .from("newcheckpoints")
       .insert([
