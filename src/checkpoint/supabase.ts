@@ -133,45 +133,6 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     return undefined;
   }
 
-  // async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-  //   const thread_id = config.configurable?.thread_id
-  //   const checkpoint_id = config.configurable?.checkpoint_id
-  //   console.log("gettinggg configgggggg", config)
-  //   console.log("gettinggg thread_id", thread_id)
-  //   console.log("gettinggg checkpoint_id", checkpoint_id)
-
-  //   const { data, error } = await this.supabase
-  //     .from("newcheckpoints")
-  //     .select("*")
-  //     .eq("thread_id", config.configurable?.thread_id)
-  //     .eq("checkpoint_id", config.configurable?.checkpoint_id)
-  //     .single();
-
-  //   if (error) {
-  //     console.error("Error retrieving checkpoint:", error);
-  //     return undefined;
-  //   }
-
-  //   if (data) {
-  //     const { thread_id, checkpoint_id, parent_id, checkpoint, metadata } = data;
-  //     return {
-  //       config,
-  //       checkpoint: checkpoint as Checkpoint,
-  //       metadata: metadata as CheckpointMetadata,
-  //       parentConfig: parent_id
-  //         ? {
-  //             configurable: {
-  //               thread_id,
-  //               checkpoint_id: parent_id,
-  //             },
-  //           }
-  //         : undefined,
-  //     };
-  //   }
-
-  //   return undefined;
-  // }
-
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
