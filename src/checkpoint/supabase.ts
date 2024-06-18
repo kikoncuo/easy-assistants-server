@@ -74,7 +74,6 @@ export class SupabaseSaver extends BaseCheckpointSaver {
       }
   
       if (data) {
-        console.log('data')
         const { thread_id, checkpoint_id, parent_id, checkpoint, metadata } = data;
         return {
           config,
@@ -138,9 +137,7 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
-    console.log("putting configgggggg", config)
-    console.log("putting checkpoint", checkpoint)
-    console.log("putting metadata", metadata)
+
     const { data, error } = await this.supabase
       .from("newcheckpoints")
       .insert([
@@ -172,26 +169,21 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     limit?: number,
     before?: RunnableConfig
   ): AsyncGenerator<CheckpointTuple> {
-    console.log('Function called with config:', config, 'limit:', limit, 'before:', before);
     let query = this.supabase
       .from("newcheckpoints")
       .select("*")
       .eq("thread_id", config.configurable?.thread_id)
       .order("checkpoint_id", { ascending: false });
-      console.log('queryyyyyyyyyyyyyyy', query)
-      console.log('frommmmmmmmm list',before?.configurable?.checkpoint_id)
+
     if (before?.configurable?.checkpoint_id) {
       query = query.lt("checkpoint_id", before.configurable.checkpoint_id);
     } else {
         console.log('Before condition is not provided or checkpoint_id is undefined');
       }
-    console.log('after checkpoint',query)
     if (limit) {
       query = query.limit(limit);
     }
-    console.log('after limit',query)
     const { data, error } = await query;
-    console.log('Query executed. Data:', data, 'Error:', error);
 
     if (error) {
       console.error("Error listing checkpoints:", error);
@@ -199,7 +191,6 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     }
 
     if (data) {
-        console.log('Data retrieved from mock client:', data); 
       for (const row of data) {
         const {
           thread_id,
