@@ -2,12 +2,7 @@ import { StateGraph, END, StateGraphArgs, START } from '@langchain/langgraph';
 import { TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode } from './WorkflowHandler';
-import { Runnable } from 'langchain/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-// import { MemorySaver } from "@langchain/langgraph";
-import { MemorySaver } from '../checkpoint/memory';
-// import { SupabaseSaverAssertImmutable } from '../checkpoint/supabaseSaver';
 import dotenv from 'dotenv';
 import { SupabaseSaver } from '../checkpoint/supabase';
 dotenv.config();
@@ -82,11 +77,10 @@ export class GraphManager {
       workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
 
-    // const memory = new MemorySaver();
     if(!SUPABASE_KEY || !SUPABASE_URL) {
       throw new Error
     }
-    // const memory = new SupabaseSaver(SUPABASE_URL,SUPABASE_KEY);
+    
     const memory = new SupabaseSaver(SUPABASE_URL,SUPABASE_KEY);
     // const memory = new MemorySaver();
 

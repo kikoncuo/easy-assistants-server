@@ -127,7 +127,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const messages = state.messages || [];
       const messagesTyped = messages as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
-      // console.log('chat prompt', JSON.stringify(chatPromptTemplate, null, 2))
+      
       const chain = chatPromptTemplate.pipe(plannerModel);
 
       const plan = await chain.invoke({ task: task }); 

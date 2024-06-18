@@ -89,31 +89,16 @@ test("Memory test", async () => {
   const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
 
   const responses = await sendMessage(ws as WebSocket, message, functionMap);
-  console.log('mesagessssssssssssss',responses)
-  const lastResponse = responses[responses.length - 1];
 
   const query2 = "divide that by 2223.35";
   const message2 = JSON.stringify({ type: 'query', task: query2, thread_id: "test"  });
 
   const responses2 = await sendMessage(ws as WebSocket, message2, functionMap);
 
-  
-
-  // // Check the plan message
-  // const planMessage = responses2.find(response => response.type === 'plan');
-  // expect(planMessage).toBeDefined();
-
-  // // Check the tool messages
-  // const toolMessages = responses2.filter(response => response.type === 'tool');
-  // expect(toolMessages.length).toBeGreaterThan(0);
-  // toolMessages.forEach(toolMessage => {
-  //   expect(toolMessage.functions).toBeDefined();
-  // });
-
   // Check the result message
   const resultMessage = responses2.find(response => response.type === 'result');
   expect(resultMessage).toBeDefined();
-  expect(resultMessage.message).toContain('0.8891987316436909'); // 3*6/2 = 9
+  expect(resultMessage.message).toContain('0.8891987316436909'); 
 
 
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
