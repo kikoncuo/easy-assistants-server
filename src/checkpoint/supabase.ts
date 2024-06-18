@@ -3,18 +3,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
   Checkpoint,
-//   CheckpointMetadata,
-//   CheckpointTuple,
 } from "@langchain/langgraph";
-import { SerializerProtocol } from "../serde/base";
-
-interface CheckpointRow {
-  thread_id: string;
-  checkpoint_id: string;
-  parent_id?: string;
-  checkpoint: Buffer;
-  metadata: Buffer;
-}
 
 export interface CheckpointTuple {
     config: RunnableConfig;
@@ -50,9 +39,8 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     private url: string,
     private apiKey: string,
     client?: SupabaseClient,
-    serde?: SerializerProtocol<Checkpoint>
   ) {
-    super(serde);
+    super();
     this.supabase = client || createClient(url, apiKey);
   }
 
