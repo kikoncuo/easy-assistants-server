@@ -16,7 +16,7 @@ You can use step IDs like "#E1" as one of the values in the toolParameters array
 You can never reference steps from earlier messages in the same thread.
 Never provide the solution to the task, only define the steps to solve the plan.
 
-If the user's request is very simple and does not require multiple steps (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not create any steps.
+If the user's request is very simple, and cannot be resolved using the tools (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not create any steps.
 
 Examples:
 
@@ -65,7 +65,6 @@ contain irrelevant information
 Here are the results of each step in the plan:
 {results}
 Now solve the question or task according to provided evidence above.
-You likely just need to say successful unless you see any errors in your response, and provide the solution only if you can get it from the results.
 
 If you see any error message in the results like "Error in agent execution, please try again or contact support.", identify the status as "failed" and provide an explanation of the error.
 `;

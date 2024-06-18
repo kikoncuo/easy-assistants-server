@@ -26,6 +26,7 @@ import {
 
 export class GraphApplication {
   private graphManager: GraphManager;
+  error: any;
 
   constructor(outputHandler: Function, clientAgentFunction: Function, clientData: string[]) { // TODO: Find a better structure for clientData
 

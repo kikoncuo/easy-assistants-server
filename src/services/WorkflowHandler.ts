@@ -1,5 +1,5 @@
 // LangraphReWoo.ts
-import { HumanMessage, AIMessage, SystemMessage } from 'langchain/schema';
+import { HumanMessage, AIMessage, SystemMessage, MessageContent, MessageType } from 'langchain/schema';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
@@ -7,6 +7,7 @@ import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are r
 import { TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
+import { StringWithAutocomplete } from '@langchain/core/utils/types';
 
 // internal function
 function _getCurrentTask(state: TaskState): number | null {
@@ -119,14 +120,14 @@ function duplicateCurlyBrackets(str: string): string {
 // nodes
 
 export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
-  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: ChatPromptTemplate[] }> {
+  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: string[][] }> {
     try {
       const task = state.task;
       const results = state.results || {};
       const messages = state.messages || [];
-
-      const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messages,['human', planPrompt]]);
-
+      const messagesTyped = messages as any;
+      const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
+      
       const chain = chatPromptTemplate.pipe(plannerModel);
 
       const plan = await chain.invoke({ task: task }); 
@@ -135,13 +136,13 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 
       const planString = duplicateCurlyBrackets(JSON.stringify(plan));
       // TODO: use actual chain output instead of emulating messages
-      const historyPromptTemplate = ChatPromptTemplate.fromMessages([['human', "Here is a task: "+task],['ai', planString]]); // TODO: This may cause errors if other models than gpt are used for plannerModel, also use prompt format https://js.langchain.com/v0.2/docs/how_to/prompts_partial 
+      const historyPromptTemplate = [['human', "Here is a task: "+task],['ai', planString]]; // TODO: This may cause errors if other models than gpt are used for plannerModel, also use prompt format https://js.langchain.com/v0.2/docs/how_to/prompts_partial 
 
       outputHandler('plan', fullPlan);
 
       Logger.log('Plan steps: ', stepsArray);
 
-      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: [historyPromptTemplate]  };
+      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: historyPromptTemplate  };
     } catch (error) {
       Logger.warn('Error in plan node:', error);
       return {
@@ -157,7 +158,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 }
 
 export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) {
-  async function agentNode(state: TaskState) {
+  async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
@@ -166,9 +167,7 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       for (const [k, v] of Object.entries(_results)) {
         toolInput = toolInput.replace(k, v);
       }
-      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
-      Logger.log("🚀 ~ agentNode ~ [new SystemMessage(agentPrompt), new HumanMessage(toolInput)]:", [new SystemMessage(agentPrompt), new HumanMessage(toolInput)])
-      
+      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);      
       const functions = extractFunctionDetails(result);
       const results = await toolFunction('tool', functions);
       _results[stepName] = Object.values(results)[0] as string;
@@ -178,7 +177,7 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       return { results: _results };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { results: 'Error in agent execution, please try again or contact support.'};
+      return { results: { error: 'Error in agent execution, please try again or contact support.' } };
     }
   }
   return agentNode;
@@ -202,7 +201,7 @@ export function getDirectResponseNode(directResponseModel: BaseChatModel, output
 }
 
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
-  async function solve(state: TaskState): Promise<{ result: string, messages: ChatPromptTemplate[]  }> {
+  async function solve(state: TaskState): Promise<{ result: string, messages: string[][]  }> {
     try {
       let plan = '';
       for (let [_plan, stepName, tool, toolInput] of state.steps) {
@@ -231,10 +230,10 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
       outputHandler('result', finalResponse);
       Logger.log('Final response:', finalResponse)
 
-      const historyPromptTemplate = ChatPromptTemplate.fromMessages([['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]); // TODO: clean this up
+      const historyPromptTemplate = [['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]; // TODO: clean this up
 
 
-      return { result: finalResponse, messages: [historyPromptTemplate]};
+      return { result: finalResponse, messages: historyPromptTemplate};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
       

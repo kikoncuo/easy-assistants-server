@@ -1,12 +1,13 @@
-import { StateGraph, END } from '@langchain/langgraph';
+import { StateGraph, END, StateGraphArgs, START } from '@langchain/langgraph';
 import { TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode } from './WorkflowHandler';
-import { Runnable } from 'langchain/runnables';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { MemorySaver } from "@langchain/langgraph";
+import dotenv from 'dotenv';
+import { SupabaseSaver } from '../checkpoint/supabase';
+dotenv.config();
 
+const { MEMORY_STORAGE_SUPABASE_URL, MEMORY_STORAGE_SUPABASE_KEY} = process.env;
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<{ steps: Array<[string, string, string, string]>; plan_string: string }>;
@@ -30,38 +31,60 @@ export class GraphManager {
   }
 
   _constructGraph(): Graph<any, any> {
-    const graph = new StateGraph<TaskState>({
-      channels: {
-        task: { value: null },
-        plan_string: { value: null },
-        steps: { value: (x, y) => x.concat(y), default: () => [] },
-        results: { value: null },
-        result: { value: null },
-        directResponse: { value: null },
-        messages: {
-          value: (x: ChatPromptTemplate[], y: ChatPromptTemplate[]) => x.concat(y),
-          default: () => [],
-        },
+    const planExecuteState: StateGraphArgs<TaskState>["channels"] = {
+      task: {
+        value: (left?: string, right?: string) => right ?? left ?? "",
       },
-    });
-
-    graph.addNode('plan', this.planNode);
-    graph.addNode('solve', this.solveNode);
-    graph.addNode('direct', this.directResponseNode);
-    graph.addConditionalEdges('plan', getRouteEdge());
-    graph.addEdge('solve', END);
-    graph.addEdge('direct', END);
+      plan_string: {
+        value: (x?: string, y?: string) => y ?? x ?? "",
+        default: () => "",
+      },
+      steps: {
+        value: (x: [string, string, string, string][], y: [string, string, string, string][]) => x.concat(y),
+        default: () => [],
+      },
+      results: {
+        value: (x?: { [key: string]: string } | null, y?: { [key: string]: string } | null) => y ?? x ?? null,
+        default: () => null,
+      },
+      result: {
+        value: (x?: string, y?: string) => y ?? x ?? "",
+        default: () => "",
+      },
+      directResponse: {
+        value: (x?: string | null, y?: string | null) => y ?? x ?? null,
+        default: () => null,
+      },
+      messages: {
+        value: (x: string[][], y: string[][]) => x.concat(y),
+        default: () => [],
+      },
+    };
+      
+    const workflow = new StateGraph<TaskState>({
+      channels: planExecuteState,
+    }).addNode('plan', this.planNode)
+    .addNode('solve', this.solveNode)
+    .addNode('direct', this.directResponseNode)
+    .addEdge(START, 'plan')
+    .addConditionalEdges('plan', getRouteEdge())
+    .addEdge('solve', END)
+    .addEdge('direct', END);
 
     for (const [name, { agent, agentPrompt, toolFunction}] of Object.entries(this.agents)) {
       const agentNode = getAgentNode(agent, agentPrompt, toolFunction);  
-      graph.addNode(name, agentNode);
-      graph.addConditionalEdges(name, getRouteEdge());
+      workflow.addNode(name, agentNode);
+      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
 
-    const memory = new MemorySaver();
+    if(!MEMORY_STORAGE_SUPABASE_URL || !MEMORY_STORAGE_SUPABASE_KEY) {
+      throw new Error
+    }
+    
+    const memory = new SupabaseSaver(MEMORY_STORAGE_SUPABASE_URL,MEMORY_STORAGE_SUPABASE_KEY);
+    // const memory = new MemorySaver();
 
-    graph.setEntryPoint('plan');
-    return graph.compile(memory);
+    return workflow.compile({ checkpointer: memory });
   }
 
   getApp(): any {

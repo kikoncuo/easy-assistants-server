@@ -16,6 +16,8 @@ const {
   LANGCHAIN_TRACING_V2,
   GROQ_API_KEY,
   ANTHROPIC_API_KEY,
+  MEMORY_STORAGE_SUPABASE_URL,
+  MEMORY_STORAGE_SUPABASE_KEY
 } = process.env;
 
 const missingApiKeys: string[] = [];
@@ -43,6 +45,15 @@ if (missingApiKeys.length === 3) {
 if (!LANGCHAIN_API_KEY) {
   Logger.warn('Warning: LANGCHAIN_API_KEY is not set. Activity logging will be disabled.');
 }
+
+if (!MEMORY_STORAGE_SUPABASE_URL) {
+  Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_URL is not set. Activity logging will be disabled.');
+}
+
+if (!MEMORY_STORAGE_SUPABASE_KEY) {
+  Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_KEY is not set. Activity logging will be disabled.');
+}
+
 const isProd = process.env.BUN_ENV === 'production';
 
 if (!isProd) {
@@ -89,6 +100,10 @@ wss.on('connection', ws => {
       WebSocketService.queryUser(type, functions, ws),
     ["",""],
   );
+
+  if (graphApp.error) {
+    Logger.error(graphApp);
+  }
 
   ws.on('message', async (message: string) => {
     const data = JSON.parse(message);
