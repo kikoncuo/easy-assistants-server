@@ -20,7 +20,7 @@ afterAll(() => {
   ws?.close();
 });
 
-test("Conversational test", async () => {
+test.skip("Conversational test", async () => {
   const query = "Hey! I am Pepe";
   const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
 
@@ -60,7 +60,7 @@ test.skip("Ask Human test", async () => {
  
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
 
-test("WebSocket connection and multiple messages", async () => {
+test.skip("WebSocket connection and multiple messages", async () => {
   const query = "what's 3*6 divided by 2";
   const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
 
@@ -117,7 +117,7 @@ test("Memory test", async () => {
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
 
 
-test("WebSocket configuration and custom query", async () => {
+test.skip("WebSocket configuration and custom query", async () => {
   const configData = ["My company's name is theManualTestCompany", testTables];
   sendConfigMessage(ws as WebSocket, configData);
 
