@@ -56,7 +56,7 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     this.supabase = client || createClient(url, apiKey);
   }
 
-  async get(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+  async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const { data, error } = await this.supabase
       .from("newcheckpoints")
       .select("*")
