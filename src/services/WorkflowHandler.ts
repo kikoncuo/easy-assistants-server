@@ -158,7 +158,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 }
 
 export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) {
-  async function agentNode(state: TaskState) {
+  async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
@@ -167,9 +167,7 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       for (const [k, v] of Object.entries(_results)) {
         toolInput = toolInput.replace(k, v);
       }
-      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);
-      // Logger.log("🚀 ~ agentNode ~ [new SystemMessage(agentPrompt), new HumanMessage(toolInput)]:", [new SystemMessage(agentPrompt), new HumanMessage(toolInput)])
-      
+      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);      
       const functions = extractFunctionDetails(result);
       const results = await toolFunction('tool', functions);
       _results[stepName] = Object.values(results)[0] as string;
@@ -179,7 +177,7 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       return { results: _results };
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { results: 'Error in agent execution, please try again or contact support.'};
+      return { results: { error: 'Error in agent execution, please try again or contact support.' } };
     }
   }
   return agentNode;

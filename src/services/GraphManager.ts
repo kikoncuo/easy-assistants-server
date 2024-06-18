@@ -1,4 +1,4 @@
-import { StateGraph, END, StateGraphArgs } from '@langchain/langgraph';
+import { StateGraph, END, StateGraphArgs, START } from '@langchain/langgraph';
 import { TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode } from './WorkflowHandler';
@@ -65,28 +65,21 @@ export class GraphManager {
         default: () => [],
       },
     };
-        // task: { value: '' },
-        // plan_string: { value: null },
-        // steps: { value: (x, y) => x.concat(y), default: () => [] },
-        // results: { value: null },
-        // result: { value: null },
-        // directResponse: { value: null },
-        // messages: {
-        //   value: (x: string[][], y: string[][]) => x.concat(y),
-        //   default: () => [],
-        // },
-
-    graph.addNode('plan', this.planNode);
-    graph.addNode('solve', this.solveNode);
-    graph.addNode('direct', this.directResponseNode);
-    graph.addConditionalEdges('plan', getRouteEdge());
-    graph.addEdge('solve', END);
-    graph.addEdge('direct', END);
+      
+    const workflow = new StateGraph<TaskState>({
+      channels: planExecuteState,
+    }).addNode('plan', this.planNode)
+    .addNode('solve', this.solveNode)
+    .addNode('direct', this.directResponseNode)
+    .addEdge(START, 'plan')
+    .addConditionalEdges('plan', getRouteEdge())
+    .addEdge('solve', END)
+    .addEdge('direct', END);
 
     for (const [name, { agent, agentPrompt, toolFunction}] of Object.entries(this.agents)) {
       const agentNode = getAgentNode(agent, agentPrompt, toolFunction);  
-      graph.addNode(name, agentNode);
-      graph.addConditionalEdges(name, getRouteEdge());
+      workflow.addNode(name, agentNode);
+      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
 
     // const memory = new MemorySaver();
@@ -97,8 +90,7 @@ export class GraphManager {
     // const memory = new SupabaseMemory(SUPABASE_URL,SUPABASE_KEY);
     const memory = new MemorySaver();
 
-    graph.setEntryPoint('plan');
-    return graph.compile(memory);
+    return workflow.compile({ checkpointer: memory });
   }
 
   getApp(): any {
