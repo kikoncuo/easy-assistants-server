@@ -8,6 +8,7 @@ import { TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
 import { StringWithAutocomplete } from '@langchain/core/utils/types';
+import { StateGraph } from '@langchain/langgraph';
 
 // internal function
 function _getCurrentTask(state: TaskState): number | null {
@@ -173,6 +174,30 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
         `Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`,
+      );
+      return { results: _results };
+    } catch (error) {
+      Logger.warn('Error in agent execution:', error);
+      return { results: { error: 'Error in agent execution, please try again or contact support.' } };
+    }
+  }
+  return agentNode;
+}
+
+export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a StateGraph with subtype state of the subgraph
+  async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
+    try {
+      const _step = _getCurrentTask(state);
+      if (_step === null) throw new Error('No more steps to execute.');
+      let [, stepName, tool, toolInput] = state.steps[_step - 1];
+      const _results = state.results || {};
+      for (const [k, v] of Object.entries(_results)) {
+        toolInput = toolInput.replace(k, v);
+      }
+      const result = await graph.invoke({task:toolInput});      
+      _results[stepName] = result;
+      Logger.log(
+        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${JSON.stringify(result)}`,
       );
       return { results: _results };
     } catch (error) {

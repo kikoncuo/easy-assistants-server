@@ -68,6 +68,11 @@ function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   return bindedLLM as BaseChatModel;
 }
 
+function createStructuredResponseAgent(llm: BaseChatModel<ChatToolsCallOptions>, structuredResponseSchema: z.ZodSchema): BaseChatModel {
+  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(structuredResponseSchema) : llm;
+  return bindedLLM as BaseChatModel;
+}
+
 function createDirectResponse(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(directResponseSchema) : llm;
   return bindedLLM as BaseChatModel;
@@ -159,5 +164,6 @@ export {
   createAgent,
   createPlanner,
   createSolver,
-  createDirectResponse
+  createDirectResponse,
+  createStructuredResponseAgent,
 };
