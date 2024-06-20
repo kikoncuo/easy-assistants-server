@@ -19,5 +19,5 @@
       "bun-types" // add Bun global
     ]
   },
-  "include": ["./**/*.ts", "tests/*.ts"]
+  "include": ["./**/*.ts", "tests/*.ts, src/subgraphs/*.ts"]
 }

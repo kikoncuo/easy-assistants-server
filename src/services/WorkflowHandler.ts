@@ -194,7 +194,7 @@ export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a
       for (const [k, v] of Object.entries(_results)) {
         toolInput = toolInput.replace(k, v);
       }
-      const result = await graph.invoke({task:toolInput});      
+      const result = await graph.getGraph().invoke({task:toolInput});      
       _results[stepName] = result;
       Logger.log(
         `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${JSON.stringify(result)}`,

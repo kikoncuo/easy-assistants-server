@@ -3,6 +3,8 @@ import { createStructuredResponseAgent, getFasterModel } from "../models/Models"
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from 'zod';
+import { dataExample } from './test/DataExample';
+
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
@@ -46,6 +48,22 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     this.functions = functions;
   }
 
+ filterTables(originalString: string, tablesToKeep: string[]): string {
+    const tableRegex = /Table: (\w+)\n([\s\S]*?)(?=Table: \w+|\s*$)/g;
+    let match;
+    let filteredString = 'Tables:\n\n';
+
+    while ((match = tableRegex.exec(originalString)) !== null) {
+        const tableName = match[1];
+        const tableContent = match[2];
+        if (tablesToKeep.includes(tableName)) {
+            filteredString += `Table: ${tableName}\n${tableContent}\n`;
+        }
+    }
+
+    return filteredString.trim();
+}
+
   getGraph(): CompiledStateGraph<DataRecoveryState> {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
@@ -57,32 +75,24 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
         const model = await createStructuredResponseAgent(getFasterModel(), getSources);
 
-        const getAllSources = [
-          {
-            function_name: "getAllSources",
-            arguments: {
-            },
-          }
-        ]
+        const allSources = dataExample; // We would get this from the function like the examples below, but we don't have that function working in the frontend yet
 
-        this.functions[0]('tool', getAllSources); // Example using to get all sources
-
+        //console.log('allSources', allSources);
+        console.log('invoking model');
         const message = await model.invoke([
           new HumanMessage(`Based on the following table names and their structure,
-          Users table: contains all data about users including their name, email, and phone number.
-          Orders table: contains all data about orders including the order number, customer name, and order date.
-          Products table: contains all data about products including the product name, price, and quantity.
+          ${allSources}
           Please provide the best sources to use for the query: ${(state.task)}`)
         ]);
-
+        console.log('message', message);
         const sources = (message as any).sources;
 
-        const examples = ["Table Users: User name Examples: John, Jane, Mary, Table Orders: Order number Examples: 1234, 5678, 9012, Table Products: Product name Examples: Apple, Banana, Orange"];
+        const examples = this.filterTables(allSources, sources); 
 
         return {
           ...state,
           relevantSources: sources as any,
-          examples: examples,
+          examples: [examples],
         };
       })
       .addEdge(START, "recover_sources")
@@ -106,10 +116,12 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
             ${(state.examples)}
             please provide a SQL query that returns the following columns:
             ${(state.task)}`;
-
+        console.log('Create SQL ', messageContent);
         const message = await model.invoke(messageContent);
 
         const sqlQuery = (message as any).SQL;
+
+        console.log('sqlQuery', sqlQuery);
 
         return {
           ...state,
@@ -118,7 +130,16 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       })
       .addEdge("recover_sources", "create_sql_query")
       .addNode("evaluate_result", async (state) => {
-        const sqlResults = ["Rachel", "John"];
+        const getSQLResults = [
+          {
+            function_name: "getSQLResults",
+            arguments: {
+              sqlQuery: state.sqlQuery,
+            },
+          }
+        ]
+
+        const sqlResults = await this.functions[0]('tool', getSQLResults); // Example using to get the result of the SQL query, need to update this name to make it work with the frontend by default
 
         const getFeedback = z.object({
           isCorrect: z.boolean().describe('is Correct or not'),
@@ -144,6 +165,9 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
         const isCorrect = (message as any).isCorrect;
         const feedbackMessage = (message as any).feedbackMessage;
+
+        console.log('isCorrect', isCorrect);
+        console.log('feedbackMessage', feedbackMessage);
 
         if (isCorrect) {
           return {

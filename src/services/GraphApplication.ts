@@ -119,9 +119,9 @@ export class GraphApplication {
     };
 
     const subgraphs = {
-      /*getData:{
+      getData:{
         agentSubGraph: new DataRecoveryGraph([clientAgentFunction]),
-      } */
+      } 
     }
     
 
