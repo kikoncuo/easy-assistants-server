@@ -4,7 +4,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
-import { TaskState } from '../models/TaskState';
+import { Message, TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
 import { StringWithAutocomplete } from '@langchain/core/utils/types';
@@ -117,18 +117,23 @@ function duplicateCurlyBrackets(str: string): string {
   return str.replace(/{/g, '{{').replace(/}/g, '}}');
 }
 
+function stringifyMessages(messages: Message[]): string[][] {
+  return messages.flatMap(message => message.text);
+}
+
 // nodes
 
 export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
-  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: string[][] }> {
+  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: Message[] }> {
     try {
       const task = state.task;
       const results = state.results || {};
       const messages = state.messages || [];
-      const messagesTyped = messages as any;
+      const messagesTyped = stringifyMessages(messages) as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
-      
+      console.log('loggggggggggggggggggggg', JSON.stringify(chatPromptTemplate, null, 2))
       const chain = chatPromptTemplate.pipe(plannerModel);
+      console.log('from get plan node', state)
 
       const plan = await chain.invoke({ task: task }); 
 
@@ -137,12 +142,14 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const planString = duplicateCurlyBrackets(JSON.stringify(plan));
       // TODO: use actual chain output instead of emulating messages
       const historyPromptTemplate = [['human', "Here is a task: "+task],['ai', planString]]; // TODO: This may cause errors if other models than gpt are used for plannerModel, also use prompt format https://js.langchain.com/v0.2/docs/how_to/prompts_partial 
+      const historyMessage: Message = {text: historyPromptTemplate}
+      const allHistory = [...state.messages, historyMessage]
 
       outputHandler('plan', fullPlan);
 
       Logger.log('Plan steps: ', stepsArray);
 
-      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: historyPromptTemplate  };
+      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: allHistory  };
     } catch (error) {
       Logger.warn('Error in plan node:', error);
       return {
@@ -170,6 +177,22 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);      
       const functions = extractFunctionDetails(result);
       const results = await toolFunction('tool', functions);
+      console.log('functionsssssssssssssssss',functions)
+      const lastMessageIndex = state.messages.length - 1;
+      const lastMessage = state.messages[lastMessageIndex];
+      const updatedAdditionalData = {
+        ...lastMessage.additionalData,
+        functions, 
+      };
+      
+      const updatedLastMessage = {
+        ...lastMessage,
+        additionalData: updatedAdditionalData,
+      };
+      
+      state.messages[lastMessageIndex] = updatedLastMessage;
+      console.log("state from agent nodeeeeeeeeeeeeeeeeee",state.messages)
+
       _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
         `Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`,
@@ -201,7 +224,7 @@ export function getDirectResponseNode(directResponseModel: BaseChatModel, output
 }
 
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
-  async function solve(state: TaskState): Promise<{ result: string, messages: string[][]  }> {
+  async function solve(state: TaskState): Promise<{ result: string, messages: Message[]  }> {
     try {
       let plan = '';
       for (let [_plan, stepName, tool, toolInput] of state.steps) {
@@ -212,6 +235,10 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
         }
         plan += `Plan: ${_plan}\n${stepName} = ${tool}[${toolInput}]`;
       }
+      console.log('from get solve node', state)
+      const stateMessage = state.messages
+      stateMessage[state.messages.length - 1].additionalData = state.results
+
 
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['human', solvePrompt]]);
 
@@ -230,10 +257,10 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
       outputHandler('result', finalResponse);
       Logger.log('Final response:', finalResponse)
 
-      const historyPromptTemplate = [['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]; // TODO: clean this up
+      const historyPromptTemplate: Message = {text:[['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]}; // TODO: clean this up
+      const stateHistory = [...stateMessage, historyPromptTemplate]
 
-
-      return { result: finalResponse, messages: historyPromptTemplate};
+      return { result: finalResponse, messages: stateHistory};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
       

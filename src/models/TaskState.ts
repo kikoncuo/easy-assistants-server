@@ -2,6 +2,8 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringWithAutocomplete } from "@langchain/core/utils/types";
 import { MessageContent, MessageType } from "langchain/schema";
 
+export type Message = { text: string[][]; additionalData?: any; };
+
 export class TaskState {
   task: string;
   plan_string: string;
@@ -9,7 +11,7 @@ export class TaskState {
   results: { [key: string]: string } | null;
   result: string;
   directResponse: string | null;
-  messages: string[][];
+  messages: Message[];
 
   constructor(
     task: string,
@@ -18,7 +20,7 @@ export class TaskState {
     results: { [key: string]: string } | null,
     result: string,
     directResponse: string,
-    messages: string[][],
+    messages: Message[],
   ) {
     this.task = task;
     this.plan_string = plan_string;
