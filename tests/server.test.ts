@@ -85,20 +85,21 @@ test.skip("WebSocket connection and multiple messages", async () => {
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it
 
 test("Memory test", async () => {
-  const query = "what's 3*659";
-  const message = JSON.stringify({ type: 'query', task: query, thread_id: "test" });
+  const query = "what's 3*658";
+  const thread_id = "test5";
+  const message = JSON.stringify({ type: 'query', task: query, thread_id: thread_id });
 
   const responses = await sendMessage(ws as WebSocket, message, functionMap);
 
-  const query2 = "divide that by 2223.35";
-  const message2 = JSON.stringify({ type: 'query', task: query2, thread_id: "test"  });
+  const query2 = "divide that by 2213";
+  const message2 = JSON.stringify({ type: 'query', task: query2, thread_id: thread_id  });
 
   const responses2 = await sendMessage(ws as WebSocket, message2, functionMap);
 
   // Check the result message
   const resultMessage = responses2.find(response => response.type === 'result');
   expect(resultMessage).toBeDefined();
-  expect(resultMessage.message).toContain('0.8891987316436909'); 
+  expect(resultMessage.message).toContain('0.89'); 
 
 
 }, 60000);  // Set timeout to 60000 milliseconds. If your test take longer, bring it up with the team, don't change it

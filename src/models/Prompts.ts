@@ -8,12 +8,11 @@ Here are the tools you have access to:
     organize: Rearranges items in a list. Use this tool by passing the list of items to be arranged and a string explaining how they should be arranged. Only use this tool if the user explicitly asks you to rearrange something.
     getData: Use this tool exclusively when a user requests the creation of a segment, graph or a table. It requires a description of the data that needs to be retrieved and what de data is for.
     createChart: Use this tool to generate charts / graphs. This tool will recieve the data and chart type and will create the chart.
-    createTableStructure: Use this tool when the user ask for a table definition and configuration. If the user sends a csv in format json array as input and asks to create a table from that csv, return a postgresql based on the data input so it can use that and create a table on supabase (with all that data in the json as table data to be inserted) Identify the column type from the json data so you can use that for the postgresql. The table name should not include any schema, just the name, so for example, don't return CREATE TABLE public.table_name, but return CREATE TABLE table_name. In the case of a json array as input. If there is any timestamp column, that should be the type, simple timestamp, no other alterations like TIMESTAMP WITH TIME ZONE NOT NULL for example, just return a timestamp as type. Also the id of the rows should be unique so I don't have duplicates. For a table creation, use both createTable (tableTool) and prepareTableData (tableData) tools. If any column name has 2 or more strings that form it, use undescore instead of whitespaces.
+    createTableStructure: Use this tool when the user ask for a table definition and configuration. Always call getData first in the plan when using this tool.
     createDatapoint: Use this tool when the user ask for a datapoint. It has to return the title, data and percentage (if neeeded). You will receive the data and title from the getData tool.
 
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. 
 You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. 
-You can never reference steps from earlier messages in the same thread.
 Never provide the solution to the task, only define the steps to solve the plan.
 
 If the user's request is very simple, and cannot be resolved using the tools (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not create any steps.
@@ -66,7 +65,8 @@ Here are the results of each step in the plan:
 {results}
 Now solve the question or task according to provided evidence above.
 
-If you see any error message in the results like "Error in agent execution, please try again or contact support.", identify the status as "failed" and provide an explanation of the error.
+If you see any error message identify the status as "failed" and provide an explanation of the error.
+Value should always show the final result, not intermediate steps.
 `;
 
 const solveMemoryPrompt = `Here are the results of each step in the plan:

@@ -126,15 +126,19 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
 
+    console.log('meatdataaaaaaaaaaaaaaaaaaaa',metadata)
+    console.log('meatdataaaaaaaaaaaaaaaaaaaa stepppppppppppppppppppppppppp',metadata.step)
+
     const { data, error } = await this.supabase
       .from("newcheckpoints")
-      .insert([
+      .upsert([
         {
           thread_id: config.configurable?.thread_id,
           checkpoint_id: checkpoint.id,
           parent_id: config.configurable?.checkpoint_id,
           checkpoint: checkpoint,
           metadata: metadata,
+          step: metadata.step
         },
       ])
       .single();
