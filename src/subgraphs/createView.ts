@@ -7,7 +7,7 @@ import { dataExample } from './test/DataExample';
 
 
 // Define a specific state type
-interface DataRecoveryState extends BaseState {
+interface ViewCreationState extends BaseState {
   relevantSources: string[];
   examples: string[];
   sqlQuery: string;
@@ -15,10 +15,10 @@ interface DataRecoveryState extends BaseState {
   feedbackMessage: string | null;
 }
 
-export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
+export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
   private functions: Function[];
   constructor(functions: Function[]) { // Here we can pass any functions we want to use in the subgraph
-    const graphState: StateGraphArgs<DataRecoveryState>["channels"] = {
+    const graphState: StateGraphArgs<ViewCreationState>["channels"] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => "",
@@ -64,12 +64,14 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     return filteredString.trim();
 }
 
-  getGraph(): CompiledStateGraph<DataRecoveryState> {
-    const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
+  getGraph(): CompiledStateGraph<ViewCreationState> {
+    const subGraphBuilder = new StateGraph<ViewCreationState>({ channels: this.channels });
 
     subGraphBuilder
       .addNode("recover_sources", async (state) => {
         const getSources = z.object({
+          isPossible: z.boolean().describe('is the view creation possible or not'),
+          explanation: z.string().optional().describe('the data that was missing to create the view'),
           sources: z.array(z.string()).describe('The best sources to use for the query'),
         });
 
@@ -77,13 +79,24 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
         const allSources = dataExample; // We would get this from the function like the examples below, but we don't have that function working in the frontend yet
 
+        //console.log('allSources', allSources);
+        console.log('invoking model');
         const message = await model.invoke([
           new HumanMessage(`Based on the following table names and their structure,
           ${allSources}
           Please provide the best sources to use for the query: ${(state.task)}`)
         ]);
-        console.log('sources', message);
+        console.log('message', message);
         const sources = (message as any).sources;
+        const explanation = (message as any).explanation;
+        const isPossible = (message as any).isPossible;
+        if (isPossible) {
+          return {
+            ...state,
+            resultStatus: isPossible as any,
+            examples: [],
+          };
+        }
 
         const examples = this.filterTables(allSources, sources); 
 
@@ -93,10 +106,17 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           examples: [examples],
         };
       })
+      .addConditionalEdges("recover_sources", (state) => {
+        if (state.resultStatus == "false") {
+          return END;
+        } else {
+          return "create_sql_query";
+        }
+      })
       .addEdge(START, "recover_sources")
-      .addNode("create_sql_query", async (state) => {
+      .addNode("create_view_query", async (state) => {
         const getSQL = z.object({
-          SQL: z.string().describe('SQL query with all the keywords in lowercase. IE: do select * from users where age > 30 limit 10 instead of SELECT * FROM users WHERE age > 30 LIMIT 10'),
+          SQL: z.string().describe('SQL query which creates a view.'),
         });
 
         const model = createStructuredResponseAgent(getFasterModel(), getSQL);
@@ -104,11 +124,11 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         const messageContent = state.feedbackMessage
           ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
             ${(state.examples)}
-            please provide a revised SQL query that returns the following columns:
+            please provide a revised SQL query that creates a view meeting the following requirements:
             ${(state.task)}`
           : `Based on the following tables with examples,
             ${(state.examples)}
-            please provide a SQL query that returns the following columns:
+            please provide a revised SQL query that creates a view meeting the following requirements:
             ${(state.task)}`;
         //console.log('Create SQL message', messageContent);
         const message = await model.invoke(messageContent);
@@ -122,7 +142,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           sqlQuery: sqlQuery as any,
         };
       })
-      .addEdge("recover_sources", "create_sql_query")
+      .addEdge("recover_sources", "create_view_query")
       .addNode("evaluate_result", async (state) => {
         const getSQLResults = [
           {
@@ -133,7 +153,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           }
         ]
 
-        const sqlResults = await this.functions[0]('tool', getSQLResults); // Example using to get the result of the SQL query, need to update this name to make it work with the frontend by default
+        const sqlResults = await this.functions[0]('tool', getSQLResults); // Here we give it the first 2 rows of the view or the error message if the query is incorrect
 
         const getFeedback = z.object({
           feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect. Include the error and hints if there are any. in you include a new query make sure that limit is not in uppercase'),
@@ -151,11 +171,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
            ${(sqlResults)}
            These are the tables descriptions and their columns with examples:
            ${(state.examples)}
-           Was this SQL query correct?
+           Was the creation of this view correct?
            ${(state.sqlQuery)}
-           isCorrect should be true if the results from the query looks correct, false if it looks incorrect, don't make it false if the query is good but the data is not correct.
-           If not, please provide a feedback message telling us what we did wrong and how to create a better query.
-           Here is an example of an SQL query:`)
+           isCorrect should be true if the data recovered from the query looks correct, false if it looks incorrect, don't make it false if the query is good but the data is not correct.
+           If not, please provide a feedback message telling us what we did wrong and how to create a better query.`)
         ]);
 
         const isCorrect = (message as any).isCorrect;
@@ -178,9 +197,9 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           };
         }
       })
-      .addEdge("create_sql_query", "evaluate_result")
+      .addEdge("create_view_query", "evaluate_result")
       .addConditionalEdges("evaluate_result", (state) => {
-        if (state.resultStatus === "correct") {
+        if (state.resultStatus == "correct") {
           return END;
         } else {
           return "create_sql_query";

@@ -128,6 +128,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const messages = state.messages || [];
       const messagesTyped = messages as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
+      console.log(chatPromptTemplate);
       
       const chain = chatPromptTemplate.pipe(plannerModel);
 

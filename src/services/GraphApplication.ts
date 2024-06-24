@@ -25,6 +25,7 @@ import {
 } from '../models/Tools';
 
 import { DataRecoveryGraph } from '../subgraphs/getData';
+import { ViewCreationGraph } from '../subgraphs/createView';
 
 export class GraphApplication {
   private graphManager: GraphManager;
@@ -121,7 +122,10 @@ export class GraphApplication {
     const subgraphs = {
       getData:{
         agentSubGraph: new DataRecoveryGraph([clientAgentFunction]),
-      } 
+      }, 
+      createView: {
+        agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
+      }
     }
     
 
