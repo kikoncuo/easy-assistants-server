@@ -90,9 +90,9 @@ function promptUserInput() {
   }
   if (query == "db") {
     // If the query is empty, set it to the result of 3*6 divided by 2
-    query = "Create a graph to highlight my top 10 customers in terms of their TLV, my tables are Transactions, Users and Products"
-    Logger.log(`Using DB test. Create a graph to highlight my top 10 customers in terms of their TLV, my tables are Transactions, Users and Products`);
-  }
+    query = "give me my top 5 customers who bought the most products"
+    Logger.log(`Using DB test. give me my top 5 customers who bought the most products`);
+  } 
 
   if (ws) {
     Logger.time('planTimer'); // Start the timer
