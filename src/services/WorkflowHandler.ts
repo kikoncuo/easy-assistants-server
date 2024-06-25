@@ -22,7 +22,7 @@ function _getCurrentTask(state: TaskState): number | null {
   }
 }
 
-function processSteps(inputData: InputData | AIMessage, results: { [key: string]: string } | null): { stepsArray: string[][]; fullPlan: string, directResponse: string } {
+function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string, directResponse: string } {
   let steps: any[];
   let directResponse: string;
   // Sometimes models return an AIMessage, instead of returning the structured data directly
@@ -45,19 +45,6 @@ function processSteps(inputData: InputData | AIMessage, results: { [key: string]
     return { stepsArray: [], fullPlan: "", directResponse };
   }
 
-  // Simpler AIs forget to set the stepID to a new step when it has been used on an earlier message, so we do this check and update it to the next available step
-  if (results && Object.keys(results).length > 0) {
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      if (step.stepId in results) {
-        Logger.warn("Step id: ", step.stepId, " was found in the results, updating it to the next available step");
-        Logger.warn("step: ", "#E" + (Object.keys(results).length + 1));
-        step.stepId = "#E" + (Object.keys(results).length + 1);
-      }
-      Logger.log("step: ", step.stepId);
-      Logger.log("results: ", results);
-    }
-  }
   // Anthropic tends to return the steps as a string, so we need to parse it
   if (typeof steps[0] === 'string') {
     try {
@@ -137,7 +124,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 
       const plan = await chain.invoke({ task: task }); 
 
-      const { stepsArray, fullPlan, directResponse } = processSteps(plan, {});
+      const { stepsArray, fullPlan, directResponse } = processSteps(plan);
 
       const planString = duplicateCurlyBrackets(JSON.stringify(plan));
       // TODO: use actual chain output instead of emulating messages
