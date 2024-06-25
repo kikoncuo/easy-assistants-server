@@ -13,7 +13,6 @@ Here are the tools you have access to:
 
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. 
 You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. 
-You can never reference steps from earlier messages in the same thread.
 Never provide the solution to the task, only define the steps to solve the plan.
 
 If the user's request is very simple, and cannot be resolved using the tools (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not create any steps.
