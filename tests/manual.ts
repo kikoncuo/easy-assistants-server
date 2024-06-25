@@ -96,7 +96,7 @@ function promptUserInput() {
 
   if (ws) {
     Logger.time('planTimer'); // Start the timer
-    ws.send(JSON.stringify({ type: 'query', task: query }));
+    ws.send(JSON.stringify({ type: 'query', task: query, thread_id: "test6"  }));
   }
 }
 
