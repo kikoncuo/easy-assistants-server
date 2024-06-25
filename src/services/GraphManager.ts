@@ -52,7 +52,12 @@ export class GraphManager {
         default: () => "",
       },
       directResponse: {
-        value: (x?: string | null, y?: string | null) => y ?? x ?? null,
+        value: (x?: string | null, y?: string | null) => {
+          if (y == null) {
+            return null;
+          }
+          return y ?? x ?? null;
+        },
         default: () => null,
       },
       messages: {
