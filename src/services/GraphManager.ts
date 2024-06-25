@@ -40,7 +40,7 @@ export class GraphManager {
         default: () => "",
       },
       steps: {
-        value: (x: [string, string, string, string][], y: [string, string, string, string][]) => x.concat(y),
+        value: (x: [string, string, string, string][], y: [string, string, string, string][]) => y ?? x ?? [],
         default: () => [],
       },
       results: {

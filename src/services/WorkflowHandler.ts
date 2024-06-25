@@ -124,20 +124,20 @@ function stringifyMessages(messages: Message[]): string[][] {
 // nodes
 
 export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
-  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: Message[] }> {
+  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: Message[], results: any }> {
     try {
       const task = state.task;
       const results = state.results || {};
       const messages = state.messages || [];
       const messagesTyped = stringifyMessages(messages) as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
-      console.log('loggggggggggggggggggggg', JSON.stringify(chatPromptTemplate, null, 2))
+      console.log('messages', [['system', systemPrompt],...messagesTyped,['human', planPrompt]])
       const chain = chatPromptTemplate.pipe(plannerModel);
-      console.log('from get plan node', state)
+      //console.log('from get plan node', state)
 
       const plan = await chain.invoke({ task: task }); 
 
-      const { stepsArray, fullPlan, directResponse } = processSteps(plan, results);
+      const { stepsArray, fullPlan, directResponse } = processSteps(plan, {});
 
       const planString = duplicateCurlyBrackets(JSON.stringify(plan));
       // TODO: use actual chain output instead of emulating messages
@@ -149,7 +149,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 
       Logger.log('Plan steps: ', stepsArray);
 
-      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: allHistory  };
+      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: allHistory, results: {}  };
     } catch (error) {
       Logger.warn('Error in plan node:', error);
       return {
@@ -157,6 +157,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
         plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.',
         directResponse: 'We had a problem creating a response for your requests. Please try again or contact support.',
         messages: [],
+        results: {},
       }; // TODO: Create a dedicated error node
     }
   }
@@ -167,6 +168,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) {
   async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
+      console.log('state at agent node', state)
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
       let [, stepName, tool, toolInput] = state.steps[_step - 1];
@@ -177,7 +179,6 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);      
       const functions = extractFunctionDetails(result);
       const results = await toolFunction('tool', functions);
-      console.log('functionsssssssssssssssss',functions)
       const lastMessageIndex = state.messages.length - 1;
       const lastMessage = state.messages[lastMessageIndex];
       const updatedAdditionalData = {
@@ -191,7 +192,6 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       };
       
       state.messages[lastMessageIndex] = updatedLastMessage;
-      console.log("state from agent nodeeeeeeeeeeeeeeeeee",state.messages)
 
       _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
@@ -199,6 +199,7 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       );
       return { results: _results };
     } catch (error) {
+      console.log('error in agent node', error)
       Logger.warn('Error in agent execution:', error);
       return { results: { error: 'Error in agent execution, please try again or contact support.' } };
     }
@@ -235,7 +236,7 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
         }
         plan += `Plan: ${_plan}\n${stepName} = ${tool}[${toolInput}]`;
       }
-      console.log('from get solve node', state)
+      //console.log('from get solve node', state)
       const stateMessage = state.messages
       stateMessage[state.messages.length - 1].additionalData = state.results
 
@@ -259,6 +260,8 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
 
       const historyPromptTemplate: Message = {text:[['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]}; // TODO: clean this up
       const stateHistory = [...stateMessage, historyPromptTemplate]
+
+      console.log('stateHistory', stateHistory) 
 
       return { result: finalResponse, messages: stateHistory};
     } catch (error) {
