@@ -65,7 +65,8 @@ Here are the results of each step in the plan:
 {results}
 Now solve the question or task according to provided evidence above.
 
-If you see any error message in the results like "Error in agent execution, please try again or contact support.", identify the status as "failed" and provide an explanation of the error.
+If you see any error message identify the status as "failed" and provide an explanation of the error.
+Value should always show the final result, not intermediate steps.
 `;
 
 const solveMemoryPrompt = `Here are the results of each step in the plan:
