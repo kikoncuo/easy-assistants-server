@@ -66,14 +66,6 @@ function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][
   return { stepsArray, fullPlan, directResponse };
 }
 
-function processResults(results: any): any {
-  if (results && results.content) { 
-    return JSON.parse(results.content);
-  } else {
-    return results;
-  }
-}
-
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
   const functionDetails: FunctionDetails[] = [];
 
