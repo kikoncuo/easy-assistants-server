@@ -43,6 +43,10 @@ export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
         value: (x: string | null, y?: string | null) => (y ? y : x),
         default: () => null,
       },
+      finalResult: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => "",
+      },
     };
     super(graphState);
     this.functions = functions;
@@ -110,16 +114,17 @@ export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
         if (state.resultStatus == "false") {
           return END;
         } else {
-          return "create_sql_query";
+          return "create_view_query";
         }
       })
       .addEdge(START, "recover_sources")
       .addNode("create_view_query", async (state) => {
         const getSQL = z.object({
+          explanation: z.string().optional().describe('Explanation of the view created, a marketing team will read this explanation, make sure it is clear and understandable by someone non technical'),
           SQL: z.string().describe('SQL query which creates a view.'),
         });
 
-        const model = createStructuredResponseAgent(getFasterModel(), getSQL);
+        const model = createStructuredResponseAgent(getStrongestModel(), getSQL);
 
         const messageContent = state.feedbackMessage
           ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
@@ -130,16 +135,24 @@ export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
             ${(state.examples)}
             please provide a revised SQL query that creates a view meeting the following requirements:
             ${(state.task)}`;
-        //console.log('Create SQL message', messageContent);
+            
         const message = await model.invoke(messageContent);
 
         const sqlQuery = (message as any).SQL;
+        const explanation = (message as any).explanation;
 
         console.log('sqlQuery', sqlQuery);
+        console.log('explanation', explanation);
+
+        // combine the explanation with the sqlQuery in a JSON object
+        const combinedExplanation = {
+          sqlQuery: sqlQuery,
+          explanation: explanation,
+        };
 
         return {
           ...state,
-          sqlQuery: sqlQuery as any,
+          sqlQuery: combinedExplanation as any,
         };
       })
       .addEdge("recover_sources", "create_view_query")
@@ -147,6 +160,15 @@ export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
         const getSQLResults = [
           {
             function_name: "getSQLResults",
+            arguments: {
+              sqlQuery: state.sqlQuery,
+            },
+          }
+        ]
+
+        const undoTableCreation = [
+          {
+            function_name: "undoTableCreation",
             arguments: {
               sqlQuery: state.sqlQuery,
             },
@@ -168,7 +190,7 @@ export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
            Given the following SQL query,
            ${(state.sqlQuery)}
            Which returned the following results:
-           ${(sqlResults)}
+           ${(JSON.stringify(sqlResults.sqlQuery))}
            These are the tables descriptions and their columns with examples:
            ${(state.examples)}
            Was the creation of this view correct?
@@ -182,14 +204,20 @@ export class ViewCreationGraph extends AbstractGraph<ViewCreationState> {
 
         console.log('isCorrect', isCorrect);
         console.log('feedbackMessage', feedbackMessage);
+        console.log('state', state);
 
         if (isCorrect) {
           return {
             ...state,
             resultStatus: "correct",
             feedbackMessage: null,
+            finalResult: "View created successfully",
           };
         } else {
+          const undoResult = await this.functions[0]('tool', undoTableCreation);
+          if (!undoResult.undoTableCreation) {
+            console.log('Error undoing table creation', undoResult);
+          }
           return {
             ...state,
             resultStatus: "incorrect",

@@ -192,9 +192,9 @@ export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a
         toolInput = toolInput.replace(k, v);
       }
       const result = await graph.getGraph().invoke({task:toolInput});      
-      _results[stepName] = result;
+      _results[stepName] = result.finalResult;
       Logger.log(
-        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${JSON.stringify(result)}`,
+        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${_results[stepName]}`,
       );
       return { results: _results };
     } catch (error) {
