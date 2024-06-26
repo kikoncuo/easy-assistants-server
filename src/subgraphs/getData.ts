@@ -1,173 +1,244 @@
 import { AbstractGraph, BaseState } from "./baseGraph";
-import { createStructuredResponseAgent, getFasterModel } from "../models/Models";
+import { createStructuredResponseAgent, anthropicSonnet } from "../models/Models";
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from 'zod';
+import { dataExample } from './test/DataExample';
+import Logger from '../utils/Logger';
+
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
-  relevantSources: string[];
-  examples: string[];
-  sqlQuery: string;
-  resultStatus: string | null;
-  feedbackMessage: string | null;
+    examples: string[];
+    sqlQuery: string;
+    explanation: string;
+    resultStatus: boolean | false;
+    feedbackMessage: string | null;
+    /*explorationQueries: {
+        query: string;
+        explanation: string;
+    }[];
+    explorationResults: {
+        query: string;
+        explanation: string;
+        result: string;
+    }[];*/
+    finalResult: string;
 }
 
-export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
-  private functions: Function[];
-  constructor(functions: Function[]) { // Here we can pass any functions we want to use in the subgraph
-    const graphState: StateGraphArgs<DataRecoveryState>["channels"] = {
-      task: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => "",
-      },
-      relevantSources: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      examples: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      sqlQuery: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => "",
-      },
-      resultStatus: {
-        value: (x: string | null, y?: string | null) => (y ? y : x),
-        default: () => null,
-      },
-      feedbackMessage: {
-        value: (x: string | null, y?: string | null) => (y ? y : x),
-        default: () => null,
-      },
+// Helper function to filter tables
+function filterTables(originalString: string, tablesToKeep: string[]): string {
+    const tableRegex = /Table: (\w+)\n([\s\S]*?)(?=Table: \w+|\s*$)/g;
+    let match;
+    let filteredString = 'Tables:\n\n';
+
+    while ((match = tableRegex.exec(originalString)) !== null) {
+        const tableName = match[1];
+        const tableContent = match[2];
+        if (tablesToKeep.includes(tableName)) {
+            filteredString += `Table: ${tableName}\n${tableContent}\n`;
+        }
+    }
+
+    return filteredString.trim();
+}
+
+// Node function to recover sources
+async function recoverSources(state: DataRecoveryState, dataExample: string, filterTables: (originalString: string, tablesToKeep: string[]) => string): Promise<DataRecoveryState> {
+    const getSources = z.object({
+        sources: z.array(z.string()).describe('Array with the names of the sources'),
+        isPossible: z.string().describe('"true" if the data recovery possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable'),
+        moreExamples: z.string().optional().describe('If isPossible is false, provide the tables you need more examples of'),
+    });
+
+    const model = await createStructuredResponseAgent(anthropicSonnet(), getSources);
+    const allSources = dataExample;
+
+    const message = await model.invoke([
+        new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided table descriptions and examples, and determine which data sources could be useful in addressing the request.
+
+        First, review the following table descriptions with 3 unique examples per table:
+        ${allSources}
+        Now, consider the following request:
+        ${(state.task)}
+        To complete this task, follow these steps:
+
+        1. Carefully read and understand the request.
+        2. Review each data source in the provided list.
+        3. For each data source, consider whether it contains information that could be relevant to the request in any way, even if it's not a perfect match.
+        4. Keep in mind that multiple data sources may be relevant to a single request.
+        5. If a data source seems even slightly relevant, include it in your list.
+        `)
+    ]);
+
+    const sources = (message as any).sources;
+    const examples = filterTables(allSources, sources);
+    const isPossible = (message as any).isPossible;
+    const moreExamples = (message as any).moreExamples;
+    Logger.log('\nisPossible', isPossible); // TODO: Use this to decide if we should continue and do exploratory tasks if the result is maybe or fail the request if it's false
+    Logger.log('\nsources', sources); // TODO: Use this to decide if we should continue and do exploratory tasks or not 
+    Logger.log('\nmoreExamples', moreExamples);
+
+    return {
+        ...state,
+        examples: [examples],
     };
-    super(graphState);
-    this.functions = functions;
-  }
+}
 
-  getGraph(): CompiledStateGraph<DataRecoveryState> {
-    const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
+// Node function to create SQL query
+async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const getSQL = z.object({
+        assumptions: z.string().optional().describe('Assumptions we made about what the user said vs how we built the query and why we had to make them IE: the user said "give me my beans product" and there is no column named "beans" in the table, but there is a column group with a variable Whole Bean/Teas, we could say We assumed that \"beans products\" refer to the Whole Bean/Teas product group because there is no other product column that references beans. Don\'t include any SQL language.'),  
+        SQL: z.string().describe('SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs.'),
+    });
 
-    subGraphBuilder
-      .addNode("recover_sources", async (state) => {
-        const getSources = z.object({
-          sources: z.array(z.string()).describe('The best sources to use for the query'),
-        });
+    const model = await createStructuredResponseAgent(anthropicSonnet(), getSQL);
 
-        const model = await createStructuredResponseAgent(getFasterModel(), getSources);
-
-        const getAllSources = [
-          {
-            function_name: "getAllSources",
-            arguments: {
-            },
-          }
-        ]
-
-        this.functions[0]('tool', getAllSources); // Example using to get all sources
-
-        const message = await model.invoke([
-          new HumanMessage(`Based on the following table names and their structure,
-          Users table: contains all data about users including their name, email, and phone number.
-          Orders table: contains all data about orders including the order number, customer name, and order date.
-          Products table: contains all data about products including the product name, price, and quantity.
-          Please provide the best sources to use for the query: ${(state.task)}`)
-        ]);
-
-        const sources = (message as any).sources;
-
-        const examples = ["Table Users: User name Examples: John, Jane, Mary, Table Orders: Order number Examples: 1234, 5678, 9012, Table Products: Product name Examples: Apple, Banana, Orange"];
-
-        return {
-          ...state,
-          relevantSources: sources as any,
-          examples: examples,
-        };
-      })
-      .addEdge(START, "recover_sources")
-      .addNode("create_sql_query", async (state) => {
-        const getSQL = z.object({
-          SQL: z.string().describe('SQL query'),
-        });
-
-        const model = createStructuredResponseAgent(getFasterModel(), getSQL);
-
-        const messageContent = state.feedbackMessage
-          ? `Based on the feedback: "${state.feedbackMessage}", and the following tables,
-            ${(state.relevantSources)}
-            and the following examples,
+    const messageContent = state.feedbackMessage
+        ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
             ${(state.examples)}
             please provide a revised SQL query that returns the following columns:
-            ${(state.task)}`
-          : `Based on the following tables,
-            ${(state.relevantSources)}
-            and the following examples,
+            ${(state.task)}
+            the result should be readable by a non-technical person.
+            `
+        : `Based on the following tables with examples,
             ${(state.examples)}
             please provide a SQL query that returns the following columns:
-            ${(state.task)}`;
+            ${(state.task)}
+            the result should be readable by a non-technical person.
+            `;
 
-        const message = await model.invoke(messageContent);
+    const message = await model.invoke(messageContent);
+    const sqlQuery = (message as any).SQL;
+    const assumptions = (message as any).assumptions;
 
-        const sqlQuery = (message as any).SQL;
+    Logger.log('sqlQuery', sqlQuery);
+    Logger.log('assumptions', assumptions);
 
-        return {
-          ...state,
-          sqlQuery: sqlQuery as any,
-        };
-      })
-      .addEdge("recover_sources", "create_sql_query")
-      .addNode("evaluate_result", async (state) => {
-        const sqlResults = ["Rachel", "John"];
+    return {
+        ...state,
+        sqlQuery: sqlQuery,
+        explanation: assumptions,
+    };
+}
 
-        const getFeedback = z.object({
-          isCorrect: z.boolean().describe('is Correct or not'),
-          feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect'),
-        });
+// Node function to evaluate result
+async function evaluateResult(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
+    const getSQLResults = [
+        {
+            function_name: "getSQLResults",
+            arguments: {
+                sqlQuery: state.sqlQuery,
+                explanation: state.explanation,
+            },
+        }
+    ];
 
-        const model = createStructuredResponseAgent(getFasterModel(), getFeedback);
+    const sqlResults = JSON.stringify((await functions[0]('tool', getSQLResults)));
 
-        const message = await model.invoke([
-          new HumanMessage(`Based on the following user request:
+    const getFeedback = z.object({
+      isCorrect: z.boolean().describe('does the data recovered from the query looks correct or not'),
+      feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect. Include the error and hints if there are any. Only include this if the query is incorrect.'),
+    });
+
+    const model = await createStructuredResponseAgent(anthropicSonnet(), getFeedback);
+
+    const message = await model.invoke([
+        new HumanMessage(`Based on the following user request:
            ${(state.task)}
            Given the following SQL query,
            ${(state.sqlQuery)}
            Which returned the following results:
            ${(sqlResults)}
            These are the tables descriptions and their columns with examples:
-           ${(state.relevantSources)}
            ${(state.examples)}
            Was this SQL query correct?
            ${(state.sqlQuery)}
-           If not, please provide a feedback message telling us what we did wrong and how to create a better query.`)
-        ]);
+           isCorrect should be true if the results from the query looks correct and the query solves the task, false if it the results look incorrect or the query doesn't solve the task.
+           If not, please provide a feedback message telling us what we did wrong and how to create a better query.
+           `)
+    ]);
 
-        const isCorrect = (message as any).isCorrect;
-        const feedbackMessage = (message as any).feedbackMessage;
+    const isCorrect = (message as any).isCorrect;
+    const feedbackMessage = (message as any).feedbackMessage;
 
-        if (isCorrect) {
-          return {
-            ...state,
-            resultStatus: "correct",
-            feedbackMessage: null,
-          };
-        } else {
-          return {
-            ...state,
-            resultStatus: "incorrect",
-            feedbackMessage: feedbackMessage,
-          };
-        }
-      })
-      .addEdge("create_sql_query", "evaluate_result")
-      .addConditionalEdges("evaluate_result", (state) => {
-        if (state.resultStatus === "correct") {
-          return END;
-        } else {
-          return "create_sql_query";
-        }
-      });
+    Logger.log('isCorrect', isCorrect);
+    Logger.log('feedbackMessage', feedbackMessage);
 
-    return subGraphBuilder.compile();
-  }
+    return {
+      ...state,
+      resultStatus: isCorrect,
+      feedbackMessage: feedbackMessage,
+      finalResult: state.sqlQuery
+    };
+
+}
+
+// DataRecoveryGraph Class
+export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
+    private functions: Function[];
+
+    constructor(functions: Function[]) {
+        const graphState: StateGraphArgs<DataRecoveryState>["channels"] = {
+            task: {
+                value: (x: string, y?: string) => (y ? y : x),
+                default: () => "",
+            },
+            examples: {
+                value: (x: string[], y?: string[]) => (y ? y : x),
+                default: () => [],
+            },
+            sqlQuery: {
+                value: (x: string, y?: string) => (y ? y : x),
+                default: () => "",
+            },
+            explanation: {
+                value: (x: string, y?: string) => (y ? y : x),
+                default: () => "",
+            },
+            resultStatus: {
+                value: (x: boolean | false, y?: boolean | false) => (y ? y : x),
+                default: () => false,
+            },
+            feedbackMessage: {
+                value: (x: string | null, y?: string | null) => (y ? y : x),
+                default: () => null,
+            },
+            finalResult: {
+                value: (x: string, y?: string) => (y ? y : x),
+                default: () => "",
+            },
+            /*explorationQueries: {
+                value: (x: { query: string; explanation: string }[], y?: { query: string; explanation: string }[]) => (y ? y : x),
+                default: () => [],
+            },
+            explorationResults: {
+                value: (x: { query: string; explanation: string; result: string }[], y?: { query: string; explanation: string; result: string }[]) => (y ? y : x),
+                default: () => [],
+            },*/
+        };
+        super(graphState);
+        this.functions = functions;
+    }
+
+    getGraph(): CompiledStateGraph<DataRecoveryState> {
+        const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
+
+        subGraphBuilder
+            .addNode("recover_sources", (state) => recoverSources(state, dataExample, filterTables))
+            .addEdge(START, "recover_sources")
+            .addNode("create_sql_query", (state) => createSQLQuery(state))
+            .addEdge("recover_sources", "create_sql_query")
+            .addNode("evaluate_result", (state) => evaluateResult(state, this.functions))
+            .addEdge("create_sql_query", "evaluate_result")
+            .addConditionalEdges("evaluate_result", (state) => {
+                if (state.resultStatus) {
+                    return END;
+                } else {
+                    return "create_sql_query";
+                }
+            });
+
+        return subGraphBuilder.compile();
+    }
 }

@@ -3,6 +3,7 @@ import { CompiledStateGraph, StateGraphArgs } from "@langchain/langgraph";
 // Define a generic state type
 export interface BaseState {
   task: string;
+  finalResult: string;
 }
 
 // Define a generic graph interface

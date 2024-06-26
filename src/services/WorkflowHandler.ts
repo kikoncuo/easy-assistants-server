@@ -1,14 +1,10 @@
-// LangraphReWoo.ts
-import { HumanMessage, AIMessage, SystemMessage, MessageContent, MessageType } from 'langchain/schema';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
 import { TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
-import { StringWithAutocomplete } from '@langchain/core/utils/types';
-import { StateGraph } from '@langchain/langgraph';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 
 // internal function
 function _getCurrentTask(state: TaskState): number | null {
@@ -128,6 +124,7 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const messages = state.messages || [];
       const messagesTyped = messages as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
+      console.log(chatPromptTemplate);
       
       const chain = chatPromptTemplate.pipe(plannerModel);
 
@@ -194,10 +191,10 @@ export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a
       for (const [k, v] of Object.entries(_results)) {
         toolInput = toolInput.replace(k, v);
       }
-      const result = await graph.invoke({task:toolInput});      
-      _results[stepName] = result;
+      const result = await graph.getGraph().invoke({task:toolInput});      
+      _results[stepName] = result.finalResult;
       Logger.log(
-        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${JSON.stringify(result)}`,
+        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${_results[stepName]}`,
       );
       return { results: _results };
     } catch (error) {

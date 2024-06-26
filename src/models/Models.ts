@@ -1,7 +1,7 @@
 /** @format */
 
 // models.ts
-import { ChatOpenAI } from 'langchain/chat_models/openai';
+import { ChatOpenAI } from '@langchain/openai';
 import { ChatGroq } from '@langchain/groq';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/language_models/chat_models";
@@ -37,8 +37,8 @@ const planSchema = z
 
 const solverSchema = z.object({
   status: z.enum(['successful', 'failed']).describe('The status of the solver, either successful or failed'),
-  explanation: z.string().optional().describe('Explanation of the status and value'),
-  value: z.string().optional().describe('The optional, final, concise, value returned to the user if the response has a value.'),
+  explanation: z.string().optional().describe('Explanation of the status, can be empty'),
+  value: z.string().optional().describe('Final, concise, value returned to the user if the response has a value, can be empty'),
 });
 
 const directResponseSchema = z.object({
@@ -139,7 +139,7 @@ function anthropicOpus(): BaseChatModel {
 function anthropicSonnet(): BaseChatModel {
   return new ChatAnthropic({
     temperature: 0,
-    modelName: 'claude-3-sonnet-20240229',
+    modelName: 'claude-3-5-sonnet-20240620',
     streaming: false,
   });
 }

@@ -25,6 +25,7 @@ import {
 } from '../models/Tools';
 
 import { DataRecoveryGraph } from '../subgraphs/getData';
+import { ViewCreationGraph } from '../subgraphs/createView';
 
 export class GraphApplication {
   private graphManager: GraphManager;
@@ -119,13 +120,16 @@ export class GraphApplication {
     };
 
     const subgraphs = {
-      /*getData:{
+      getData:{
         agentSubGraph: new DataRecoveryGraph([clientAgentFunction]),
-      } */
+      }, 
+      createView: {
+        agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
+      }
     }
     
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, subgraphs, createSolver(fasterModel), outputHandler, createDirectResponse(strongestModel));
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, subgraphs, createSolver(sonnet), outputHandler, createDirectResponse(strongestModel));
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket) {
