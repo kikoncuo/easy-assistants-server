@@ -1,7 +1,7 @@
 /** @format */
 
 // models.ts
-import { ChatOpenAI } from 'langchain/chat_models/openai';
+import { ChatOpenAI } from '@langchain/openai';
 import { ChatGroq } from '@langchain/groq';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/language_models/chat_models";
@@ -139,7 +139,7 @@ function anthropicOpus(): BaseChatModel {
 function anthropicSonnet(): BaseChatModel {
   return new ChatAnthropic({
     temperature: 0,
-    modelName: 'claude-3-sonnet-20240229',
+    modelName: 'claude-3-5-sonnet-20240620',
     streaming: false,
   });
 }

@@ -1,14 +1,10 @@
-// LangraphReWoo.ts
-import { HumanMessage, AIMessage, SystemMessage, MessageContent, MessageType } from 'langchain/schema';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
 import { TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
-import { StringWithAutocomplete } from '@langchain/core/utils/types';
-import { StateGraph } from '@langchain/langgraph';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 
 // internal function
 function _getCurrentTask(state: TaskState): number | null {

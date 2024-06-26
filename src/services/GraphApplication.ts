@@ -129,7 +129,7 @@ export class GraphApplication {
     }
     
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, subgraphs, createSolver(fasterModel), outputHandler, createDirectResponse(strongestModel));
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, subgraphs, createSolver(sonnet), outputHandler, createDirectResponse(strongestModel));
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket) {

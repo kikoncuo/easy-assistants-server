@@ -1,5 +1,5 @@
 import { AbstractGraph, BaseState } from "./baseGraph";
-import { createStructuredResponseAgent, getFasterModel, getStrongestModel } from "../models/Models";
+import { createStructuredResponseAgent, anthropicSonnet } from "../models/Models";
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from 'zod';
