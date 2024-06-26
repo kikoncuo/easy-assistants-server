@@ -37,8 +37,8 @@ const planSchema = z
 
 const solverSchema = z.object({
   status: z.enum(['successful', 'failed']).describe('The status of the solver, either successful or failed'),
-  explanation: z.string().optional().describe('Explanation of the status and value'),
-  value: z.string().optional().describe('The optional, final, concise, value returned to the user if the response has a value.'),
+  explanation: z.string().optional().describe('Explanation of the status, can be empty'),
+  value: z.string().optional().describe('Final, concise, value returned to the user if the response has a value, can be empty'),
 });
 
 const directResponseSchema = z.object({
