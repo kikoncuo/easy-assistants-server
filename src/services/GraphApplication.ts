@@ -47,7 +47,7 @@ export class GraphApplication {
     // Logger.log(JSON.stringify(clientData[1]))
     const agents = {
       calculate: {
-        agent: createAgent(fasterModel, [calculatorTool]),
+        agent: createAgent(strongestModel, [calculatorTool]),
         agentPrompt:
           'You are an LLM specialized on math operations with access to a calculator tool, you are asked to perform a math operation at the time',
         toolFunction: clientAgentFunction, 

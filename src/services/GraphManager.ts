@@ -1,5 +1,5 @@
 import { StateGraph, END, StateGraphArgs, START, CompiledStateGraph } from '@langchain/langgraph';
-import { TaskState } from '../models/TaskState';
+import { Message, TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode, getSubGraphAgentNode } from './WorkflowHandler';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
@@ -43,7 +43,7 @@ export class GraphManager {
         default: () => "",
       },
       steps: {
-        value: (x: [string, string, string, string][], y: [string, string, string, string][]) => x.concat(y),
+        value: (x: [string, string, string, string][], y: [string, string, string, string][]) => y ?? x ?? [],
         default: () => [],
       },
       results: {
@@ -55,11 +55,16 @@ export class GraphManager {
         default: () => "",
       },
       directResponse: {
-        value: (x?: string | null, y?: string | null) => y ?? x ?? null,
+        value: (x?: string | null, y?: string | null) => {
+          if (y == null) {
+            return null;
+          }
+          return y ?? x ?? null;
+        },
         default: () => null,
       },
       messages: {
-        value: (x: string[][], y: string[][]) => x.concat(y),
+        value: (x: Message[], y: Message[]) => y ?? x,
         default: () => [],
       },
     };

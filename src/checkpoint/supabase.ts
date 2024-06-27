@@ -4,6 +4,7 @@ import {
   BaseCheckpointSaver,
   Checkpoint,
 } from "@langchain/langgraph";
+import Logger from '../utils/Logger';
 
 export interface CheckpointTuple {
     config: RunnableConfig;
@@ -128,13 +129,14 @@ export class SupabaseSaver extends BaseCheckpointSaver {
 
     const { data, error } = await this.supabase
       .from("newcheckpoints")
-      .insert([
+      .upsert([
         {
           thread_id: config.configurable?.thread_id,
           checkpoint_id: checkpoint.id,
           parent_id: config.configurable?.checkpoint_id,
           checkpoint: checkpoint,
           metadata: metadata,
+          step: metadata.step
         },
       ])
       .single();
@@ -166,7 +168,7 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     if (before?.configurable?.checkpoint_id) {
       query = query.lt("checkpoint_id", before.configurable.checkpoint_id);
     } else {
-        console.log('Before condition is not provided or checkpoint_id is undefined');
+        Logger.log('Before condition is not provided or checkpoint_id is undefined');
       }
     if (limit) {
       query = query.limit(limit);
@@ -174,7 +176,7 @@ export class SupabaseSaver extends BaseCheckpointSaver {
     const { data, error } = await query;
 
     if (error) {
-      console.error("Error listing checkpoints:", error);
+      Logger.error("Error listing checkpoints:", error);
       return;
     }
 
