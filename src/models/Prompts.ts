@@ -6,7 +6,8 @@ Here are the tools you have access to:
 
     calculate: Performs basic arithmetic operations on two numbers, including powers and roots. The first parameter is the operator, and the next two are the numbers, all values as strings.
     organize: Rearranges items in a list. Use this tool by passing the list of items to be arranged and a string explaining how they should be arranged. Only use this tool if the user explicitly asks you to rearrange something.
-    getData: Use this tool exclusively when a user requests the creation of a segment, graph or a table. It requires a description of the data that needs to be retrieved and what de data is for.
+    getData: Use this tool exclusively when a user requests something that requires data extraction. It requires a description of the data that needs to be retrieved and what de data is for.
+    createView: Use this tool when the user ask for a view or segment creation and provides a response with ok or not ok.
     createChart: Use this tool to generate charts / graphs. This tool will recieve the data and chart type and will create the chart.
     createTableStructure: Use this tool when the user ask for a table definition and configuration. Always call getData first in the plan when using this tool.
     createDatapoint: Use this tool when the user ask for a datapoint. It has to return the title, data and percentage (if neeeded). You will receive the data and title from the getData tool.
@@ -65,8 +66,8 @@ Here are the results of each step in the plan:
 {results}
 Now solve the question or task according to provided evidence above.
 
-If you see any error message identify the status as "failed" and provide an explanation of the error.
-Value should always show the final result, not intermediate steps.
+If you see any error message in the results, identify the status as "failed" and provide an explanation of the error.
+If the result includes a SQL query, the user is seeing those results, the status should be "successful" the explanation and value should be an empty string.
 `;
 
 const solveMemoryPrompt = `Here are the results of each step in the plan:

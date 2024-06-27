@@ -1,13 +1,10 @@
-// LangraphReWoo.ts
-import { HumanMessage, AIMessage, SystemMessage, MessageContent, MessageType } from 'langchain/schema';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { Runnable } from 'langchain/runnables'; // TODO: Models with tools are runnables because fuck me, we need to fix this
-import { Message, TaskState } from '../models/TaskState';
+import { TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
-import { StringWithAutocomplete } from '@langchain/core/utils/types';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 
 // internal function
 function _getCurrentTask(state: TaskState): number | null {
@@ -110,7 +107,6 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const messages = state.messages || [];
       const messagesTyped = stringifyMessages(messages) as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
-      console.log('messages', [['system', systemPrompt],...messagesTyped,['human', planPrompt]])
       const chain = chatPromptTemplate.pipe(plannerModel);
       //console.log('from get plan node', state)
 
@@ -179,6 +175,30 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       return { results: _results };
     } catch (error) {
       console.log('error in agent node', error)
+      Logger.warn('Error in agent execution:', error);
+      return { results: { error: 'Error in agent execution, please try again or contact support.' } };
+    }
+  }
+  return agentNode;
+}
+
+export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a StateGraph with subtype state of the subgraph
+  async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
+    try {
+      const _step = _getCurrentTask(state);
+      if (_step === null) throw new Error('No more steps to execute.');
+      let [, stepName, tool, toolInput] = state.steps[_step - 1];
+      const _results = state.results || {};
+      for (const [k, v] of Object.entries(_results)) {
+        toolInput = toolInput.replace(k, v);
+      }
+      const result = await graph.getGraph().invoke({task:toolInput});      
+      _results[stepName] = result.finalResult;
+      Logger.log(
+        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${_results[stepName]}`,
+      );
+      return { results: _results };
+    } catch (error) {
       Logger.warn('Error in agent execution:', error);
       return { results: { error: 'Error in agent execution, please try again or contact support.' } };
     }

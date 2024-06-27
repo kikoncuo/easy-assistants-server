@@ -1,9 +1,3 @@
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { StringWithAutocomplete } from "@langchain/core/utils/types";
-import { MessageContent, MessageType } from "langchain/schema";
-
-export type Message = { text: string[][]; additionalData?: any; };
-
 export class TaskState {
   task: string;
   plan_string: string;

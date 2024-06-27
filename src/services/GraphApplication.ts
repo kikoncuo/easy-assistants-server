@@ -24,6 +24,9 @@ import {
   askHuman
 } from '../models/Tools';
 
+import { DataRecoveryGraph } from '../subgraphs/getData';
+import { ViewCreationGraph } from '../subgraphs/createView';
+
 export class GraphApplication {
   private graphManager: GraphManager;
   error: any;
@@ -64,7 +67,7 @@ export class GraphApplication {
         Only use the table names that were given to you, don't use anything outside that list and don't generate new names. `,
         toolFunction: clientAgentFunction,
       },
-      getData: {
+      /*getData: {
         agent: createAgent(strongestModel, [getData], true),
         agentPrompt: `You are an database expert specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
         Remember to not alterate any table name or column name and maintain their format.
@@ -74,7 +77,7 @@ export class GraphApplication {
         When explaining the result, include the table names and columns that were used and the connection made between them.
         `,
         toolFunction: clientAgentFunction,
-      },
+      },*/
 
       askHuman: {
         agent: createAgent(fasterModel, [askHuman], true),
@@ -116,7 +119,17 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, createSolver(fasterModel), outputHandler, createDirectResponse(strongestModel));
+    const subgraphs = {
+      getData:{
+        agentSubGraph: new DataRecoveryGraph([clientAgentFunction]),
+      }, 
+      createView: {
+        agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
+      }
+    }
+    
+
+    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, subgraphs, createSolver(sonnet), outputHandler, createDirectResponse(strongestModel));
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket) {
