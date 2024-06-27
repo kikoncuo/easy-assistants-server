@@ -1,3 +1,5 @@
+export type Message = { text: string[][]; additionalData?: any; };
+
 export class TaskState {
   task: string;
   plan_string: string;

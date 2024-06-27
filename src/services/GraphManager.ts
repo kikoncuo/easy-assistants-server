@@ -1,5 +1,5 @@
 import { StateGraph, END, StateGraphArgs, START, CompiledStateGraph } from '@langchain/langgraph';
-import { TaskState } from '../models/TaskState';
+import { Message, TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode, getSubGraphAgentNode } from './WorkflowHandler';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';

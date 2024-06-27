@@ -1,7 +1,7 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { systemPrompt, planPrompt, solvePrompt, solveMemoryPrompt } from '../models/Prompts';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { TaskState } from '../models/TaskState';
+import { Message, TaskState } from '../models/TaskState';
 import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
 import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
@@ -108,7 +108,6 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
       const messagesTyped = stringifyMessages(messages) as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
       const chain = chatPromptTemplate.pipe(plannerModel);
-      //console.log('from get plan node', state)
 
       const plan = await chain.invoke({ task: task }); 
 
@@ -143,7 +142,6 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) {
   async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
-      console.log('state at agent node', state)
       const _step = _getCurrentTask(state);
       if (_step === null) throw new Error('No more steps to execute.');
       let [, stepName, tool, toolInput] = state.steps[_step - 1];
@@ -174,7 +172,7 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
       );
       return { results: _results };
     } catch (error) {
-      console.log('error in agent node', error)
+      Logger.log('error in agent node', error)
       Logger.warn('Error in agent execution:', error);
       return { results: { error: 'Error in agent execution, please try again or contact support.' } };
     }
@@ -235,10 +233,7 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
         }
         plan += `Plan: ${_plan}\n${stepName} = ${tool}[${toolInput}]`;
       }
-      //console.log('from get solve node', state)
       const stateMessage = state.messages
-      // stateMessage[state.messages.length - 1].additionalData = state.results
-
 
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['human', solvePrompt]]);
 
@@ -259,8 +254,6 @@ export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function
 
       const historyPromptTemplate: Message = {text:[['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]}; // TODO: clean this up
       const stateHistory = [...stateMessage, historyPromptTemplate]
-
-      console.log('stateHistory', stateHistory) 
 
       return { result: finalResponse, messages: stateHistory};
     } catch (error) {
