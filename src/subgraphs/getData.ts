@@ -44,21 +44,23 @@ function filterTables(originalString: string, tablesToKeep: string[]): string {
 }
 
 // Node function to recover sources
-async function recoverSources(state: DataRecoveryState, dataExample: string, filterTables: (originalString: string, tablesToKeep: string[]) => string): Promise<DataRecoveryState> {
+async function recoverSources(state: DataRecoveryState, functions: Function[], filterTables: (originalString: string, tablesToKeep: string[]) => string, prefixes: string, pgConnectionChain?: string ): Promise<DataRecoveryState> {
     const getSources = z.object({
         sources: z.array(z.string()).describe('Array with the names of the sources'),
         isPossible: z.string().describe('"true" if the data recovery possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable'),
         moreExamples: z.string().optional().describe('If isPossible is false, provide the tables you need more examples of'),
     });
 
-    const model = await createStructuredResponseAgent(anthropicSonnet(), getSources);
-    const allSources = dataExample;
+    const model = createStructuredResponseAgent(anthropicSonnet(), getSources);
+
+    const dataStructure = await functions[1](prefixes, pgConnectionChain);
+    console.log({dataStructure})
 
     const message = await model.invoke([
         new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided table descriptions and examples, and determine which data sources could be useful in addressing the request.
 
         First, review the following table descriptions with 3 unique examples per table:
-        ${allSources}
+        ${dataStructure}
         Now, consider the following request:
         ${(state.task)}
         To complete this task, follow these steps:
@@ -72,7 +74,7 @@ async function recoverSources(state: DataRecoveryState, dataExample: string, fil
     ]);
 
     const sources = (message as any).sources;
-    const examples = filterTables(allSources, sources);
+    const examples = filterTables(dataStructure, sources);
     const isPossible = (message as any).isPossible;
     const moreExamples = (message as any).moreExamples;
     Logger.log('\nisPossible', isPossible); // TODO: Use this to decide if we should continue and do exploratory tasks if the result is maybe or fail the request if it's false
@@ -92,7 +94,9 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
         SQL: z.string().describe('SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs.'),
     });
 
-    const model = await createStructuredResponseAgent(anthropicSonnet(), getSQL);
+    const model = createStructuredResponseAgent(anthropicSonnet(), getSQL);
+
+    //Prompt example: get me all my syrup sales 
 
     const messageContent = state.feedbackMessage
         ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
@@ -134,14 +138,14 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
         }
     ];
 
-    const sqlResults = JSON.stringify((await functions[0]('tool', getSQLResults)));
+    const sqlResults = JSON.stringify((await functions[0]('tool', getSQLResults))); 
 
     const getFeedback = z.object({
       isCorrect: z.boolean().describe('does the data recovered from the query looks correct or not'),
       feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect. Include the error and hints if there are any. Only include this if the query is incorrect.'),
     });
 
-    const model = await createStructuredResponseAgent(anthropicSonnet(), getFeedback);
+    const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
 
     const message = await model.invoke([
         new HumanMessage(`Based on the following user request:
@@ -156,6 +160,7 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
            ${(state.sqlQuery)}
            isCorrect should be true if the results from the query looks correct and the query solves the task, false if it the results look incorrect or the query doesn't solve the task.
            If not, please provide a feedback message telling us what we did wrong and how to create a better query.
+           If the query is correct, make feedbackMessage empy.
            `)
     ]);
 
@@ -175,10 +180,12 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
 }
 
 // DataRecoveryGraph Class
-export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
+export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> { 
     private functions: Function[];
+    private prefixes: string;
+    private pgConnectionChain: string | undefined;
 
-    constructor(functions: Function[]) {
+    constructor(functions: Function[], prefixes: string, pgConnectionChain?: string) {
         const graphState: StateGraphArgs<DataRecoveryState>["channels"] = {
             task: {
                 value: (x: string, y?: string) => (y ? y : x),
@@ -208,24 +215,19 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
                 value: (x: string, y?: string) => (y ? y : x),
                 default: () => "",
             },
-            /*explorationQueries: {
-                value: (x: { query: string; explanation: string }[], y?: { query: string; explanation: string }[]) => (y ? y : x),
-                default: () => [],
-            },
-            explorationResults: {
-                value: (x: { query: string; explanation: string; result: string }[], y?: { query: string; explanation: string; result: string }[]) => (y ? y : x),
-                default: () => [],
-            },*/
         };
         super(graphState);
         this.functions = functions;
+        this.prefixes = prefixes;
+        this.pgConnectionChain = pgConnectionChain;
+        
     }
 
-    getGraph(): CompiledStateGraph<DataRecoveryState> {
+    getGraph(): CompiledStateGraph<DataRecoveryState> { 
         const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
         subGraphBuilder
-            .addNode("recover_sources", (state) => recoverSources(state, dataExample, filterTables))
+            .addNode("recover_sources", (state) => recoverSources(state, this.functions, filterTables, this.prefixes, this.pgConnectionChain))
             .addEdge(START, "recover_sources")
             .addNode("create_sql_query", (state) => createSQLQuery(state))
             .addEdge("recover_sources", "create_sql_query")

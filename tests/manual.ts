@@ -11,7 +11,7 @@ function connectToServer() {
 
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: ["My company's name is theManualTestCompany", testTables] }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", "postgresql://postgres.dbhhziresrambrdyptjh:<password>@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"] }));
     promptUserInput();
   });
 
