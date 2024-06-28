@@ -44,7 +44,7 @@ export class GraphApplication {
     if (clientData.length < 2) {
       throw new Error('When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure');
     }
-    // Logger.log(JSON.stringify(clientData[1]))
+
     const agents = {
       calculate: {
         agent: createAgent(strongestModel, [calculatorTool]),
@@ -67,17 +67,6 @@ export class GraphApplication {
         Only use the table names that were given to you, don't use anything outside that list and don't generate new names. `,
         toolFunction: clientAgentFunction,
       },
-      /*getData: {
-        agent: createAgent(strongestModel, [getData], true),
-        agentPrompt: `You are an database expert specialized in generating PostgreSQL queries based on user's needs using it's tool which should always be used.
-        Remember to not alterate any table name or column name and maintain their format.
-        Here is the data structure you can query.
-        ${JSON.stringify(clientData[1])}
-        Don't return more data than the required and create an alias for every column returned.
-        When explaining the result, include the table names and columns that were used and the connection made between them.
-        `,
-        toolFunction: clientAgentFunction,
-      },*/
 
       askHuman: {
         agent: createAgent(fasterModel, [askHuman], true),
@@ -121,7 +110,7 @@ export class GraphApplication {
 
     const subgraphs = {
       getData:{
-        agentSubGraph: new DataRecoveryGraph([clientAgentFunction]),
+        agentSubGraph: new DataRecoveryGraph([clientAgentFunction], clientData[0], clientData[1]),
       }, 
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
