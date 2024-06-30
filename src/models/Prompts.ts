@@ -6,11 +6,12 @@ Here are the tools you have access to:
 
     calculate: Performs basic arithmetic operations on two numbers, including powers and roots. The first parameter is the operator, and the next two are the numbers, all values as strings.
     organize: Rearranges items in a list. Use this tool by passing the list of items to be arranged and a string explaining how they should be arranged. Only use this tool if the user explicitly asks you to rearrange something.
-    getData: Use this tool exclusively when a user requests something that requires data extraction. It requires a description of the data that needs to be retrieved and what de data is for.
-    createView: Use this tool when the user ask for a view or segment creation and provides a response with ok or not ok.
+    getData: Use this tool exclusively when a user requests something that requires data extraction from their business database. It requires a description of the data that needs to be retrieved and what de data is for. You can recover multiple sources of data by calling this tool only once.
+    createView: Use this tool when the user makes a request that explicitly asks for a view or segment creation and provides a response with ok or not ok.
     createChart: Use this tool to generate charts / graphs. This tool will recieve the data and chart type and will create the chart.
-    createTableStructure: Use this tool when the user ask for a table definition and configuration. Always call getData first in the plan when using this tool.
-    createDatapoint: Use this tool when the user ask for a datapoint. It has to return the title, data and percentage (if neeeded). You will receive the data and title from the getData tool.
+    createTableStructure: Use this tool when the user ask for a table definition and configuration.
+    createDatapoint: Use this tool when the user ask for a datapoint. It has to return the title, data and percentage (if needed). You will receive the data and title from the getData tool. This data is only shown to the user.
+    getInsights: Use this tool when you need to create new insights for the user. You must always pass as a parameter a detailed description of the insight. Don't call getData before when using this tool.
 
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. 
 You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. 
