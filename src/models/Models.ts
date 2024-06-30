@@ -8,32 +8,18 @@ import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/languag
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
 
-const StepSchema = z
+const redirectSchema = z
   .object({
-    stepId: z
-      .string()
-      .regex(/^#E\d+$/)
-      .describe('The step ID in the format #ENumber (e.g., #E1, #E2)'),
-    description: z.string().min(1).max(1000).describe('A description of the step, should be concise yet informative'),
-    toolName: z
+    description: z.string().min(1).max(1000).optional().describe('A concise yet detaileddescription of what the agent should do'),
+    agentName: z
       .string()
       .min(1)
       .max(50)
-      .describe('The name of the tool to be used in the step, should match one of the available tools'),
-    toolParameters: z
-      .array(z.string())
-      .min(1)
-      .max(10)
-      .describe('An array of tool parameters, which can include step results or other step IDs'),
+      .optional()
+      .describe('The name of the agent to be used in the step, should match one of the available agents'),
+    directResponse: z.string().optional().describe('A string with the response, used when there is no need to create a process with various steps')
   })
-  .describe('An object representing a single step in the process');
-
-const planSchema = z
-  .object({
-    steps: z.array(StepSchema).min(1).max(20).optional().describe('An array of step objects, representing the entire process'),
-    directResponse: z.string().optional().describe('A string with the response, used when there is no need to create a process with various steps'),
-  })
-  .describe('The root object containing the array of steps or the direct response to the user.');
+  .describe('The response format to redirect the user to the agent');
 
 const solverSchema = z.object({
   status: z.enum(['successful', 'failed']).describe('The status of the solver, either successful or failed'),
@@ -41,9 +27,6 @@ const solverSchema = z.object({
   value: z.string().optional().describe('Final, concise, value returned to the user if the response has a value, can be empty'),
 });
 
-const directResponseSchema = z.object({
-  response: z.string().describe('The response returned to the user'),
-});
 
 export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
   tools?: ToolDefinition[];
@@ -59,7 +42,7 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
 
 // Helper functions:
 function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
-  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(planSchema) : llm;
+  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(redirectSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
 
@@ -70,11 +53,6 @@ function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
 
 function createStructuredResponseAgent(llm: BaseChatModel<ChatToolsCallOptions>, structuredResponseSchema: z.ZodSchema): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(structuredResponseSchema) : llm;
-  return bindedLLM as BaseChatModel;
-}
-
-function createDirectResponse(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
-  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(directResponseSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
 
@@ -164,6 +142,5 @@ export {
   createAgent,
   createPlanner,
   createSolver,
-  createDirectResponse,
   createStructuredResponseAgent,
 };

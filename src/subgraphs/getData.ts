@@ -1,28 +1,20 @@
 import { AbstractGraph, BaseState } from "./baseGraph";
-import { createStructuredResponseAgent, anthropicSonnet } from "../models/Models";
+import { createStructuredResponseAgent, anthropicSonnet, groqChatLlama } from "../models/Models";
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from 'zod';
 import { dataExample } from './test/DataExample';
 import Logger from '../utils/Logger';
+import { dropSQLFunction } from "../utils/DataStructure";
 
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
     examples: string[];
-    sqlQuery: string;
+    plv8function: string;
     explanation: string;
     resultStatus: boolean | false;
     feedbackMessage: string | null;
-    /*explorationQueries: {
-        query: string;
-        explanation: string;
-    }[];
-    explorationResults: {
-        query: string;
-        explanation: string;
-        result: string;
-    }[];*/
     finalResult: string;
 }
 
@@ -43,6 +35,23 @@ function filterTables(originalString: string, tablesToKeep: string[]): string {
     return filteredString.trim();
 }
 
+function extractFunctionDetails(sql: string): string {
+    const functionNameMatch = sql.match(/CREATE OR REPLACE FUNCTION (\w+)\(/);
+    const returnsTableMatch = sql.match(/RETURNS TABLE \(([\s\S]+?)\)/);
+
+    if (!functionNameMatch || !returnsTableMatch) {
+        throw new Error("Invalid SQL string format");
+    }
+
+    const functionName = functionNameMatch[1].trim();
+    const returnsTable = returnsTableMatch[1]
+        .split(',')
+        .map(line => line.trim())
+        .join(',\n    ');
+
+    return `Created function: ${functionName}\nThat returns:\n${returnsTable}`;
+}
+
 // Node function to recover sources
 async function recoverSources(state: DataRecoveryState, dataExample: string, filterTables: (originalString: string, tablesToKeep: string[]) => string): Promise<DataRecoveryState> {
     const getSources = z.object({
@@ -55,19 +64,16 @@ async function recoverSources(state: DataRecoveryState, dataExample: string, fil
     const allSources = dataExample;
 
     const message = await model.invoke([
-        new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided table descriptions and examples, and determine which data sources could be useful in addressing the request.
+        new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided table descriptions and examples,
+        and determine which data sources could be useful in addressing the request.
 
-        First, review the following table descriptions with 3 unique examples per table:
+        First, review the following table descriptions with 3 unique examples per column:
         ${allSources}
         Now, consider the following request:
         ${(state.task)}
-        To complete this task, follow these steps:
-
-        1. Carefully read and understand the request.
-        2. Review each data source in the provided list.
-        3. For each data source, consider whether it contains information that could be relevant to the request in any way, even if it's not a perfect match.
-        4. Keep in mind that multiple data sources may be relevant to a single request.
-        5. If a data source seems even slightly relevant, include it in your list.
+        
+        Keep in mind that multiple data sources may be relevant to a single request.
+        If a data source seems even slightly relevant to the request, include it in your list.
         `)
     ]);
 
@@ -86,99 +92,147 @@ async function recoverSources(state: DataRecoveryState, dataExample: string, fil
 }
 
 // Node function to create SQL query
-async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoveryState> {
+async function createPLV8Function(state: DataRecoveryState): Promise<DataRecoveryState> {
     const getSQL = z.object({
-        assumptions: z.string().optional().describe('Assumptions we made about what the user said vs how we built the query and why we had to make them IE: the user said "give me my beans product" and there is no column named "beans" in the table, but there is a column group with a variable Whole Bean/Teas, we could say We assumed that \"beans products\" refer to the Whole Bean/Teas product group because there is no other product column that references beans. Don\'t include any SQL language.'),  
-        SQL: z.string().describe('SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs.'),
+        assumptions: z.string().optional().describe('Assumptions we made about what the user said vs how we built the function. The assumptions need to be understood by a non technical person who doesn\'t know the details of the database or Javascript.'),  
+        PLV8Function: z.string().describe(`PLV8 function that returns a table which satisfies the task the table must be readable by a non-technical person who does not know about IDs.
+        Make the function efficient leveraging SQL and PLV8 features. Always return all the results without limit.
+        Provide insightful functions, avoid simple logic unless asked to, the results of your functions will be evaluated by business and marketing experts.
+        Function structure example:
+        CREATE OR REPLACE FUNCTION function_name()
+        RETURNS TABLE (
+            return parameters enclosed in double quotes
+        )
+        LANGUAGE plv8
+        AS $$
+            const salesData = plv8.execute(\`
+                SQL query
+            \`);
+
+            return salesData.map(row => ({
+               map the results to the return parameters
+            }));
+
+            function auxiliary_functions(parameter) {
+                logic
+            }
+        $$;
+        `)
     });
 
-    const model = await createStructuredResponseAgent(anthropicSonnet(), getSQL);
+    const model = createStructuredResponseAgent(anthropicSonnet(), getSQL);
 
     const messageContent = state.feedbackMessage
         ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
             ${(state.examples)}
-            please provide a revised SQL query that returns the following columns:
+            please provide a revised SQL PLV8 function with no comments that returns a table that satisfies the following task:
             ${(state.task)}
-            the result should be readable by a non-technical person.
+            Create a list with all the assumptions we had to make to the function to meet the task.
+            Make one extra short assumption explaining what what the feedback was and how you addressed it.
             `
         : `Based on the following tables with examples,
             ${(state.examples)}
-            please provide a SQL query that returns the following columns:
+            please provide a revised SQL PLV8 function with no comments that returns a table that satisfies the following task:
             ${(state.task)}
-            the result should be readable by a non-technical person.
             `;
 
     const message = await model.invoke(messageContent);
-    const sqlQuery = (message as any).SQL;
+    const plv8function = (message as any).PLV8Function;
     const assumptions = (message as any).assumptions;
 
-    Logger.log('sqlQuery', sqlQuery);
+    Logger.log('plv8function', plv8function);
     Logger.log('assumptions', assumptions);
 
     return {
         ...state,
-        sqlQuery: sqlQuery,
+        plv8function: plv8function,
         explanation: assumptions,
     };
 }
 
 // Node function to evaluate result
-async function evaluateResult(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
+async function evaluateResult(state: DataRecoveryState, functions: Function[], pgConnectionChain?: string): Promise<DataRecoveryState> {
+    const functionNameMatch = state.plv8function.match(/CREATE OR REPLACE FUNCTION (\w+)\(/);
+    const functionName = functionNameMatch ? functionNameMatch[1] : '';
+
     const getSQLResults = [
         {
             function_name: "getSQLResults",
             arguments: {
-                sqlQuery: state.sqlQuery,
+                plv8function: state.plv8function,
+                functionName: functionName,
                 explanation: state.explanation,
             },
         }
     ];
 
-    const sqlResults = JSON.stringify((await functions[0]('tool', getSQLResults)));
+    let sqlResults;
+    let isCorrect = false;
+    let feedbackMessage = "";
 
-    const getFeedback = z.object({
-      isCorrect: z.boolean().describe('does the data recovered from the query looks correct or not'),
-      feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect. Include the error and hints if there are any. Only include this if the query is incorrect.'),
-    });
+    try {
+        sqlResults = JSON.stringify((await functions[0]('tool', getSQLResults)));
+        Logger.log('sqlResults', sqlResults);
 
-    const model = await createStructuredResponseAgent(anthropicSonnet(), getFeedback);
+        const getFeedback = z.object({
+            isCorrect: z.boolean().describe('does the data recovered from the function look correct or not'),
+            feedbackMessage: z.string().optional().describe('Feedback message if the function was incorrect. Only include this if the isCorrect is false.'),
+        });
 
-    const message = await model.invoke([
-        new HumanMessage(`Based on the following user request:
-           ${(state.task)}
-           Given the following SQL query,
-           ${(state.sqlQuery)}
-           Which returned the following results:
-           ${(sqlResults)}
-           These are the tables descriptions and their columns with examples:
-           ${(state.examples)}
-           Was this SQL query correct?
-           ${(state.sqlQuery)}
-           isCorrect should be true if the results from the query looks correct and the query solves the task, false if it the results look incorrect or the query doesn't solve the task.
-           If not, please provide a feedback message telling us what we did wrong and how to create a better query.
-           `)
-    ]);
+        const model = createStructuredResponseAgent(groqChatLlama(), getFeedback);
 
-    const isCorrect = (message as any).isCorrect;
-    const feedbackMessage = (message as any).feedbackMessage;
+        const message = await model.invoke([
+            new HumanMessage(`Based on the following user request:
+                ${(state.task)}
+                Given the following PLV8 Function,
+                ${(state.plv8function)}
+                Which returned the following results:
+                ${(sqlResults)}
+                These are the tables descriptions and their columns with examples:
+                ${(state.examples)}
+                Was the PLV8 function correct?
+                isCorrect should be true if the results from the function looks correct, the results solve the task and the results are consistent and logical,
+                false if it the results look incorrect, the results don't solve the task or the results are inconsistent or illogical
+                (IE: Missing data that should be there, duplicated data, columns that should be smaller than others are not smaller, things that should add up are not adding up, etc).
+                If not, please provide a feedback message telling us what we did wrong and how to create a better PLV8 function.
+            `)
+        ]);
 
-    Logger.log('isCorrect', isCorrect);
-    Logger.log('feedbackMessage', feedbackMessage);
+        isCorrect = (message as any).isCorrect;
+        feedbackMessage = (message as any).feedbackMessage || "";
+
+        if (!isCorrect) {
+            if (sqlResults.includes("ERROR")) {
+                await dropSQLFunction(functionName, pgConnectionChain)
+                return {
+                    ...state,
+                    resultStatus: false,
+                    feedbackMessage: feedbackMessage || "Error creating function",
+                };
+            }
+            await dropSQLFunction(functionName, pgConnectionChain)    
+        }
+    } catch (error) {
+        Logger.error("Error evaluating SQL results:", error);
+        feedbackMessage = "An error occurred while evaluating the SQL results.";
+    }
 
     return {
-      ...state,
-      resultStatus: isCorrect,
-      feedbackMessage: feedbackMessage,
-      finalResult: state.sqlQuery
+        ...state,
+        resultStatus: isCorrect,
+        feedbackMessage: feedbackMessage,
+        finalResult: isCorrect ? extractFunctionDetails(state.plv8function) : ""
     };
-
 }
+
 
 // DataRecoveryGraph Class
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     private functions: Function[];
+    private pgConnectionChain: string | undefined;
 
-    constructor(functions: Function[]) {
+
+    constructor(functions: Function[], pgConnectionChain?: string) {
         const graphState: StateGraphArgs<DataRecoveryState>["channels"] = {
             task: {
                 value: (x: string, y?: string) => (y ? y : x),
@@ -188,7 +242,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
                 value: (x: string[], y?: string[]) => (y ? y : x),
                 default: () => [],
             },
-            sqlQuery: {
+            plv8function: {
                 value: (x: string, y?: string) => (y ? y : x),
                 default: () => "",
             },
@@ -207,18 +261,11 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
             finalResult: {
                 value: (x: string, y?: string) => (y ? y : x),
                 default: () => "",
-            },
-            /*explorationQueries: {
-                value: (x: { query: string; explanation: string }[], y?: { query: string; explanation: string }[]) => (y ? y : x),
-                default: () => [],
-            },
-            explorationResults: {
-                value: (x: { query: string; explanation: string; result: string }[], y?: { query: string; explanation: string; result: string }[]) => (y ? y : x),
-                default: () => [],
-            },*/
+            }
         };
         super(graphState);
         this.functions = functions;
+        this.pgConnectionChain = pgConnectionChain;
     }
 
     getGraph(): CompiledStateGraph<DataRecoveryState> {
@@ -226,16 +273,16 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
         subGraphBuilder
             .addNode("recover_sources", (state) => recoverSources(state, dataExample, filterTables))
+            .addNode("create_plv8_function", (state) => createPLV8Function(state))
+            .addNode("evaluate_result", (state) => evaluateResult(state, this.functions, this.pgConnectionChain))
             .addEdge(START, "recover_sources")
-            .addNode("create_sql_query", (state) => createSQLQuery(state))
-            .addEdge("recover_sources", "create_sql_query")
-            .addNode("evaluate_result", (state) => evaluateResult(state, this.functions))
-            .addEdge("create_sql_query", "evaluate_result")
+            .addEdge("recover_sources", "create_plv8_function")
+            .addEdge("create_plv8_function", "evaluate_result")
             .addConditionalEdges("evaluate_result", (state) => {
                 if (state.resultStatus) {
                     return END;
                 } else {
-                    return "create_sql_query";
+                    return "create_plv8_function";
                 }
             });
 

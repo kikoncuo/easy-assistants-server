@@ -2,26 +2,24 @@ export type Message = { text: string[][]; additionalData?: any; };
 
 export class TaskState {
   task: string;
-  plan_string: string;
-  steps: Array<[string, string, string, string]>;
-  results: { [key: string]: string } | null;
+  agentName: string;
+  agentDescription: string;
   result: string;
   directResponse: string | null;
   messages: Message[];
 
   constructor(
     task: string,
-    plan_string: string,
-    steps: Array<[string, string, string, string]>,
-    results: { [key: string]: string } | null,
+    agentName: string,
+    agentParameters: string[],
+    agentDescription: string,
     result: string,
     directResponse: string,
     messages: Message[],
   ) {
     this.task = task;
-    this.plan_string = plan_string;
-    this.steps = steps;
-    this.results = results;
+    this.agentName = agentName;
+    this.agentDescription = agentDescription;
     this.result = result;
     this.directResponse = directResponse;
     this.messages = messages;
