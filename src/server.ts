@@ -98,7 +98,7 @@ wss.on('connection', ws => {
     (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
     (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
       WebSocketService.queryUser(type, functions, ws),
-    ["",""],
+    ["","", ""],
   );
 
   if (graphApp.error) {
