@@ -26,6 +26,7 @@ import {
 
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { ViewCreationGraph } from '../subgraphs/createView';
+import { InsightsGraph } from '../subgraphs/getInsights';
 
 export class GraphApplication {
   private graphManager: GraphManager;
@@ -125,11 +126,14 @@ export class GraphApplication {
       }, 
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
+      },
+      getInsights: {
+        agentSubGraph: new InsightsGraph([clientAgentFunction]),
       }
     }
     
 
-    this.graphManager = new GraphManager(createPlanner(strongestModel), agents, subgraphs, createSolver(sonnet), outputHandler, createDirectResponse(strongestModel));
+    this.graphManager = new GraphManager(createPlanner(sonnet), agents, subgraphs, createSolver(sonnet), outputHandler, createDirectResponse(strongestModel));
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket) {
