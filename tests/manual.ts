@@ -5,10 +5,11 @@ import {testTables} from "./helpers"
 
 
 let ws: WebSocket | null = null;
+const thread_id = Math.floor(Math.random() * 1000);
 
 function connectToServer() {
   ws = new WebSocket('ws://localhost:8080');
-
+  
   ws.on('open', () => {
     Logger.log('Connected to server');
     ws?.send(JSON.stringify({ type: 'configure', configData: ["My company's name is theManualTestCompany", testTables] }));
@@ -96,7 +97,6 @@ function promptUserInput() {
 
   if (ws) {
     Logger.time('planTimer'); // Start the timer
-    const thread_id = Math.floor(Math.random() * 1000);
     ws.send(JSON.stringify({ type: 'query', task: query, thread_id:  thread_id}));
   }
 }
