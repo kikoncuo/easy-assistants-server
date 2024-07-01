@@ -12,6 +12,7 @@ interface DataRecoveryState extends BaseState {
   explanation: string;
   headers: string[];
   title: string;
+  displayType: string;
   resultStatus: boolean | false;
   feedbackMessage: string | null;
   /*explorationQueries: {
@@ -94,7 +95,7 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
       .describe(
         `List of assumptions in a bullet list we made about what the user said vs how we built the query and why we had to make them.
         IE: the user said "give me my beans product" and there is no column named "beans" in the table, but there is a column group with a variable Whole Bean/Teas, we could say We assumed that "beans products" refer to the Whole Bean/Teas product group because there is no other product column that references beans.
-        If you got feedback, create an extra assumption at the end explaining what the problem was and how you fixed it.`
+        If you got feedback, create an extra assumption at the end explaining what the problem was and how you fixed it.`,
       ),
     headers: z
       .string()
@@ -107,14 +108,13 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
         'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
       ),
     displayType: z
-    .enum(['table', 'barChart', 'doghnutChart', 'lineChart, dataPoint'])
-    .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart.'
-    ),
+      .enum(['table', 'barChart', 'doghnutChart', 'lineChart, dataPoint'])
+      .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart.'),
     SQL: z
       .string()
       .describe(
         'SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs. If the user asks for a chart, only the necessary columns should be retrieved on the query, no extra information. IE: create a chart for my top 3 stores based on revenue, should return an array of objects and each object only include the store name and t he revenue, no extra information.',
-      )
+      ),
   });
   const model = await createStructuredResponseAgent(anthropicSonnet(), getSQL);
   const messageContent = state.feedbackMessage
@@ -138,6 +138,7 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
   const assumptions = (message as any).assumptions;
   const headers = (message as any).headers;
   const title = (message as any).title;
+  const displayType = (message as any).displayType;
   Logger.log('sqlQuery', sqlQuery);
   Logger.log('assumptions', assumptions);
   return {
@@ -146,6 +147,7 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
     explanation: assumptions,
     headers: headers,
     title: title,
+    displayType: displayType,
   };
 }
 // Node function to evaluate result
@@ -158,6 +160,7 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
         explanation: state.explanation,
         headers: state.headers,
         title: state.title,
+        displayType: state.displayType,
       },
     },
   ];
@@ -192,19 +195,16 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
   Logger.log('isCorrect', isCorrect);
   Logger.log('feedbackMessage', feedbackMessage);
 
-
-  if (isCorrect) {
-    const isCorrectFunction = [
-      {
-        function_name: 'isCorrect',
-        arguments: {
-          isCorrect: isCorrect,
-          feedbackMessage: feedbackMessage
-        },
+  const isCorrectFunction = [
+    {
+      function_name: 'isCorrect',
+      arguments: {
+        isCorrect: isCorrect,
+        feedbackMessage: feedbackMessage,
       },
-    ];
-    const response = JSON.stringify(await functions[0]('tool', isCorrectFunction));
-  }
+    },
+  ];
+  const response = JSON.stringify(await functions[0]('tool', isCorrectFunction));
 
   return {
     ...state,
@@ -223,6 +223,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         default: () => '',
       },
       title: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
+      displayType: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
