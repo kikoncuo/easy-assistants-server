@@ -92,12 +92,9 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
       .string()
       .optional()
       .describe(
-        'Assumptions we made about what the user said vs how we built the query and why we had to make them IE: the user said "give me my beans product" and there is no column named "beans" in the table, but there is a column group with a variable Whole Bean/Teas, we could say We assumed that "beans products" refer to the Whole Bean/Teas product group because there is no other product column that references beans. Don\'t include any SQL language.',
-      ),
-    SQL: z
-      .string()
-      .describe(
-        'SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs. If the user asks for a chart, only the necessary columns should be retrieved on the query, no extra information. IE: create a chart for my top 3 stores based on revenue, should return an array of objects and each object only include the store name and t he revenue, no extra information.',
+        `List of assumptions in a bullet list we made about what the user said vs how we built the query and why we had to make them.
+        IE: the user said "give me my beans product" and there is no column named "beans" in the table, but there is a column group with a variable Whole Bean/Teas, we could say We assumed that "beans products" refer to the Whole Bean/Teas product group because there is no other product column that references beans.
+        If you got feedback, create an extra assumption at the end explaining what the problem was and how you fixed it.`
       ),
     headers: z
       .string()
@@ -109,6 +106,15 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
       .describe(
         'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
       ),
+    displayType: z
+    .enum(['table', 'barChart', 'doghnutChart', 'lineChart, dataPoint'])
+    .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart.'
+    ),
+    SQL: z
+      .string()
+      .describe(
+        'SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs. If the user asks for a chart, only the necessary columns should be retrieved on the query, no extra information. IE: create a chart for my top 3 stores based on revenue, should return an array of objects and each object only include the store name and t he revenue, no extra information.',
+      )
   });
   const model = await createStructuredResponseAgent(anthropicSonnet(), getSQL);
   const messageContent = state.feedbackMessage
@@ -116,13 +122,16 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
             ${state.examples}
             please provide a revised SQL query that returns the following columns:
             ${state.task}
-            the result should be readable by a non-technical person.
+            The result should be readable by a non-technical person.
+            For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
             `
     : `Based on the following tables with examples,
             ${state.examples}
             please provide a SQL query that returns the following columns:
             ${state.task}
-            the result should be readable by a non-technical person.
+            You can't use ROUND, CEIL, FLOOR, or TRUNCATE, they are not supported by PostgreSQL.
+            The result should be readable by a non-technical person.
+            For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
             `;
   const message = await model.invoke(messageContent);
   const sqlQuery = (message as any).SQL;
@@ -182,6 +191,21 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
   const feedbackMessage = (message as any).feedbackMessage;
   Logger.log('isCorrect', isCorrect);
   Logger.log('feedbackMessage', feedbackMessage);
+
+
+  if (isCorrect) {
+    const isCorrectFunction = [
+      {
+        function_name: 'isCorrect',
+        arguments: {
+          isCorrect: isCorrect,
+          feedbackMessage: feedbackMessage
+        },
+      },
+    ];
+    const response = JSON.stringify(await functions[0]('tool', isCorrectFunction));
+  }
+
   return {
     ...state,
     resultStatus: isCorrect,
