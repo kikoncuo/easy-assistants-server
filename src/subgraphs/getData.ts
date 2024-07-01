@@ -108,8 +108,10 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
         'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
       ),
     displayType: z
-      .enum(['table', 'barChart', 'doghnutChart', 'lineChart, dataPoint'])
-      .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart.'),
+      .enum(['table', 'barChart', 'doghnutChart', 'lineChart', 'dataPoint'])
+      .describe(
+        'Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart. This should be defined based on users input task.',
+      ),
     SQL: z
       .string()
       .describe(
@@ -124,6 +126,7 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
             ${state.task}
             The result should be readable by a non-technical person.
             For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
+            For dataPoints the query should only return one column.
             `
     : `Based on the following tables with examples,
             ${state.examples}
@@ -132,6 +135,7 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
             You can't use ROUND, CEIL, FLOOR, or TRUNCATE, they are not supported by PostgreSQL.
             The result should be readable by a non-technical person.
             For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
+            For dataPoints the query should only return one column.
             `;
   const message = await model.invoke(messageContent);
   const sqlQuery = (message as any).SQL;
@@ -204,7 +208,7 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
       },
     },
   ];
-  const response = JSON.stringify(await functions[0]('tool', isCorrectFunction));
+  functions[0]('tool', isCorrectFunction);
 
   return {
     ...state,
