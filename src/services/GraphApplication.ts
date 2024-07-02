@@ -31,7 +31,7 @@ export class GraphApplication {
   private graphManager: GraphManager;
   error: any;
 
-  constructor(outputHandler: Function, clientAgentFunction: Function, recoveryDataFunction: Function, clientData: string[]) { // TODO: Find a better structure for clientData
+  constructor(outputHandler: Function, clientAgentFunction: Function, recoveryDataFunction: Function, executeQueryFunction: Function, clientData: string[]) { // TODO: Find a better structure for clientData
 
     const haiku = anthropicHaiku();
     const strongestModel = getStrongestModel();
@@ -110,7 +110,7 @@ export class GraphApplication {
 
     const subgraphs = {
       getData:{
-        agentSubGraph: new DataRecoveryGraph([clientAgentFunction, recoveryDataFunction], clientData[0], clientData[1]),
+        agentSubGraph: new DataRecoveryGraph([clientAgentFunction, recoveryDataFunction, executeQueryFunction], clientData[0], clientData[1]),
       }, 
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),

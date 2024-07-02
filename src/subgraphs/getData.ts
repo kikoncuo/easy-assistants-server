@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { dataExample } from './test/DataExample';
 import Logger from '../utils/Logger';
 
-
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
     examples: string[];
@@ -14,15 +13,12 @@ interface DataRecoveryState extends BaseState {
     explanation: string;
     resultStatus: boolean | false;
     feedbackMessage: string | null;
-    /*explorationQueries: {
-        query: string;
-        explanation: string;
-    }[];
+    explorationQueries: string[];
     explorationResults: {
         query: string;
         explanation: string;
         result: string;
-    }[];*/
+    }[];
     finalResult: string;
 }
 
@@ -44,7 +40,7 @@ function filterTables(originalString: string, tablesToKeep: string[]): string {
 }
 
 // Node function to recover sources
-async function recoverSources(state: DataRecoveryState, functions: Function[], filterTables: (originalString: string, tablesToKeep: string[]) => string, prefixes: string, pgConnectionChain?: string ): Promise<DataRecoveryState> {
+async function recoverSources(state: DataRecoveryState, functions: Function[], filterTables: (originalString: string, tablesToKeep: string[]) => string, prefixes: string, pgConnectionChain?: string): Promise<DataRecoveryState> {
     const getSources = z.object({
         sources: z.array(z.string()).describe('Array with the names of the sources'),
         isPossible: z.string().describe('"true" if the data recovery possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable'),
@@ -77,13 +73,39 @@ async function recoverSources(state: DataRecoveryState, functions: Function[], f
     const examples = filterTables(dataStructure, sources);
     const isPossible = (message as any).isPossible;
     const moreExamples = (message as any).moreExamples;
-    Logger.log('\nisPossible', isPossible); // TODO: Use this to decide if we should continue and do exploratory tasks if the result is maybe or fail the request if it's false
-    Logger.log('\nsources', sources); // TODO: Use this to decide if we should continue and do exploratory tasks or not 
+    Logger.log('\nisPossible', isPossible);
+    Logger.log('\nsources', sources);
     Logger.log('\nmoreExamples', moreExamples);
+
+    const updatedState = {
+        ...state,
+        examples: [examples],
+    };
+
+    if (isPossible === "maybe") {
+        updatedState.explorationQueries = moreExamples ? moreExamples.split(',').map((query: string) => query.trim()) : [];
+    }
+
+    return updatedState;
+}
+
+// Node function to explore additional queries
+async function exploreQueries(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
+    const explorationQueries = state.explorationQueries || [];
+    const explorationResults = [];
+
+    for (const query of explorationQueries) {
+        const result = await functions[2](query); // Assuming functions[2] executes a query and returns the result
+        explorationResults.push({
+            query,
+            explanation: `Result for query: ${query}`,
+            result,
+        });
+    }
 
     return {
         ...state,
-        examples: [examples],
+        explorationResults,
     };
 }
 
@@ -96,17 +118,22 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
 
     const model = createStructuredResponseAgent(anthropicSonnet(), getSQL);
 
-    //Prompt example: get me all my syrup sales 
+    let explorationResultsString = '';
+    if (state.explorationResults && state.explorationResults.length > 0) {
+        explorationResultsString = state.explorationResults.map(result => `Query: ${result.query}\nResult: ${result.result}\n`).join('\n');
+    }
 
     const messageContent = state.feedbackMessage
         ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
             ${(state.examples)}
+            ${explorationResultsString ? `and the following exploration results:\n${explorationResultsString}` : ''}
             please provide a revised SQL query that returns the following columns:
             ${(state.task)}
             the result should be readable by a non-technical person.
             `
         : `Based on the following tables with examples,
             ${(state.examples)}
+            ${explorationResultsString ? `and the following exploration results:\n${explorationResultsString}` : ''}
             please provide a SQL query that returns the following columns:
             ${(state.task)}
             the result should be readable by a non-technical person.
@@ -126,6 +153,8 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
     };
 }
 
+
+
 // Node function to evaluate result
 async function evaluateResult(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
     const getSQLResults = [
@@ -141,27 +170,27 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
     const sqlResults = JSON.stringify((await functions[0]('tool', getSQLResults))); 
 
     const getFeedback = z.object({
-      isCorrect: z.boolean().describe('does the data recovered from the query looks correct or not'),
-      feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect. Include the error and hints if there are any. Only include this if the query is incorrect.'),
+        isCorrect: z.boolean().describe('does the data recovered from the query looks correct or not'),
+        feedbackMessage: z.string().optional().describe('Feedback message if the query was incorrect. Include the error and hints if there are any. Only include this if the query is incorrect.'),
     });
 
     const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
 
     const message = await model.invoke([
         new HumanMessage(`Based on the following user request:
-           ${(state.task)}
-           Given the following SQL query,
-           ${(state.sqlQuery)}
-           Which returned the following results:
-           ${(sqlResults)}
-           These are the tables descriptions and their columns with examples:
-           ${(state.examples)}
-           Was this SQL query correct?
-           ${(state.sqlQuery)}
-           isCorrect should be true if the results from the query looks correct and the query solves the task, false if it the results look incorrect or the query doesn't solve the task.
-           If not, please provide a feedback message telling us what we did wrong and how to create a better query.
-           If the query is correct, make feedbackMessage empy.
-           `)
+            ${(state.task)}
+            Given the following SQL query,
+            ${(state.sqlQuery)}
+            Which returned the following results:
+            ${(sqlResults)}
+            These are the tables descriptions and their columns with examples:
+            ${(state.examples)}
+            Was this SQL query correct?
+            ${(state.sqlQuery)}
+            isCorrect should be true if the results from the query looks correct and the query solves the task, false if it the results look incorrect or the query doesn't solve the task.
+            If not, please provide a feedback message telling us what we did wrong and how to create a better query.
+            If the query is correct, make feedbackMessage empty.
+            `)
     ]);
 
     const isCorrect = (message as any).isCorrect;
@@ -171,12 +200,11 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
     Logger.log('feedbackMessage', feedbackMessage);
 
     return {
-      ...state,
-      resultStatus: isCorrect,
-      feedbackMessage: feedbackMessage,
-      finalResult: state.sqlQuery
+        ...state,
+        resultStatus: isCorrect,
+        feedbackMessage: feedbackMessage,
+        finalResult: state.sqlQuery
     };
-
 }
 
 // DataRecoveryGraph Class
@@ -211,6 +239,14 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
                 value: (x: string | null, y?: string | null) => (y ? y : x),
                 default: () => null,
             },
+            explorationQueries: {
+                value: (x: string[], y?: string[]) => (y ? y : x),
+                default: () => [],
+            },
+            explorationResults: {
+                value: (x: { query: string, explanation: string, result: string }[], y?: { query: string, explanation: string, result: string }[]) => (y ? y : x),
+                default: () => [],
+            },
             finalResult: {
                 value: (x: string, y?: string) => (y ? y : x),
                 default: () => "",
@@ -229,8 +265,17 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         subGraphBuilder
             .addNode("recover_sources", (state) => recoverSources(state, this.functions, filterTables, this.prefixes, this.pgConnectionChain))
             .addEdge(START, "recover_sources")
+            .addNode("explore_queries", (state) => exploreQueries(state, this.functions))
             .addNode("create_sql_query", (state) => createSQLQuery(state))
+            .addEdge("explore_queries", "create_sql_query")
             .addEdge("recover_sources", "create_sql_query")
+            .addConditionalEdges("recover_sources", (state) => {
+                if (state.explorationQueries && state.explorationQueries.length > 0) {
+                    return "explore_queries";
+                } else {
+                    return "create_sql_query";
+                }
+            })
             .addNode("evaluate_result", (state) => evaluateResult(state, this.functions))
             .addEdge("create_sql_query", "evaluate_result")
             .addConditionalEdges("evaluate_result", (state) => {
@@ -244,3 +289,4 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         return subGraphBuilder.compile();
     }
 }
+

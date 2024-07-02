@@ -177,3 +177,21 @@ export async function getDataStructure(prefixes: string, pgConnectionString?: st
         await client.end();
     }
 }
+
+export async function executeQuery(query: string, pgConnectionString?: string): Promise<string> {
+    const client = new Client({
+        connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+    });
+
+    await client.connect();
+
+    try {
+        const res = await client.query(query);
+        return JSON.stringify(res.rows, null, 2);
+    } catch (error) {
+        console.warn(`Error executing query: ${query}\nError: ${error}`);
+        return `Error executing query: ${error}`;
+    } finally {
+        await client.end();
+    }
+}

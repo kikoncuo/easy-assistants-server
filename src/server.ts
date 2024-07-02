@@ -6,7 +6,7 @@ import https from 'https';
 import http from 'http';
 import dotenv from 'dotenv';
 import Logger from './utils/Logger';
-import { getDataStructure } from './utils/DataStructure';
+import { executeQuery, getDataStructure } from './utils/DataStructure';
 dotenv.config();
 
 const {
@@ -103,7 +103,11 @@ wss.on('connection', ws => {
       const dataStructure = getDataStructure(prefix, dbConnectionChain);
       return dataStructure;
     },
-    ["","",""],
+    (query: string) => {
+      const queryResults = executeQuery(query);
+      return queryResults;
+    },
+    ["",""],
   );
 
   if (graphApp.error) {
@@ -125,6 +129,10 @@ wss.on('connection', ws => {
         (prefix: string, dbConnectionChain: string) => {
           const dataStructure = getDataStructure(prefix, dbConnectionChain);
           return dataStructure;
+        },
+        (query: string) => {
+          const queryResults = executeQuery(query);
+          return queryResults;
         },
         data.configData,
       );
