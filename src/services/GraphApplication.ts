@@ -24,7 +24,7 @@ import {
   askHuman
 } from '../models/Tools';
 
-import { DataRecoveryGraph } from '../subgraphs/getData';
+import { DataRecoveryGraph } from '../subgraphs/getData2';
 import { ViewCreationGraph } from '../subgraphs/createView';
 import { InsightsGraph } from '../subgraphs/getInsights';
 

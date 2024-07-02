@@ -183,7 +183,9 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
            These are the tables descriptions and their columns with examples:
            ${(state.examples)}
            Was the PLV8 function correct?
-           isCorrect should be true if the results from the function looks correct and the results solve the task, false if it the results look incorrect or the results don't solve the task.
+           isCorrect should be true if the results from the function looks correct, the results solve the task and the results are consistent and logical,
+           false if it the results look incorrect, the results don't solve the task or the results are inconsistent or ilogical
+           (IE: Missing data that shoudl be there, duplicated data, columns that should be smaller than others are not smaller, things that should add up are not adding up, etc).
            If not, please provide a feedback message telling us what we did wrong and how to create a better PLV8 function.
            `)
     ]);
