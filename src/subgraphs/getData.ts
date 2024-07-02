@@ -95,7 +95,9 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
       .describe(
         `List of assumptions in a bullet list we made about what the user said vs how we built the query and why we had to make them.
         IE: the user said "give me my beans product" and there is no column named "beans" in the table, but there is a column group with a variable Whole Bean/Teas, we could say We assumed that "beans products" refer to the Whole Bean/Teas product group because there is no other product column that references beans.
-        If you got feedback, create an extra assumption at the end explaining what the problem was and how you fixed it.`,
+        If you got feedback, create an extra assumption at the end explaining what the problem was and how you fixed it.
+        A non technical person should be able to understand the assumptions, so don't include any technical terms.
+        `,
       ),
     headers: z
       .string()
@@ -108,12 +110,12 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
         'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
       ),
     displayType: z
-      .enum(['table', 'barChart', 'doghnutChart', 'lineChart, dataPoint'])
+      .enum(['table', 'barChart', 'doghnutChart', 'lineChart', 'dataPoint'])
       .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart.'),
     SQL: z
       .string()
       .describe(
-        'SQL query without line breaks, the query should be minimalistic and the result must be readable by a non-technical person who does not know about IDs. If the user asks for a chart, only the necessary columns should be retrieved on the query, no extra information. IE: create a chart for my top 3 stores based on revenue, should return an array of objects and each object only include the store name and t he revenue, no extra information.',
+        'SQL query. The result must be readable by a non-technical person who does not know about IDs. If the user asks for a chart, only the necessary columns should be retrieved on the query, no extra information. IE: create a chart for my top 3 stores based on revenue, should return an array of objects and each object only include the store name and the revenue, no extra information. If the user asks for a table, the query should include a column with the date.',
       ),
   });
   const model = await createStructuredResponseAgent(anthropicSonnet(), getSQL);
@@ -124,14 +126,16 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
             ${state.task}
             The result should be readable by a non-technical person.
             For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
+            For tables, the query should include a date column.
             `
     : `Based on the following tables with examples,
             ${state.examples}
             please provide a SQL query that returns the following columns:
             ${state.task}
-            You can't use ROUND, CEIL, FLOOR, or TRUNCATE, they are not supported by PostgreSQL.
             The result should be readable by a non-technical person.
             For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
+            For tables, the query should include a date column.
+            When creating a row with percentages, the percentage should include a % symbol and have 2 decimal places.
             `;
   const message = await model.invoke(messageContent);
   const sqlQuery = (message as any).SQL;
@@ -165,6 +169,8 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
     },
   ];
   const sqlResults = JSON.stringify(await functions[0]('tool', getSQLResults));
+  // we cut the sql results length to avoid the context window being too big
+  const sqlResultsCut = sqlResults.substring(0, 10000);
   const getFeedback = z.object({
     isCorrect: z.boolean().describe('does the data recovered from the query looks correct or not'),
     feedbackMessage: z
@@ -180,15 +186,15 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
            ${state.task}
            Given the following SQL query,
            ${state.sqlQuery}
-           Which returned the following results:
-           ${sqlResults}
+           Which returned the following results (cut to 10,000 characters):
+           ${sqlResultsCut}
            These are the tables descriptions and their columns with examples:
            ${state.examples}
            Was this SQL query correct?
            ${state.sqlQuery}
            isCorrect should be true if the results from the query looks correct and the query solves the task, false if it the results look incorrect or the query doesn't solve the task.
            If not, please provide a feedback message telling us what we did wrong and how to create a better query.
-           `),
+          `),
   ]);
   const isCorrect = (message as any).isCorrect;
   const feedbackMessage = (message as any).feedbackMessage;
@@ -204,7 +210,7 @@ async function evaluateResult(state: DataRecoveryState, functions: Function[]): 
       },
     },
   ];
-  const response = JSON.stringify(await functions[0]('tool', isCorrectFunction));
+  functions[0]('tool', isCorrectFunction);
 
   return {
     ...state,
