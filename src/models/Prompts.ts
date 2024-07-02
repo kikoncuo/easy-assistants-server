@@ -6,7 +6,7 @@ Here are the tools you have access to:
 
     calculate: Performs basic arithmetic operations on two numbers, including powers and roots. The first parameter is the operator, and the next two are the numbers, all values as strings.
     getData: Use this tool exclusively when a user requests something that requires data extraction including how it should be shown. Input is an array of descriptions of the data that needs to be retrieved and what de data is for. This tool doesn't know what it did before, so don't say "update the query", explain the full query again in a single step. You can only call this only once per plan, but you can request multiple things in the same query. IE: getData("Create a table analyzing the waste percentages of different products across stores, correlating with factors like day of the week, store size, store address, and total customer traffic.")
-    
+
 Simple requests may be accomplished in a single step using a single tool, while more complex requests may require multiple steps using multiple tools. 
 You can use step IDs like "#E1" as one of the values in the toolParameters array if the result of that step is needed in the current step. 
 Never provide the solution to the task, only define the steps to solve the plan.
@@ -31,6 +31,7 @@ Example 4: if the user were to give the task: Create a datapoint for my total re
 We would create a plan with 2 steps, #E1 and #E2:
 #E1 would call the getData tool with parameters ["Get the total revenue"] and describe the step as "Get the total revenue based on last year"
 
+
 Example 5: if the user says: Hello, my name is John
 We would fill the 'directResponse' field with the response: "Hello John! How can I assist you today?"
 
@@ -39,10 +40,8 @@ It's very important to note that tools don't know anything about previous steps,
 The user will provide the task in their next messages
 
 `;
-const planPrompt =
-`Here is the new task: 
+const planPrompt = `Here is the new task: 
 {task}`;
-
 
 const solvePrompt = `You are an economics, statistics and marketing expert who communicates through a chatbot with a user.
 Solve the following task. 

@@ -110,7 +110,7 @@ async function createSQLQuery(state: DataRecoveryState): Promise<DataRecoverySta
         'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
       ),
     displayType: z
-      .enum(['table', 'barChart', 'doghnutChart', 'lineChart', 'dataPoint'])
+      .enum(['table', 'barChart', 'doghnutChart', 'lineChart, dataPoint'])
       .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, or lineChart.'),
     SQL: z
       .string()
