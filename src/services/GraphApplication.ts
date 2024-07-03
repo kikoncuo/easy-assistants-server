@@ -23,6 +23,9 @@ import {
   askHuman
 } from '../models/Tools';
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { ViewCreationGraph } from '../subgraphs/createView';
 import { InsightsGraph } from '../subgraphs/getInsights';
@@ -110,7 +113,7 @@ export class GraphApplication {
 
     const subgraphs = {
       dataAgent:{
-        agentSubGraph: new DataRecoveryGraph([clientAgentFunction],clientData[0], clientData[1]),
+        agentSubGraph: new DataRecoveryGraph([clientAgentFunction],clientData[0], this.getConnectionChain(clientData[1])),
       }, 
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
@@ -130,5 +133,16 @@ export class GraphApplication {
       ...config,
       streamMode: "values",
     })
+  }
+
+  getConnectionChain(anonKey: string) {
+    switch (anonKey) {
+      case "dbhhziresrambrdyptjh" :  //OmniTest
+        return process.env.OMNITEST_CHAIN;
+      case "zsjqampwrmtxrjscpuud" :  //TalentClass
+        return process.env.TALENTCLASS_CHAIN;
+      default :  
+        return process.env.OMNITEST_CHAIN;
+    }
   }
 }
