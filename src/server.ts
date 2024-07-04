@@ -1,6 +1,7 @@
 import { WebSocketServer } from 'ws';
 import { GraphApplication } from './services/GraphApplication';
 import { WebSocketService } from './services/WebSocketService';
+import { SemanticLayerGraph } from './subgraphs/createSemanticLayer';
 import fs from 'fs';
 import https from 'https';
 import http from 'http';
@@ -132,6 +133,12 @@ wss.on('connection', ws => {
           WebSocketService.queryUser(type, functions, ws),
         data.configData,
       );
+    }
+    else if (data.type === 'createSemanticLayer') {
+      Logger.log('Creating semantic layer');
+      //onst semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, // TODO: Pass in the functions here to interact with the user, not sure how to do this
+      //const result = await semanticLayerGraph.getGraph().invoke({task:"Create a semantic layer for the company's data"});
+      //WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     }
 
 

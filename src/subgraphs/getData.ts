@@ -13,13 +13,15 @@ interface DataRecoveryState extends BaseState {
   explanation: string;
   description: string[];
   title: string;
-  resultStatus: boolean | false;
+  resultStatus: 'correct' | 'maybe' | 'incorrect';
   feedbackMessage: string | null;
   explorationQueries: string[];
   explorationResults: string[];
   finalResult: string;
   displayType: string;
   resultExecution: string;
+  additionalExplorationQueries: string[];
+  additionalExplorationResults: string[];
 }
 
 // Helper function to filter tables
@@ -165,7 +167,7 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
             }
         $$;
 
-        or:
+        or
 
         CREATE OR REPLACE FUNCTION get_total_sales()
          RETURNS TABLE (
@@ -266,16 +268,13 @@ async function evaluateResult(
     },
   ];
 
-  let isCorrect = false;
-  let feedbackMessage = '';
-
   try {
     const getFeedback = z.object({
-      isCorrect: z.boolean().describe('does the data recovered from the function look correct or not'),
+      resultStatus: z.enum(['correct', 'maybe', 'incorrect']).describe('Evaluation of the function result'),
       feedbackMessage: z
         .string()
         .optional()
-        .describe('Feedback message if the function was incorrect. Only include this if the isCorrect is false.'),
+        .describe('Feedback message if the function was incorrect or needs further exploration.'),
     });
 
     const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
@@ -289,40 +288,72 @@ async function evaluateResult(
                 ${state.resultExecution}
                 These are the tables descriptions and their columns with examples:
                 ${state.examples}
-                Was the PLV8 function correct?
-                isCorrect should be true if the results from the function looks correct, the results solve the task and the results are consistent and logical,
-                false if it the results look incorrect, the results don't solve the task or the results are inconsistent or illogical
-                (IE: Missing data that should be there, duplicated data, columns that should be smaller than others are not smaller, things that should add up are not adding up, etc).
-                If not, please provide a feedback message telling us the error. 
+                Evaluate the PLV8 function result:
+                - 'correct' if the results from the function look correct, solve the task, and are consistent and logical.
+                - 'maybe' if you're not sure and need more information or exploration.
+                - 'incorrect' if the results look incorrect, don't solve the task, or are inconsistent or illogical.
+                Provide a feedback message for 'maybe' or 'incorrect' results, explaining what needs further exploration or how to improve the function.
             `),
     ]);
     
-    isCorrect = (message as any).isCorrect;
-    feedbackMessage = (message as any).feedbackMessage || '';
+    const resultStatus = (message as any).resultStatus;
+    const feedbackMessage = (message as any).feedbackMessage || '';
 
-    Logger.log('isCorrect', isCorrect);
+    Logger.log('resultStatus', resultStatus);
     Logger.log('feedbackMessage', feedbackMessage);
 
-    if (!isCorrect) {
+    if (resultStatus === 'incorrect') {
       await dropSQLFunction(functionName, pgConnectionChain);
-      return {
-        ...state,
-        resultStatus: false,
-        feedbackMessage: feedbackMessage || 'Error creating function',
-      };
-    } else {
+    } else if (resultStatus === 'correct') {
       functions[0]('tool', getSQLResults);
     }
+
+    return {
+      ...state,
+      resultStatus: resultStatus,
+      feedbackMessage: feedbackMessage,
+      finalResult: resultStatus === 'correct' ? extractFunctionDetails(state.plv8function) : '',
+    };
   } catch (error) {
     Logger.error('Error evaluating SQL results:', error);
-    feedbackMessage = 'An error occurred while evaluating the SQL results.';
+    return {
+      ...state,
+      resultStatus: 'incorrect',
+      feedbackMessage: 'An error occurred while evaluating the SQL results.',
+    };
   }
+}
+
+async function performExploratoryQueries(
+  state: DataRecoveryState,
+  pgConnectionChain?: string
+): Promise<DataRecoveryState> {
+  const generateQueries = z.object({
+    queries: z.array(z.string()).describe('Array of SQL queries to explore the data further'),
+  });
+
+  const model = createStructuredResponseAgent(anthropicSonnet(), generateQueries);
+
+  const message = await model.invoke([
+    new HumanMessage(`Based on the following user request:
+            ${state.task}
+            And the current PLV8 function:
+            ${state.plv8function}
+            Which returned results that we're not sure about:
+            ${state.resultExecution}
+            Generate 2-3 SQL queries to explore the data further and help determine if the function is correct.
+            Focus on aspects that are unclear or potentially problematic.`),
+  ]);
+
+  const queries = (message as any).queries;
+  Logger.log('Exploratory queries:', queries);
+
+  const results = await executeQueries(queries, pgConnectionChain);
 
   return {
     ...state,
-    resultStatus: isCorrect,
-    feedbackMessage: feedbackMessage,
-    finalResult: isCorrect ? extractFunctionDetails(state.plv8function) : '',
+    additionalExplorationQueries: queries,
+    additionalExplorationResults: results,
   };
 }
 
@@ -351,8 +382,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         default: () => '',
       },
       resultStatus: {
-        value: (x: boolean | false, y?: boolean | false) => (y ? y : x),
-        default: () => false,
+        value: (x: 'correct' | 'maybe' | 'incorrect', y?: 'correct' | 'maybe' | 'incorrect') => (y ? y : x),
+        default: () => 'incorrect',
       },
       feedbackMessage: {
         value: (x: string | null, y?: string | null) => (y ? y : x),
@@ -386,10 +417,18 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      additionalExplorationQueries: {
+        value: (x: string[], y?: string[]) => (y ? y : x),
+        default: () => [],
+      },
+      additionalExplorationResults: {
+        value: (x: string[], y?: string[]) => (y ? y : x),
+        default: () => [],
+      },
     };
     super(graphState);
     this.functions = functions;
-    this.prefixes = prefixes;
+    this.prefixes =prefixes;
     this.pgConnectionChain = pgConnectionChain;
   }
 
@@ -404,6 +443,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addNode('explore_queries', async state => await exploreQueries(state, this.pgConnectionChain))
       .addNode('create_plv8_function', async state => await createPLV8Function(state, this.pgConnectionChain))
       .addNode('evaluate_result', async state => await evaluateResult(state, this.functions, this.pgConnectionChain))
+      .addNode('perform_exploratory_queries', async state => await performExploratoryQueries(state, this.pgConnectionChain))
       .addEdge(START, 'recover_sources')
       .addConditionalEdges('recover_sources', state => {
         if (state.finalResult) {
@@ -417,13 +457,17 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addEdge('explore_queries', 'create_plv8_function')
       .addEdge('create_plv8_function', 'evaluate_result')
       .addConditionalEdges('evaluate_result', state => {
-        if (state.resultStatus) {
+        if (state.resultStatus === 'correct') {
           return END;
+        } else if (state.resultStatus === 'maybe') {
+          return 'perform_exploratory_queries';
         } else {
           return 'create_plv8_function';
         }
-      });
+      })
+      .addEdge('perform_exploratory_queries', 'evaluate_result');
 
     return subGraphBuilder.compile();
   }
 }
+
