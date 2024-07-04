@@ -19,6 +19,7 @@ interface DataRecoveryState extends BaseState {
   explorationResults: string[];
   finalResult: string;
   displayType: string;
+  resultExecution: string;
 }
 
 // Helper function to filter tables
@@ -158,6 +159,21 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
                 logic
             }
         $$;
+
+        or
+
+        CREATE OR REPLACE FUNCTION get_total_sales()
+         RETURNS TABLE (
+            return parameters enclosed in double quotes
+        )
+        LANGUAGE plv8
+        AS $$
+            const salesData = plv8.execute(\`
+                SQL query
+            \`);
+
+            return result.map(row => value);
+        $$;
         `),
     description: z.string().describe('Task simple description, in a simple phrase.'),
     title: z
@@ -207,8 +223,11 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
   Logger.log('plv8function', plv8function);
   Logger.log('assumptions', assumptions);
 
-  const executePLV = await createPLV8function(plv8function, chain);
-  console.log('🚀 ~ createPLV8Function ~ executePLV:', executePLV);
+  const functionNameMatch = plv8function.match(/CREATE OR REPLACE FUNCTION (\w+)\(/);
+  const functionName = functionNameMatch ? functionNameMatch[1] : '';
+  const resultExecution = await createPLV8function(plv8function, functionName, chain);
+
+  console.log('🚀 ~ createPLV8Function ~ executePLV:', resultExecution);
 
   return {
     ...state,
@@ -217,6 +236,7 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
     description: description,
     title: title,
     displayType: displayType,
+    resultExecution: resultExecution,
   };
 }
 
@@ -248,9 +268,6 @@ async function evaluateResult(
   let feedbackMessage = '';
 
   try {
-    sqlResults = JSON.stringify(await functions[0]('tool', getSQLResults));
-    Logger.log('sqlResults', sqlResults);
-
     const getFeedback = z.object({
       isCorrect: z.boolean().describe('does the data recovered from the function look correct or not'),
       feedbackMessage: z
@@ -259,7 +276,7 @@ async function evaluateResult(
         .describe('Feedback message if the function was incorrect. Only include this if the isCorrect is false.'),
     });
 
-    const model = createStructuredResponseAgent(groqChatLlama(), getFeedback);
+    const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
 
     const message = await model.invoke([
       new HumanMessage(`Based on the following user request:
@@ -267,7 +284,7 @@ async function evaluateResult(
                 Given the following PLV8 Function,
                 ${state.plv8function}
                 Which returned the following results:
-                ${sqlResults}
+                ${state.resultExecution}
                 These are the tables descriptions and their columns with examples:
                 ${state.examples}
                 Was the PLV8 function correct?
@@ -277,12 +294,12 @@ async function evaluateResult(
                 If not, please provide a feedback message telling us what we did wrong and how to create a better PLV8 function.
             `),
     ]);
-
+    console.log({message})
     isCorrect = (message as any).isCorrect;
     feedbackMessage = (message as any).feedbackMessage || '';
 
     if (!isCorrect) {
-      if (sqlResults.includes('ERROR')) {
+      if (state.resultExecution.includes('ERROR')) {
         await dropSQLFunction(functionName, pgConnectionChain);
         return {
           ...state,
@@ -291,6 +308,9 @@ async function evaluateResult(
         };
       }
       await dropSQLFunction(functionName, pgConnectionChain);
+    } else {
+      Logger.log('sqlResults', sqlResults);
+      sqlResults = functions[0]('tool', getSQLResults);
     }
   } catch (error) {
     Logger.error('Error evaluating SQL results:', error);
@@ -360,6 +380,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       description: {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
+      },
+      resultExecution: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
       },
     };
     super(graphState);
