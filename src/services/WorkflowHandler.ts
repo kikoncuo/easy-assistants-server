@@ -6,62 +6,7 @@ import { ErrorResponse, FunctionDetails, InputData } from '../interfaces/types';
 import Logger from '../utils/Logger';
 import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 
-// internal function
-function _getCurrentTask(state: TaskState): number | null {
-  if (state.results === null) {
-    return 1;
-  }
 
-  if (state.results && Object.keys(state.results).length === state.steps.length) {
-    return null;
-  } else {
-    return Object.keys(state.results || {}).length + 1;
-  }
-}
-
-function processSteps(inputData: InputData | AIMessage): { stepsArray: string[][]; fullPlan: string, directResponse: string } {
-  let steps: any[];
-  let directResponse: string;
-  // Sometimes models return an AIMessage, instead of returning the structured data directly
-  if (inputData instanceof AIMessage) {
-    try {
-      steps = JSON.parse(inputData.content.toString()).steps;
-      directResponse = JSON.parse(inputData.content.toString()).directResponse;
-    } catch (error) {
-      Logger.warn('Warning: Failed to parse the AIMessage content as JSON while creating the plan. (Using a different planner may help).', error);
-      Logger.warn('This was the AIMessage:', inputData.content.toString());
-      Logger.warn('Error:', error);
-      return { stepsArray: [], fullPlan: '', directResponse: '' };
-    }
-  } else {
-    steps = inputData.steps;
-    directResponse = inputData.directResponse;
-  }
-
-  if (!steps) {
-    return { stepsArray: [], fullPlan: "", directResponse };
-  }
-
-  // Anthropic tends to return the steps as a string, so we need to parse it
-  if (typeof steps[0] === 'string') {
-    try {
-      steps = JSON.parse(steps[0]);
-    } catch (error) {
-      Logger.warn('Warning: Failed to parse the input data as JSON, using it as a string.', error);
-    }
-  }
-
-  const stepsArray: string[][] = steps.map(step => [
-    step.description,
-    step.stepId,
-    step.toolName,
-    step.toolParameters.join(', '),
-  ]);
-
-  const fullPlan: string = steps.map(step => `${step.stepId} ${step.description}`).join('\n');
-
-  return { stepsArray, fullPlan, directResponse };
-}
 
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
   const functionDetails: FunctionDetails[] = [];
@@ -83,16 +28,6 @@ export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[]
   return functionDetails;
 }
 
-// function that deletes curly brackets from a string
-function removeCurlyBrackets(str: string): string {
-  return str.replace(/{/g, '').replace(/}/g, '');
-}
-
-// function that duplicates curly brackets from a string
-function duplicateCurlyBrackets(str: string): string {
-  return str.replace(/{/g, '{{').replace(/}/g, '}}');
-}
-
 function stringifyMessages(messages: Message[]): string[][] {
   return messages.flatMap(message => message.text);
 }
@@ -100,10 +35,9 @@ function stringifyMessages(messages: Message[]): string[][] {
 // nodes
 
 export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
-  async function plan(state: TaskState): Promise<{ steps: any; plan_string: string, directResponse: string, messages: Message[], results: any }> {
+  async function plan(state: TaskState): Promise<TaskState> {
     try {
       const task = state.task;
-      const results = state.results || {};
       const messages = state.messages || [];
       const messagesTyped = stringifyMessages(messages) as any;
       const chatPromptTemplate = ChatPromptTemplate.fromMessages([['system', systemPrompt],...messagesTyped,['human', planPrompt]]);
@@ -111,27 +45,39 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
 
       const plan = await chain.invoke({ task: task }); 
 
-      const { stepsArray, fullPlan, directResponse } = processSteps(plan);
+      const agentName = (plan as any).agentName;
+      const description = (plan as any).description;
+      const directResponse = (plan as any).directResponse;
 
-      const planString = duplicateCurlyBrackets(JSON.stringify(plan));
-      // TODO: use actual chain output instead of emulating messages
-      const historyPromptTemplate = [['human', "Here is a task: "+task],['ai', planString]]; // TODO: This may cause errors if other models than gpt are used for plannerModel, also use prompt format https://js.langchain.com/v0.2/docs/how_to/prompts_partial 
-      const historyMessage: Message = {text: historyPromptTemplate}
-      const allHistory = [...state.messages, historyMessage]
+      outputHandler('plan', description);
 
-      outputHandler('plan', fullPlan);
+      if (directResponse) {
+        const historyPromptTemplate = [['human', "Here is a task: "+task],['ai', directResponse]]; 
+        const historyMessage: Message = {text: historyPromptTemplate}
+        const allHistory = [...state.messages, historyMessage]
 
-      Logger.log('Plan steps: ', stepsArray);
+        return { 
+          ...state,
+          directResponse: directResponse,
+          messages: allHistory,
+         };
+      } else{
+        const historyPromptTemplate = [['human', "Here is a task: "+task],['ai', description]]; 
+        const historyMessage: Message = {text: historyPromptTemplate}
+        const allHistory = [...state.messages, historyMessage]
+        return { 
+          ...state,
+          agentName: agentName,
+          agentDescription: description,
+          messages: allHistory,
+         };
+      }
 
-      return { steps: stepsArray, plan_string: fullPlan, directResponse, messages: allHistory, results: {}  };
     } catch (error) {
       Logger.warn('Error in plan node:', error);
       return {
-        steps: [['Error running query', '#E1', 'solve', 'we had a problem creating the plan']],
-        plan_string: 'We had a problem creating a plan for your requests. Please try again or contact support.',
+        ...state,
         directResponse: 'We had a problem creating a response for your requests. Please try again or contact support.',
-        messages: [],
-        results: {},
       }; // TODO: Create a dedicated error node
     }
   }
@@ -139,17 +85,11 @@ export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function
   return plan;
 }
 
-export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) {
+export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunction: Function) { // TODO: delete this, we are using subgraphs now
   async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
-      const _step = _getCurrentTask(state);
-      if (_step === null) throw new Error('No more steps to execute.');
-      let [, stepName, tool, toolInput] = state.steps[_step - 1];
-      const _results = state.results || {};
-      for (const [k, v] of Object.entries(_results)) {
-        toolInput = toolInput.replace(k, v);
-      }
-      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(toolInput)]);      
+
+      const result = await model.invoke([new SystemMessage(agentPrompt), new HumanMessage(state.agentDescription)]);      
       const functions = extractFunctionDetails(result);
       const results = await toolFunction('tool', functions);
       const lastMessageIndex = state.messages.length - 1;
@@ -158,23 +98,26 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
         ...lastMessage.additionalData,
         functions, 
       };
+
+      // we gotta clear this
+      if (state.directResponse) {
+        state.directResponse = null;
+      }
       
       const updatedLastMessage = {
         ...lastMessage,
         additionalData: updatedAdditionalData,
       };
-      
       state.messages[lastMessageIndex] = updatedLastMessage;
 
-      _results[stepName] = Object.values(results)[0] as string;
       Logger.log(
-        `Agent executed step ${stepName} with tool ${tool} and input ${toolInput}, results: ${JSON.stringify(results)}`,
+        `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(results)}`,
       );
-      return { results: _results };
+      return { result: results };
     } catch (error) {
       Logger.log('error in agent node', error)
       Logger.warn('Error in agent execution:', error);
-      return { results: { error: 'Error in agent execution, please try again or contact support.' } };
+      return { result: 'Error in agent execution, please try again or contact support.' };
     }
   }
   return agentNode;
@@ -183,29 +126,23 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
 export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a StateGraph with subtype state of the subgraph
   async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
-      const _step = _getCurrentTask(state);
-      if (_step === null) throw new Error('No more steps to execute.');
-      let [, stepName, tool, toolInput] = state.steps[_step - 1];
-      const _results = state.results || {};
-      for (const [k, v] of Object.entries(_results)) {
-        toolInput = toolInput.replace(k, v);
-      }
-      const result = await graph.getGraph().invoke({task:toolInput});      
-      _results[stepName] = result.finalResult;
+      const result = ((await graph.getGraph().invoke({task:state.agentDescription.toString()})) as any).finalResult;   
       Logger.log(
-        `Agent subgraph executed step ${stepName} with tool ${tool} and input ${toolInput}, result: ${_results[stepName]}`,
+        `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result)}`,
       );
-      return { results: _results };
+
+
+      return { result: result, agentName: ""};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { results: { error: 'Error in agent execution, please try again or contact support.' } };
+      return { result: 'Error in agent execution, please try again or contact support.' };
     }
   }
   return agentNode;
 }
 
-export function getDirectResponseNode(directResponseModel: BaseChatModel, outputHandler: Function) {
-  async function response(state: TaskState): Promise<{ result: string }> {
+export function getDirectResponseNode(outputHandler: Function) {
+  async function response(state: TaskState): Promise<Partial<TaskState>> {
     if (state.directResponse) {
       const directResponse = state.directResponse;
       outputHandler('directResponse', directResponse);
@@ -221,68 +158,31 @@ export function getDirectResponseNode(directResponseModel: BaseChatModel, output
   return response;
 }
 
-export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) {
-  async function solve(state: TaskState): Promise<{ result: string, messages: Message[]  }> {
-    try {
-      let plan = '';
-      for (let [_plan, stepName, tool, toolInput] of state.steps) {
-        const _results = state.results || {};
-        for (const [k, v] of Object.entries(_results)) {
-          toolInput = toolInput.replace(k, v);
-          stepName = stepName.replace(k, v);
-        }
-        plan += `Plan: ${_plan}\n${stepName} = ${tool}[${toolInput}]`;
-      }
+export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) { 
+  async function solve(state: TaskState): Promise<Partial<TaskState>> {
+
+      const finalResult = await solverModel.invoke(['human', 'State the following result to the user:' + state.result]);
+      outputHandler('result', finalResult.content);
+      Logger.log('Final response:', finalResult.content)
+      
       const stateMessage = state.messages
-
-      const chatPromptTemplate = ChatPromptTemplate.fromMessages([['human', solvePrompt]]);
-
-      const chain = chatPromptTemplate.pipe(solverModel);
-
-      const responseResult = await chain.invoke({task: state.task, plan: plan, results: state.results});
-
-      let finalResponse = "";
-
-      if (responseResult.content) { 
-        finalResponse = responseResult.content as string;
-      } else {
-        finalResponse = JSON.stringify(responseResult);
-      }
-
-      outputHandler('result', finalResponse);
-      Logger.log('Final response:', finalResponse)
-
-      const historyPromptTemplate: Message = {text:[['human', solveMemoryPrompt+removeCurlyBrackets(JSON.stringify(state.results))],['ai', "It was executed successfully, ready for your next task"]]}; // TODO: clean this up
+      const historyPromptTemplate: Message = {text:[['human', finalResult.content.toString()],['ai', "It was executed successfully, ready for your next task"]]}; // TODO: clean this up
       const stateHistory = [...stateMessage, historyPromptTemplate]
 
-      return { result: finalResponse, messages: stateHistory};
-    } catch (error) {
-      Logger.warn('Error in agent execution:', error);
-      
-      outputHandler('result', 'Error producing the final answer, please try again or contact support.');
-      return { result: 'Error producing the final answer, please try again or contact support.', messages: []};
-    }
+      return {messages: stateHistory};
   }
-
   return solve;
 }
 
 export function getRouteEdge() {
   function route(state: TaskState): string {
-    try {
-      if (state.directResponse || state.steps.length === 0) {
-        return 'direct';
-      }
-      const _step = _getCurrentTask(state);
-      if (_step === null) {
-        return 'solve';
-      }
-      const index = state.results ? Object.keys(state.results).length : 0;
-      const step = state.steps[index][2];
-      return step;
-    } catch (error) {
-      Logger.error('Error in routing your request, we redirected directly to solve:', error);
-      return 'solve'; 
+    if (state.agentName && state.agentName !== "") {
+      return state.agentName
+    } else if (state.directResponse) {
+      return 'direct';
+    }
+    else {
+      return 'solve';
     }
   }
 
