@@ -149,6 +149,8 @@ export class GraphApplication {
         return process.env.OMNITEST_CHAIN;
       case 'zsjqampwrmtxrjscpuud': //TalentClass
         return process.env.TALENTCLASS_CHAIN;
+      case 'juqxwywkrymbfioutzvn': //BlankStreet
+        return process.env.BLANKSTREET_CHAIN;
       default:
         return process.env.OMNITEST_CHAIN;
     }
