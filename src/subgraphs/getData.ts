@@ -172,7 +172,7 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
                 SQL query
             \`);
 
-            return result.map(row => value);
+            return // return map
         $$;
         `),
     description: z.string().describe('Task simple description, in a simple phrase.'),
@@ -227,8 +227,6 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
   const functionName = functionNameMatch ? functionNameMatch[1] : '';
   const resultExecution = await createPLV8function(plv8function, functionName, chain);
 
-  console.log('🚀 ~ createPLV8Function ~ executePLV:', resultExecution);
-
   return {
     ...state,
     plv8function: plv8function,
@@ -236,7 +234,7 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
     description: description,
     title: title,
     displayType: displayType,
-    resultExecution: resultExecution,
+    resultExecution: resultExecution
   };
 }
 
@@ -263,7 +261,6 @@ async function evaluateResult(
     },
   ];
 
-  let sqlResults;
   let isCorrect = false;
   let feedbackMessage = '';
 
@@ -283,7 +280,7 @@ async function evaluateResult(
                 ${state.task}
                 Given the following PLV8 Function,
                 ${state.plv8function}
-                Which returned the following results:
+                Which returned the following results (limit 10):
                 ${state.resultExecution}
                 These are the tables descriptions and their columns with examples:
                 ${state.examples}
@@ -294,12 +291,15 @@ async function evaluateResult(
                 If not, please provide a feedback message telling us what we did wrong and how to create a better PLV8 function.
             `),
     ]);
-    console.log({message})
+    
     isCorrect = (message as any).isCorrect;
     feedbackMessage = (message as any).feedbackMessage || '';
 
+    Logger.log('isCorrect', isCorrect);
+    Logger.log('feedbackMessage', feedbackMessage);
+
     if (!isCorrect) {
-      if (state.resultExecution.includes('ERROR')) {
+      if (state.resultExecution.includes('ERROR')) { // @lluis is this needed?
         await dropSQLFunction(functionName, pgConnectionChain);
         return {
           ...state,
@@ -307,10 +307,9 @@ async function evaluateResult(
           feedbackMessage: feedbackMessage || 'Error creating function',
         };
       }
-      await dropSQLFunction(functionName, pgConnectionChain);
+      await dropSQLFunction(functionName, pgConnectionChain); // @lluis is this needed?
     } else {
-      Logger.log('sqlResults', sqlResults);
-      sqlResults = functions[0]('tool', getSQLResults);
+      functions[0]('tool', getSQLResults);
     }
   } catch (error) {
     Logger.error('Error evaluating SQL results:', error);

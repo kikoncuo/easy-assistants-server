@@ -246,9 +246,8 @@ export async function createPLV8function(query: string, functionName: string, pg
 
   try {
     await client.query(query);
-    const execution =  await client.query(`select * from ${functionName}()`);
-    console.log({execution})
-    return JSON.stringify(execution);
+    const execution =  await client.query(`select * from ${functionName}() limit 10`);
+    return JSON.stringify(execution.rows);
   } catch (error) {
     console.warn(`Error creating function ${error}`);
     return `Error creating function  ${error}`;
