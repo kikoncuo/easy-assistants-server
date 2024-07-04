@@ -31,6 +31,7 @@ async function getTableNames(prefixes: string, client: Client): Promise<string[]
   try {
     const tablePrefixes = prefixes.split(',');
     const prefixConditions = tablePrefixes.map((prefix: string) => `tablename LIKE '${prefix}%'`).join(' OR ');
+    console.log({prefixConditions});
 
     const res = await client.query(`
             SELECT tablename
@@ -236,7 +237,7 @@ export async function dropSQLFunction(functionName: string, pgConnectionString?:
   }
 }
 
-export async function createPLV8function(query: string, pgConnectionString?: string): Promise<string> {
+export async function createPLV8function(query: string, functionName: string, pgConnectionString?: string): Promise<string> {
   const client = new Client({
     connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
   });
@@ -245,10 +246,11 @@ export async function createPLV8function(query: string, pgConnectionString?: str
 
   try {
     await client.query(query);
-    return `Function created successfully.`;
+    const execution =  await client.query(`select * from ${functionName}() limit 10`);
+    return JSON.stringify(execution.rows);
   } catch (error) {
-    console.warn(`Error dropping function ${error}`);
-    return `Error dropping function  ${error}`;
+    console.warn(`Error creating function ${error}`);
+    return `Error creating function  ${error}`;
   } finally {
     await client.end();
   }
