@@ -160,7 +160,7 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
             }
         $$;
 
-        or
+        or:
 
         CREATE OR REPLACE FUNCTION get_total_sales()
          RETURNS TABLE (
@@ -192,9 +192,9 @@ async function createPLV8Function(state: DataRecoveryState, chain?: string): Pro
   }
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getSQL);
-
   const messageContent = state.feedbackMessage
-    ? `Based on the feedback: "${state.feedbackMessage}", and the following tables with examples,
+    ? `Based on the feedback: "${state.feedbackMessage}" for this original query ${state.plv8function}. 
+            Using the following tables with examples,
             ${state.examples}
             ${explorationResultsString ? `and the following exploration results:\n${explorationResultsString}` : ''}
             please provide a revised SQL PLV8 function with no comments that returns a table that satisfies the following task:
@@ -288,7 +288,7 @@ async function evaluateResult(
                 isCorrect should be true if the results from the function looks correct, the results solve the task and the results are consistent and logical,
                 false if it the results look incorrect, the results don't solve the task or the results are inconsistent or illogical
                 (IE: Missing data that should be there, duplicated data, columns that should be smaller than others are not smaller, things that should add up are not adding up, etc).
-                If not, please provide a feedback message telling us what we did wrong and how to create a better PLV8 function.
+                If not, please provide a feedback message telling us the error. 
             `),
     ]);
     
@@ -299,15 +299,12 @@ async function evaluateResult(
     Logger.log('feedbackMessage', feedbackMessage);
 
     if (!isCorrect) {
-      if (state.resultExecution.includes('ERROR')) { // @lluis is this needed?
-        await dropSQLFunction(functionName, pgConnectionChain);
-        return {
-          ...state,
-          resultStatus: false,
-          feedbackMessage: feedbackMessage || 'Error creating function',
-        };
-      }
-      await dropSQLFunction(functionName, pgConnectionChain); // @lluis is this needed?
+      await dropSQLFunction(functionName, pgConnectionChain);
+      return {
+        ...state,
+        resultStatus: false,
+        feedbackMessage: feedbackMessage || 'Error creating function',
+      };
     } else {
       functions[0]('tool', getSQLResults);
     }
