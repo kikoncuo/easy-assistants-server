@@ -5,7 +5,7 @@ import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@lan
 import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import Logger from '../utils/Logger';
-import { getDataStructure } from '../utils/DataStructure';
+import { getDataStructure, getMissingValues, getUnusualValues, getDistinctValues, getGroupRatios, getDataSamples, getDuplicatedRows, getUniqueRatio, getEmptyValuePercentage } from '../utils/DataStructure';
 import fs from 'fs';
 import path from 'path';
 
@@ -13,45 +13,126 @@ interface SemanticLayerState extends BaseState {
   tableAnalysis: Record<string, TableAnalysis>;
   cubeJsFiles: Record<string, string>;
   finalResult: string;
+  userConfirmations: Record<string, boolean>;
 }
 
 interface TableAnalysis {
   missingValues: Record<string, number>;
   unusualValues: Record<string, any[]>;
   recommendations: string[];
+  distinctValues: Record<string, number>;
+  groupRatios: Record<string, Record<string, number>>;
+  dataSamples: Record<string, any[]>;
+  duplicatedRows: number;
+  uniqueRatio: Record<string, number>;
+  emptyValuePercentage: Record<string, number>;
 }
 
-async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConnectionChain?: string): Promise<SemanticLayerState> {
+async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConnectionChain: string, functions: Function[]): Promise<SemanticLayerState> {
   const dataStructure = await getDataStructure(prefixes, pgConnectionChain);
   const tables = dataStructure.split('\n\n').filter(table => table.startsWith('Table:'));
 
-  const getAnalysis = z.object({
-    tableAnalysis: z.record(z.string(), z.object({
-      missingValues: z.record(z.string(), z.number()),
-      unusualValues: z.record(z.string(), z.array(z.any())),
-      recommendations: z.array(z.string())
-    }))
-  });
+  let tableAnalysis: Record<string, TableAnalysis> = {};
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getAnalysis);
+  for (const table of tables) {
+    const tableName = table.split(':')[1].trim();
+    const columns = table.split('\n').slice(1).map(col => col.split('(')[0].trim());
 
-  const message = await model.invoke([
-    new HumanMessage(`Analyze the following tables for missing or unusual values:
-    ${tables.join('\n\n')}
-    
-    For each table, provide:
-    1. A count of missing values for each column
-    2. Any unusual or unexpected values for each column
-    3. Recommendations for handling these issues in a semantic layer`)
-  ]);
+    tableAnalysis[tableName] = {
+      missingValues: await getMissingValues(tableName, columns, pgConnectionChain),
+      unusualValues: await getUnusualValues(tableName, columns, pgConnectionChain),
+      recommendations: [],
+      distinctValues: await getDistinctValues(tableName, columns, pgConnectionChain),
+      groupRatios: await getGroupRatios(tableName, columns, pgConnectionChain),
+      dataSamples: await getDataSamples(tableName, columns, pgConnectionChain),
+      duplicatedRows: await getDuplicatedRows(tableName, pgConnectionChain),
+      uniqueRatio: await getUniqueRatio(tableName, columns, pgConnectionChain),
+      emptyValuePercentage: await getEmptyValuePercentage(tableName, columns, pgConnectionChain),
+    };
 
-  const tableAnalysis = (message as any).tableAnalysis;
-  Logger.log('Table analysis:', tableAnalysis);
+    // Involve the user in the data analysis process
+    const emptyFieldsMessage = `Table ${tableName} has the following percentage of empty fields:\n` +
+      Object.entries(tableAnalysis[tableName].emptyValuePercentage)
+        .map(([col, percentage]) => `${col}: ${percentage.toFixed(2)}%`)
+        .join('\n');
+
+    functions[0]('info', JSON.stringify({ message: emptyFieldsMessage }));
+    functions[0]('input', JSON.stringify({ 
+      message: "Please provide any insights or reasons for these empty fields:",
+      key: `${tableName}_empty_fields_reason`
+    }));
+
+    // Generate recommendations based on the analysis
+    tableAnalysis[tableName].recommendations = generateRecommendations(tableAnalysis[tableName]);
+
+    // Describe the data cleaning process to the user
+    const cleaningDescription = describeDataCleaning(tableAnalysis[tableName]);
+    functions[0]('info', JSON.stringify({ message: cleaningDescription }));
+    functions[0]('input', JSON.stringify({ 
+      message: "Do you approve of this data cleaning approach? (yes/no)",
+      key: `${tableName}_cleaning_approval`
+    }));
+  }
 
   return {
     ...state,
     tableAnalysis
   };
+}
+
+function generateRecommendations(analysis: TableAnalysis): string[] {
+  const recommendations: string[] = [];
+
+  // Add recommendations based on the analysis results
+  if (Object.values(analysis.emptyValuePercentage).some(percentage => percentage > 10)) {
+    recommendations.push("Consider handling missing values for columns with high empty percentages.");
+  }
+
+  if (analysis.duplicatedRows > 0) {
+    recommendations.push("Address duplicated rows in the dataset.");
+  }
+
+  Object.entries(analysis.uniqueRatio).forEach(([column, ratio]) => {
+    if (ratio < 0.1) {
+      recommendations.push(`Consider grouping or binning values in column '${column}' due to low unique ratio.`);
+    }
+  });
+
+  // TODO: Talk with expert to add more recommendations based on other analysis results 
+
+  return recommendations;
+}
+
+function describeDataCleaning(analysis: TableAnalysis): string {
+  let description = "Based on the analysis, we recommend the following data cleaning steps:\n\n";
+
+  if (Object.entries(analysis.emptyValuePercentage).some(([col, percentage]) => percentage > 0)) {
+    description += "1. Handling missing values:\n";
+    Object.entries(analysis.emptyValuePercentage).forEach(([col, percentage]) => {
+      if (percentage > 0) {
+        description += `   - For column '${col}' (${percentage.toFixed(2)}% empty): `;
+        if (percentage < 5) {
+          description += "Consider removing rows with missing values or imputing with median/mode.\n";
+        } else if (percentage < 20) {
+          description += "Impute missing values using advanced techniques like KNN or regression imputation.\n";
+        }
+      }
+    });
+  }
+
+  if (analysis.duplicatedRows > 0) {
+    description += `\n2. Duplicated rows: Remove ${analysis.duplicatedRows} duplicated rows from the dataset.\n`;
+  }
+
+  Object.entries(analysis.uniqueRatio).forEach(([column, ratio]) => {
+    if (ratio < 0.1) {
+      description += `\n3. Low unique ratio in '${column}': Consider grouping or binning values to reduce cardinality.\n`;
+    }
+  });
+
+  // Todo: Add more cleaning steps based on other analysis results
+
+  return description;
 }
 
 async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticLayerState> {
@@ -99,9 +180,10 @@ async function writeSemanticLayerFiles(state: SemanticLayerState): Promise<Seman
 
 export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
   private prefixes: string;
-  private pgConnectionChain: string | undefined;
+  private pgConnectionChain: string;
+  private functions: Function[];
 
-  constructor(prefixes: string, pgConnectionChain?: string) {
+  constructor(prefixes: string, pgConnectionChain: string, functions: Function[]) {
     const graphState: StateGraphArgs<SemanticLayerState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -119,17 +201,22 @@ export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      userConfirmations: {
+        value: (x: Record<string, boolean>, y?: Record<string, boolean>) => (y ? y : x),
+        default: () => ({}),
+      },
     };
     super(graphState);
     this.prefixes = prefixes;
     this.pgConnectionChain = pgConnectionChain;
+    this.functions = functions;
   }
 
   getGraph(): CompiledStateGraph<SemanticLayerState> {
     const subGraphBuilder = new StateGraph<SemanticLayerState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('analyze_tables', async state => await analyzeTables(state, this.prefixes, this.pgConnectionChain))
+      .addNode('analyze_tables', async state => await analyzeTables(state, this.prefixes, this.pgConnectionChain, this.functions))
       .addNode('generate_cubejs_files', async state => await generateCubeJsFiles(state))
       .addNode('write_semantic_layer_files', async state => await writeSemanticLayerFiles(state))
       .addEdge(START, 'analyze_tables')
