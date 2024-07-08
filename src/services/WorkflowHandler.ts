@@ -11,16 +11,16 @@ import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages
 export function extractFunctionDetails(input_data: AIMessage): FunctionDetails[] {
   const functionDetails: FunctionDetails[] = [];
 
-  const toolCalls = input_data.additional_kwargs?.tool_calls ?? [];
-
+  const toolCalls = input_data.tool_calls ?? [];
+  
   // if toolCalls is empty, we trigger an error
   if (toolCalls.length === 0) {
     throw new Error('No tool calls found in the response, this model is not using the tooling feature.');
   }
 
   for (const call of toolCalls) {
-    const functionName = call.function.name;
-    const args = JSON.parse(call.function.arguments);
+    const functionName = call.name;
+    const args = call.args;
 
     functionDetails.push({ function_name: functionName, arguments: args });
   }
