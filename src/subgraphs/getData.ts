@@ -109,6 +109,11 @@ async function recoverSources(
     examples: [examples],
   };
 
+  if (isPossible === 'false') {
+    updatedState.finalResult = "It wasn't possible to resolve the query with the available data.";
+    return updatedState;
+  }
+
   if (isPossible === 'maybe') {
     updatedState.explorationQueries = moreExamples ? moreExamples : [];
   }
@@ -401,7 +406,9 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addNode('evaluate_result', async state => await evaluateResult(state, this.functions, this.pgConnectionChain))
       .addEdge(START, 'recover_sources')
       .addConditionalEdges('recover_sources', state => {
-        if (state.explorationQueries && state.explorationQueries.length > 0) {
+        if (state.finalResult) {
+          return END;
+        } else if (state.explorationQueries && state.explorationQueries.length > 0) {
           return 'explore_queries';
         } else {
           return 'create_plv8_function';
