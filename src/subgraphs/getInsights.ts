@@ -13,6 +13,25 @@ interface InsightState extends BaseState {
   insights: string[];
   plv8function: string;
   finalResult: string;
+  resultExecution: string;
+  resultExecutionError: string;
+}
+
+// Helper function to filter tables
+function filterTables(originalString: string, tablesToKeep: string[]): string {
+  const tableRegex = /Table: (\w+)\n([\s\S]*?)(?=Table: \w+|\s*$)/g;
+  let match;
+  let filteredString = 'Tables:\n\n';
+
+  while ((match = tableRegex.exec(originalString)) !== null) {
+    const tableName = match[1];
+    const tableContent = match[2];
+    if (tablesToKeep.includes(tableName)) {
+      filteredString += `Table: ${tableName}\n${tableContent}\n`;
+    }
+  }
+
+  return filteredString.trim();
 }
 
 async function identifyRelevantSources(state: InsightState, prefixes: string, pgConnectionChain?: string): Promise<InsightState> {
@@ -43,18 +62,20 @@ async function identifyRelevantSources(state: InsightState, prefixes: string, pg
   };
 }
 
-async function generateExploratoryQueries(state: InsightState): Promise<InsightState> {
+async function generateExploratoryQueries(state: InsightState, prefixes: string, pgConnectionChain?: string): Promise<InsightState> {
   const getQueries = z.object({
     queries: z.array(z.string()).describe('Array of SQL queries to explore the data'),
   });
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getQueries);
 
+  const dataStructure = await getDataStructure(prefixes, pgConnectionChain); // TODO: avoid calling this twice
+
   const message = await model.invoke([
     new HumanMessage(`Generate exploratory SQL queries for the following task:
     ${state.task}
     
-    Use these relevant sources: ${state.relevantSources.join(', ')}
+    Use these relevant sources: ${filterTables(dataStructure, state.relevantSources)}
     
     Create 3-5 efficient queries that will help gather insights. Each query should return at most 50 examples.
     Focus on queries that will provide meaningful data for analysis.`),
@@ -120,7 +141,9 @@ async function createInsightFunction(state: InsightState, pgConnectionChain?: st
     Provide an explanation of how the function proves these insights.
     
     Original task:
-    ${state.task}`),
+    ${state.task}
+    
+    ${state.resultExecutionError ? `Previous attempt resulted in an error: ${state.resultExecutionError}\nPlease adjust the function to avoid this error.` : ''}`),
   ]);
 
   const plv8function = (message as any).plv8function;
@@ -136,8 +159,22 @@ async function createInsightFunction(state: InsightState, pgConnectionChain?: st
   return {
     ...state,
     plv8function,
+    resultExecution,
     finalResult: `${explanation}\n\nFunction execution result:\n${resultExecution}`,
   };
+}
+
+async function checkResultExecution(state: InsightState): Promise<InsightState> {
+  if (state.resultExecution.toLowerCase().includes('error')) {
+    // If there's an error in the result execution, we need to recreate the function
+    return {
+      ...state,
+      finalResult: '', // Clear the final result as it's not valid
+      resultExecutionError: state.resultExecution,
+    };
+  }
+  // If there's no error, we can proceed to end the process
+  return state;
 }
 
 export class InsightGraph extends AbstractGraph<InsightState> {
@@ -174,6 +211,14 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      resultExecution: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
+      resultExecutionError: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
     };
     super(graphState);
     this.prefixes = prefixes;
@@ -185,16 +230,21 @@ export class InsightGraph extends AbstractGraph<InsightState> {
 
     subGraphBuilder
       .addNode('identify_sources', async state => await identifyRelevantSources(state, this.prefixes, this.pgConnectionChain))
-      .addNode('generate_queries', async state => await generateExploratoryQueries(state))
+      .addNode('generate_queries', async state => await generateExploratoryQueries(state, this.prefixes, this.pgConnectionChain))
       .addNode('execute_queries', async state => await executeExploratoryQueries(state, this.pgConnectionChain))
       .addNode('analyze_results', async state => await analyzeResults(state))
       .addNode('create_function', async state => await createInsightFunction(state, this.pgConnectionChain))
+      .addNode('check_result', async state => await checkResultExecution(state))
       .addEdge(START, 'identify_sources')
       .addEdge('identify_sources', 'generate_queries')
       .addEdge('generate_queries', 'execute_queries')
       .addEdge('execute_queries', 'analyze_results')
       .addEdge('analyze_results', 'create_function')
-      .addEdge('create_function', END);
+      .addEdge('create_function', 'check_result')
+      .addConditionalEdges(
+        'check_result',
+        state => state.finalResult ? END : 'create_function',
+      );
 
     return subGraphBuilder.compile();
   }
