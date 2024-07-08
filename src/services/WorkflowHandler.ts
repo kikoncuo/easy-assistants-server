@@ -161,7 +161,7 @@ export function getDirectResponseNode(outputHandler: Function) {
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) { 
   async function solve(state: TaskState): Promise<Partial<TaskState>> {
 
-      const finalResult = await solverModel.invoke(['human', 'State the following result to the user:' + state.result]);
+      const finalResult = await solverModel.invoke(['human', 'Rewrite this in a concise manner:' + state.result]);
       outputHandler('result', finalResult.content);
       Logger.log('Final response:', finalResult.content)
       
