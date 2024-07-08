@@ -6,6 +6,9 @@ import https from 'https';
 import http from 'http';
 import dotenv from 'dotenv';
 import Logger from './utils/Logger';
+import { saveCsvTable } from './services/DirectFlowHandler';
+import { externalAgents } from './utils/ExternalAgents';
+
 dotenv.config();
 
 const {
@@ -110,6 +113,16 @@ wss.on('connection', ws => {
     if (data.type === 'query') {
       Logger.log('Processing task:', data.task);
       await graphApp.processTask(data.task, data.thread_id, ws);
+    }
+    else if (data.type === 'csvLoader') {
+      Logger.log('Processing task:', data.task);
+      const { agent, agentPrompt } = externalAgents.csvLoader;
+      await saveCsvTable(
+        agent, agentPrompt,
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+            WebSocketService.queryUser(type, functions, ws),
+        data.task
+      );
     }
     else if (data.type === 'configure') {
       Logger.log('Configuring new graph application');

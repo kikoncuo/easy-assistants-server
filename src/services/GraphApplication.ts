@@ -94,18 +94,6 @@ export class GraphApplication {
        Example: if the user asks for an ordered list of revenue based on user id, try to generate a query like this: select "USER_ID", "NAME", sum(cast("REVENUE"::numeric)) as total_revenue from "snowflake_OFFER_CHECKOUT" group by "USER_ID", "NAME", "REVENUE" order by total_revenue desc limit 10;`,
         toolFunction: clientAgentFunction,
       },
-      createTableStructure: {
-        agent: createAgent(strongestModel, [createTableStructure], true),
-        agentPrompt: `You are an LLM specialized in the entire process of transforming JSON data into a fully functional PostgreSQL. This is done by using your createTableStructure tool to create the table. This should return the column name followed by the data type of that column.
-          The response should always have this structure and include the columns names and types like in this example:
-          arguments: {
-            columns: [“[Column int, Column text, Column boolean]“],
-            tableName: “my_table”,
-          }.
-          If you detect any date column return it as a type text.
-          Column names should never include whitespaces, but rather underscore for separating words, ensure there are no whitespaces in the items inside columns array.`,
-        toolFunction: clientAgentFunction,
-      },
       createDatapoint: {
         agent: createAgent(strongestModel, [createDatapoint], true),
         agentPrompt: `You are an LLM specialized in generating datapoints data from JSON arrays. This is done by using your createDatapoint tool to create the datapoint card. This should return the title of the datapoint followed by the value as data of that datapoint, and the percentage if applies.`,
