@@ -139,6 +139,8 @@ export class GraphApplication {
         return process.env.TALENTCLASS_CHAIN;
       case 'juqxwywkrymbfioutzvn': //BlankStreet
         return process.env.BLANKSTREET_CHAIN;
+      case 'qttgkvelmnvqldyaocxq': //Akkio
+        return process.env.AKKIO_CHAIN;
       default:
         return process.env.OMNITEST_CHAIN;
     }
