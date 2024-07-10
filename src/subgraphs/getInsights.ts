@@ -4,274 +4,189 @@ import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@lan
 import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import Logger from '../utils/Logger';
-import { executeQueries, getDataStructure, createPLV8function } from '../utils/DataStructure';
+import fs from 'fs';
+import path from 'path';
+import { executeQuery } from '../utils/DataStructure';
 
 interface InsightState extends BaseState {
   relevantSources: string[];
   exploratoryQueries: string[];
   exploratoryResults: string[];
-  insights: string[];
-  plv8functions: string[];
   titles: string[];
   finalResult: string;
-  finalResults: string[];
   resultExecutionErrors: string[];
   resultExecutionErrorDetails: string[];
-  dataStructure: string;
 }
 
-// Helper function to filter tables
-function filterTables(originalString: string, tablesToKeep: string[]): string {
-  const tableRegex = /Table: (\w+)\n([\s\S]*?)(?=Table: \w+|\s*$)/g;
-  let match;
-  let filteredString = 'Tables:\n\n';
-
-  while ((match = tableRegex.exec(originalString)) !== null) {
-    const tableName = match[1];
-    const tableContent = match[2];
-    if (tablesToKeep.includes(tableName)) {
-      filteredString += `Table: ${tableName}\n${tableContent}\n`;
-    }
-  }
-
-  return filteredString.trim();
+function readModels(): string[] {
+  const modelsDirectory = path.join(__dirname, 'cubes');
+  const files = fs.readdirSync( modelsDirectory );
+  return files.map(file => fs.readFileSync(path.join(modelsDirectory, file), 'utf-8'));
 }
 
-async function identifyRelevantSources(state: InsightState, prefixes: string, pgConnectionChain?: string): Promise<InsightState> {
+function filterModels(models: string[], sources: string[]): string[] {
+  return models.filter(model => {
+    return sources.some(source => model.includes(`cube(\`${source}\``));
+  });
+}
+
+// Node function to recover sources
+async function identifyRelevantSources(state: InsightState): Promise<InsightState> {
+
+  const cubeModels = readModels();
+
   const getSources = z.object({
-    sources: z.array(z.string()).describe('Array with the names of the relevant sources'),
+    sources: z.array(z.string()).describe('Array with the names of the sources'),
+    isPossible: z
+      .string()
+      .describe(
+        '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable',
+      ),
   });
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getSources);
 
-  const dataStructure = state.dataStructure === "" ? await getDataStructure(prefixes, pgConnectionChain) : state.dataStructure;
-
   const message = await model.invoke([
-    new HumanMessage(`You are tasked with identifying relevant data sources for the following task:
-    ${state.task}
-    
-    Review the following table descriptions:
-    ${dataStructure}
-    
-    Identify and list the names of the tables that are most relevant to the task.`),
+    new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
+        and determine which data sources could be useful in addressing the request.
+
+        First, review the following model descriptions to know the dimensions and measures available:
+        ${cubeModels.join('\n')}
+        Now, consider the following request:
+        ${state.task}
+        
+        Keep in mind that multiple data sources may be relevant to a single request.
+        If a data source seems even slightly relevant to the request, include it in your list.
+        `),
   ]);
 
-  const relevantSources = (message as any).sources;
-  Logger.log('Relevant sources:', relevantSources);
+  const sources = (message as any).sources;
+  const isPossible = (message as any).isPossible;
+  Logger.log('\nisPossible', isPossible);
+  Logger.log('\nsources', sources);
 
-  return {
+  const updatedState = {
     ...state,
-    relevantSources,
-    dataStructure,
+    relevantSources: sources,
   };
+
+  if (isPossible === 'false') {
+    updatedState.finalResult = "It wasn't possible to resolve the query with the available data.";
+    return updatedState;
+  }
+
+  return updatedState;
 }
 
-async function generateExploratoryQueries(state: InsightState, prefixes: string, pgConnectionChain?: string): Promise<InsightState> {
+async function generateExploratoryQueries(state: InsightState): Promise<InsightState> {
   const getQueries = z.object({
-    queries: z.array(z.string()).describe('Array of SQL queries to explore the data'),
+    queries: z.array(z.any()).describe(`Array of Cube queries to explore the data.
+      Query structure example:
+      {
+        "measures": [
+          "Product.count"
+        ],
+        "dimensions": [
+          "Product.group"
+        ],
+        "order": {
+          "Product.count": "desc"
+        }
+      }`),
+    titles: z.array(z.string()).describe(
+        'Insight title, IE: get me insights for my employees, the title returned should be `Employee insights`. ',
+      ),
   });
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getQueries);
 
-  const dataStructure = state.dataStructure === "" ? await getDataStructure(prefixes, pgConnectionChain) : state.dataStructure;
+  const cubeModels = readModels();
+  const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
+
+
 
   const message = await model.invoke([
-    new HumanMessage(`Generate exploratory SQL queries for the following task:
+    new HumanMessage(`Generate exploratory Cube queries for the following task:
     ${state.task}
     
-    Use these relevant sources: ${filterTables(dataStructure, state.relevantSources)}
+    Use these relevant sources: ${filteredCubeModels}
     
     Create 2-3 efficient queries that will help gather insights. Each query should return at most 50 examples.
     Focus on queries that will provide meaningful data for analysis.`),
   ]);
 
   const exploratoryQueries = (message as any).queries;
+  const titles = (message as any).titles;
   Logger.log('Exploratory queries:', exploratoryQueries);
 
   return {
     ...state,
-    exploratoryQueries,
-    dataStructure,
+    titles,
+    exploratoryQueries
   };
 }
 
-async function executeExploratoryQueries(state: InsightState, pgConnectionChain?: string): Promise<InsightState> {
-  const exploratoryResults = await executeQueries(state.exploratoryQueries, pgConnectionChain);
+async function executeExploratoryQueries(state: InsightState): Promise<InsightState> {
+  let results = [];
+  for (let index = 0; index < state.exploratoryQueries.length; index++) {
+    const query = state.exploratoryQueries[index];
+    const exploratoryResult = await executeQuery(query, 'omni_test');
+    results.push(exploratoryResult);   
+  }
 
   return {
     ...state,
-    exploratoryResults,
+    exploratoryResults: results,
   };
 }
 
 async function analyzeResults(state: InsightState, functions: Function[]): Promise<InsightState> {
   const getInsights = z.object({
-    insights: z.array(z.string()).describe('Array of insights extracted from the exploratory query results'),
+    insight: z.array(z.string()).describe('Insight extracted from the exploratory query result'),
   });
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getInsights);
 
-  const message = await model.invoke([
-    new HumanMessage(`Analyze the following exploratory query results and extract relevant insights:
-    ${state.exploratoryResults.map((result, index) => `Query ${index + 1} results:\n${result}\n`).join('\n')}
-    
-    Consider the original task:
-    ${state.task}
-    
-    Provide a list of 2-3 key insights based on the data.`),
-  ]);
-
-  const insights = (message as any).insights;
-
-  const explorationResults = [
-    {
-      function_name: 'getExplorationResults',
-      arguments: {
-        insights: insights,
-        queries: state.exploratoryQueries
-      },
-    },
-  ]; 
-  functions[0]('tool', explorationResults);
-
-  Logger.log('Extracted insights:', insights);
-
-  return {
-    ...state,
-    insights,
-  };
-}
-
-async function createInsightFunctions(state: InsightState, prefixes: string, pgConnectionChain?: string): Promise<InsightState> {
-  const getFunctionDetails = z.object({
-    plv8function: z.string().describe(`PLV8 function that proves and explains the extracted insights
-        Make the function efficient leveraging SQL and PLV8 features. Always return all the results without limit.
-        Function structure example:
-        DROP FUNCTION IF EXISTS function_name();
-        CREATE OR REPLACE FUNCTION function_name()
-        RETURNS TABLE (
-            return parameters enclosed in double quotes
-        )
-        LANGUAGE plv8
-        AS $$
-            const salesData = plv8.execute(\`
-                SQL query
-            \`);
-
-            return salesData.map(row => ({
-               map the results to the return parameters
-            }));
-
-            function auxiliary_functions(parameter) {
-                logic
-            }
-        $$;
-        `),
-      title: z.string().describe(
-          'Insight title, IE: get me insights for my employees, the title returned should be `Employee insights`. ',
-        ),
-    explanation: z.string().describe('Explanation of how the function proves the insights'),
-  });
-
-  const model = createStructuredResponseAgent(anthropicSonnet(), getFunctionDetails);
-  const dataStructure = state.dataStructure === "" ? await getDataStructure(prefixes, pgConnectionChain) : state.dataStructure;
-
-  let plv8functions: string[] = [];
-  let titles: string[] = [];
-  let finalResults: string[] = [];
-  let resultExecutionErrors: string[] = [];
-  let resultExecutionErrorDetails: string[] = [];
-
-  for (let index = 0; index < state.insights.length; index++) {
-    const insight = state.insights[index];
-    const query = state.exploratoryQueries[index];
+  for (let i = 0; i < state.exploratoryQueries.length; i++) {
 
     const message = await model.invoke([
-      new HumanMessage(`Create a PLV8 function with the query (${query}) for the following insight:
-      ${insight}.
-      Adapt the query if neccesary to work on a PLV8 function. Don't use SQL functions for data processing, use Javascript on the PLV8 function.
-      To have more context, here is all the available data as tables with descriptions and 3 unique examples per column:
-      ${dataStructure}.
-
-      Provide an explanation of how the function proves this insight.
-      ${state.resultExecutionErrorDetails ? `Previous attempt resulted in an error: ${state.resultExecutionErrorDetails}\nPlease adjust the function to avoid this error.
-        If the error is like 'cannot change return type of existing function', try to rename the function` : ''}`),
+      new HumanMessage(`Analyze the following exploratory query result and extract relevant insight:
+      Query ${state.exploratoryQueries[i]} results:\n${state.exploratoryResults[i]}
+      
+      Consider the original task:
+      ${state.task}
+      
+      Provide a list of 2-3 key insights based on the data.`),
     ]);
 
-    const plv8function = (message as any).plv8function;
-    const explanation = (message as any).explanation;
-    const title = (message as any).title;
+    const insight = (message as any).insight;
 
-    Logger.log('PLV8 function:', plv8function);
-    Logger.log('Explanation:', explanation);
+    Logger.log('Extracted insights:', insight);
 
-    const functionNameMatch = plv8function.match(/CREATE OR REPLACE FUNCTION (\w+)\(/);
-    const functionName = functionNameMatch ? functionNameMatch[1] : '';
-    const resultExecution = await createPLV8function(plv8function, functionName, pgConnectionChain);
+    let results = [];
 
-    plv8functions.push(plv8function);
-    titles.push(title);
-    finalResults.push(resultExecution.toLowerCase().includes('error') ? '' : `${explanation}`);
-    resultExecutionErrors.push(resultExecution.toLowerCase().includes('error') ? resultExecution : '');
-    resultExecutionErrorDetails.push(resultExecution.toLowerCase().includes('error') ? resultExecution : '');
+ 
+    results.push({
+      function_name: 'getInsights',
+      arguments: {
+        query: state.exploratoryQueries[i],
+        title: state.titles[i],
+        displayType: 'table',
+        insight: insight,
+        data: state.exploratoryResults[i]
+      },
+    });
+
+    functions[0]('tool', results);
+  
   }
 
-  return {
-    ...state,
-    plv8functions,
-    titles,
-    finalResults,
-    resultExecutionErrors,
-    resultExecutionErrorDetails,
-  };
-}
-
-async function checkResultExecution(functions: Function[], state: InsightState): Promise<InsightState> {
-  let results = [];
-
-  for (let i = 0; i < state.plv8functions.length; i++) {
-    const functionNameMatch = state.plv8functions[i].match(/CREATE OR REPLACE FUNCTION (\w+)\(/);
-    const functionName = functionNameMatch ? functionNameMatch[1] : '';
-
-    if (state.resultExecutionErrors[i].toLowerCase().includes('error')) {
-      // If there's an error in the result execution, we need to recreate the function
-      results.push({
-        function_name: 'getInsights',
-        arguments: {
-          plv8function: state.plv8functions[i],
-          functionName: functionName,
-          explanation: state.finalResults[i],
-          title: state.titles[i],
-          displayType: 'table',
-        },
-      });
-
-      return {
-        ...state,
-        finalResults: state.finalResults.map((result, index) => (index === i ? '' : result)), // Clear the final result as it's not valid
-        resultExecutionErrors: state.resultExecutionErrors,
-        resultExecutionErrorDetails: state.resultExecutionErrorDetails, // Store the error details
-      };
-    } else {
-      results.push({
-        function_name: 'getInsights',
-        arguments: {
-          plv8function: state.plv8functions[i],
-          functionName: functionName,
-          explanation: state.finalResults[i],
-          title: state.titles[i],
-          displayType: 'table',
-        },
-      });
-    }
-  }
-
-  functions[0]('tool', results);
   return {
     ...state,
     finalResult: "Tables generated for the insights"
   };
 }
+
 
 export class InsightGraph extends AbstractGraph<InsightState> {
   private prefixes: string;
@@ -300,18 +215,6 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
       },
-      insights: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      plv8functions: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      finalResults: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
       resultExecutionErrors: {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
@@ -319,10 +222,6 @@ export class InsightGraph extends AbstractGraph<InsightState> {
       resultExecutionErrorDetails: {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
-      },
-      dataStructure: {
-        value: (x: string, y?: string) => (y ? y : x || ''),
-        default: () => '',
       },
       titles: {
         value: (x: string[], y?: string[]) => (y ? y : x),
@@ -339,22 +238,15 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     const subGraphBuilder = new StateGraph<InsightState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('identify_sources', async state => await identifyRelevantSources(state, this.prefixes, this.pgConnectionChain))
-      .addNode('generate_queries', async state => await generateExploratoryQueries(state, this.prefixes, this.pgConnectionChain))
-      .addNode('execute_queries', async state => await executeExploratoryQueries(state, this.pgConnectionChain))
+      .addNode('identify_sources', async state => await identifyRelevantSources(state))
+      .addNode('generate_queries', async state => await generateExploratoryQueries(state))
+      .addNode('execute_queries', async state => await executeExploratoryQueries(state))
       .addNode('analyze_results', async state => await analyzeResults(state, this.functions,))
-      .addNode('create_functions', async state => await createInsightFunctions(state, this.prefixes, this.pgConnectionChain))
-      .addNode('check_results', async state => await checkResultExecution(this.functions, state))
       .addEdge(START, 'identify_sources')
       .addEdge('identify_sources', 'generate_queries')
       .addEdge('generate_queries', 'execute_queries')
       .addEdge('execute_queries', 'analyze_results')
-      .addEdge('analyze_results', 'create_functions')
-      .addEdge('create_functions', 'check_results')
-      .addConditionalEdges(
-        'check_results',
-        state => state.finalResults.every(result => result) ? END : 'create_functions',
-      );
+      .addEdge('analyze_results', END);
 
     return subGraphBuilder.compile();
   }
