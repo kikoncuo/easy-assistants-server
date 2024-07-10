@@ -28,7 +28,7 @@ dotenv.config();
 
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { ViewCreationGraph } from '../subgraphs/createView';
-import { InsightsGraph } from '../subgraphs/getInsights';
+import { InsightGraph } from '../subgraphs/getInsights';
 
 export class GraphApplication {
   private graphManager: GraphManager;
@@ -113,7 +113,7 @@ export class GraphApplication {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
       },
       getInsights: {
-        agentSubGraph: new InsightsGraph([clientAgentFunction]),
+        agentSubGraph: new InsightGraph([clientAgentFunction], clientData[0], this.getConnectionChain(clientData[1])),
       },
     };
 

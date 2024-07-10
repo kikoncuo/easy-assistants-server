@@ -255,3 +255,214 @@ export async function createPLV8function(query: string, functionName: string, pg
     await client.end();
   }
 }
+
+export async function getMissingValues(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, number>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const missingValues: Record<string, number> = {};
+    for (const column of columns) {
+      const query = `SELECT COUNT(*) FROM "${tableName}" WHERE "${column}" IS NULL`;
+      const result = await client.query(query);
+      missingValues[column] = parseInt(result.rows[0].count);
+    }
+    return missingValues;
+  } catch (error) {
+    console.warn(`Error getting missing values for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getUnusualValues(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, any[]>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const unusualValues: Record<string, any[]> = {};
+    for (const column of columns) {
+      const query = `
+        SELECT "${column}", COUNT(*) as count
+        FROM "${tableName}"
+        GROUP BY "${column}"
+        ORDER BY count ASC
+        LIMIT 5
+      `;
+      const result = await client.query(query);
+      unusualValues[column] = result.rows.map(row => row[column]);
+    }
+    return unusualValues;
+  } catch (error) {
+    console.warn(`Error getting unusual values for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getDistinctValues(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, number>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const distinctValues: Record<string, number> = {};
+    for (const column of columns) {
+      const query = `SELECT COUNT(DISTINCT "${column}") FROM "${tableName}"`;
+      const result = await client.query(query);
+      distinctValues[column] = parseInt(result.rows[0].count);
+    }
+    return distinctValues;
+  } catch (error) {
+    console.warn(`Error getting distinct values for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getGroupRatios(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, Record<string, number>>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const groupRatios: Record<string, Record<string, number>> = {};
+    for (const column of columns) {
+      const query = `
+        SELECT "${column}", COUNT(*) * 100.0 / (SELECT COUNT(*) FROM "${tableName}") AS ratio
+        FROM "${tableName}"
+        GROUP BY "${column}"
+        ORDER BY ratio DESC
+        LIMIT 5
+      `;
+      const result = await client.query(query);
+      groupRatios[column] = result.rows.reduce((acc, row) => {
+        acc[row[column]] = parseFloat(row.ratio);
+        return acc;
+      }, {});
+    }
+    return groupRatios;
+  } catch (error) {
+    console.warn(`Error getting group ratios for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getDataSamples(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, any[]>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const dataSamples: Record<string, any[]> = {};
+    for (const column of columns) {
+      const query = `
+        SELECT DISTINCT "${column}"
+        FROM "${tableName}"
+        WHERE "${column}" IS NOT NULL
+        ORDER BY RANDOM()
+        LIMIT 5
+      `;
+      const result = await client.query(query);
+      dataSamples[column] = result.rows.map(row => row[column]);
+    }
+    return dataSamples;
+  } catch (error) {
+    console.warn(`Error getting data samples for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getDuplicatedRows(tableName: string, pgConnectionString?: string): Promise<number> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const query = `
+      SELECT COUNT(*) - COUNT(DISTINCT *) AS duplicated_rows
+      FROM "${tableName}"
+    `;
+    const result = await client.query(query);
+    return parseInt(result.rows[0].duplicated_rows);
+  } catch (error) {
+    console.warn(`Error getting duplicated rows for table ${tableName}: ${error}`);
+    return 0;
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getUniqueRatio(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, number>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const uniqueRatio: Record<string, number> = {};
+    for (const column of columns) {
+      const query = `
+        SELECT COUNT(DISTINCT "${column}") * 1.0 / COUNT(*) AS unique_ratio
+        FROM "${tableName}"
+      `;
+      const result = await client.query(query);
+      uniqueRatio[column] = parseFloat(result.rows[0].unique_ratio);
+    }
+    return uniqueRatio;
+  } catch (error) {
+    console.warn(`Error getting unique ratio for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
+
+export async function getEmptyValuePercentage(tableName: string, columns: string[], pgConnectionString?: string): Promise<Record<string, number>> {
+  const client = new Client({
+    connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
+  });
+
+  await client.connect();
+
+  try {
+    const emptyValuePercentage: Record<string, number> = {};
+    for (const column of columns) {
+      const query = `
+        SELECT COUNT(*) * 100.0 / (SELECT COUNT(*) FROM "${tableName}") AS empty_percentage
+        FROM "${tableName}"
+        WHERE "${column}" IS NULL OR "${column}" = ''
+      `;
+      const result = await client.query(query);
+      emptyValuePercentage[column] = parseFloat(result.rows[0].empty_percentage);
+    }
+    return emptyValuePercentage;
+  } catch (error) {
+    console.warn(`Error getting empty value percentage for table ${tableName}: ${error}`);
+    return {};
+  } finally {
+    await client.end();
+  }
+}
