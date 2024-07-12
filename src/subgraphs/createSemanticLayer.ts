@@ -191,7 +191,7 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
       ${currentTables}
 
       Create a separate string per file for these cubes, handling the missing and unusual values as recommended.
-      Fill columns with high empty values with a string like "none" "nothing" "missing" when they recover an empty value.
+      Fill columns with high empty values with a string like "none" "nothing" "missing" when they recover an empty value and also add the recemmendation as a comment inside the of that measure or dimension.
       Establish all relevant joins between cubes and define fields that may be useful for business analysis.
       Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.`)
     ]);

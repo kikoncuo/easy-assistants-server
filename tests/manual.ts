@@ -14,14 +14,20 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    // ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", process.env.TEST_POSTGRES_MANUAL] }));
-    // promptUserInput();
+    // // ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", process.env.TEST_POSTGRES_MANUAL] }));
+    // // promptUserInput();
 
     ws?.send(JSON.stringify({ 
-      type: 'createSemanticLayer', 
+      type: 'editSemanticLayer', 
       prefixes: "csv",
       pgConnectionString: process.env.TEST_POSTGRES_MANUAL
     }));
+
+    // ws?.send(JSON.stringify({ 
+    //   type: 'createSemanticLayer', 
+    //   prefixes: "csv",
+    //   pgConnectionString: process.env.TEST_POSTGRES_MANUAL
+    // }));
   });
 
   ws.on('message', (message: string) => {

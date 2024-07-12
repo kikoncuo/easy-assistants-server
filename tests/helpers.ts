@@ -187,3 +187,25 @@ export function insertRecommendations(tableString:string, recommendations:any) {
   // Join the updated tables back into a single string
   return updatedTables.join('\n\n');
 }
+
+export function extractCubeNames(content:any) {
+  const cubeRegex = /cube\s*\(`([^`]+)`/g;
+  const cubeNames = [];
+  let match;
+
+  while ((match = cubeRegex.exec(content)) !== null) {
+      cubeNames.push(match[1]);
+  }
+
+  return cubeNames;
+}
+
+export function separateCubes(input:string) {
+  Logger.log('inputsssssssss',input)
+  const cubeDefinitions = input.split(/cube\(/).slice(1);
+  Logger.log('cubeDefinitions',cubeDefinitions)
+  const cubes = cubeDefinitions.map(cubeDef => 'cube(' + cubeDef.trim());
+  Logger.log('cubes',cubes)
+
+  return cubes;
+}
