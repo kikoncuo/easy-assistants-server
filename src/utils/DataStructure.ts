@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import Logger from './Logger';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -29,9 +30,12 @@ interface ViewReport {
 
 async function getTableNames(prefixes: string, client: Client): Promise<string[]> {
   try {
-    const tablePrefixes = prefixes.split(',');
-    const prefixConditions = tablePrefixes.map((prefix: string) => `tablename LIKE '${prefix}%'`).join(' OR ');
-    console.log({prefixConditions});
+    let tablePrefixes;
+    if(prefixes) {
+      tablePrefixes = prefixes.split(',');
+    }
+    const prefixConditions = tablePrefixes?.map((prefix: string) => `tablename LIKE '${prefix}%'`).join(' OR ');
+    Logger.log({prefixConditions});
 
     const res = await client.query(`
             SELECT tablename
@@ -377,7 +381,6 @@ export async function getDataSamples(tableName: string, columns: string[], pgCon
         SELECT DISTINCT "${column}"
         FROM "${tableName}"
         WHERE "${column}" IS NOT NULL
-        ORDER BY RANDOM()
         LIMIT 5
       `;
       const result = await client.query(query);
@@ -392,7 +395,7 @@ export async function getDataSamples(tableName: string, columns: string[], pgCon
   }
 }
 
-export async function getDuplicatedRows(tableName: string, pgConnectionString?: string): Promise<number> {
+export async function getDuplicatedRows(tableName: string,  columns:string[], pgConnectionString?: string): Promise<number> {
   const client = new Client({
     connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
   });
@@ -400,10 +403,19 @@ export async function getDuplicatedRows(tableName: string, pgConnectionString?: 
   await client.connect();
 
   try {
-    const query = `
-      SELECT COUNT(*) - COUNT(DISTINCT *) AS duplicated_rows
+    let query;
+  if (columns.length === 1) {
+    query = `
+      SELECT COUNT(*) - COUNT(DISTINCT ${columns[0]}) AS duplicated_rows
       FROM "${tableName}"
     `;
+  } else {
+    const concatColumns = columns.map(col => `COALESCE(${col}::text, '')`).join(" || ");
+    query = `
+      SELECT COUNT(*) - COUNT(DISTINCT (${concatColumns})) AS duplicated_rows
+      FROM "${tableName}"
+    `;
+  }
     const result = await client.query(query);
     return parseInt(result.rows[0].duplicated_rows);
   } catch (error) {
@@ -453,7 +465,7 @@ export async function getEmptyValuePercentage(tableName: string, columns: string
       const query = `
         SELECT COUNT(*) * 100.0 / (SELECT COUNT(*) FROM "${tableName}") AS empty_percentage
         FROM "${tableName}"
-        WHERE "${column}" IS NULL OR "${column}" = ''
+        WHERE "${column}" IS NULL
       `;
       const result = await client.query(query);
       emptyValuePercentage[column] = parseFloat(result.rows[0].empty_percentage);

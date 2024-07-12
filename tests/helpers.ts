@@ -155,3 +155,35 @@ export function createChart(): string {
 export function askHuman(): string {
   return "Doughnut chart with the total revenue per user"
 }
+
+export function insertRecommendations(tableString:string, recommendations:any) {
+  // Create a map of table names to their recommendations
+  const recommendationMap = recommendations.reduce((map:any, item:any) => {
+    map[item.name] = item.recommendation;
+    return map;
+  }, {});
+
+  // Split the input string into individual table strings
+  const tables = tableString.split(/\nTable: /).filter(Boolean);
+
+  // Process each table
+  const updatedTables = tables.map(table => {
+    // Extract the table name from the first line
+    const tableName = table.split('\n')[0].trim();
+    
+    // Get recommendations for this table
+    const tableRecommendations = recommendationMap[tableName] || [];
+    
+    if (tableRecommendations.length > 0) {
+      // If there are recommendations, add them to the table string
+      const recommendationString = '\nRecommendations:\n' + tableRecommendations.map((rec:any) => ` - ${rec}`).join('\n');
+      return `Table: ${table}${recommendationString}`;
+    } else {
+      // If no recommendations, return the original table string
+      return `Table: ${table}`;
+    }
+  });
+
+  // Join the updated tables back into a single string
+  return updatedTables.join('\n\n');
+}
