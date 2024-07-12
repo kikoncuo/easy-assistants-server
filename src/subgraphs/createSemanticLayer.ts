@@ -8,12 +8,14 @@ import Logger from '../utils/Logger';
 import { getDataStructure, getMissingValues, getUnusualValues, getDistinctValues, getGroupRatios, getDataSamples, getDuplicatedRows, getUniqueRatio, getEmptyValuePercentage } from '../utils/DataStructure';
 import fs from 'fs';
 import path from 'path';
+import { insertRecommendations } from '../../tests/helpers';
 
 interface SemanticLayerState extends BaseState {
   tableAnalysis: Record<string, TableAnalysis>;
   cubeJsFiles: Record<string, string>;
   finalResult: string;
   userConfirmations: Record<string, boolean>;
+  dataStructure: string;
 }
 
 interface TableAnalysis {
@@ -28,15 +30,26 @@ interface TableAnalysis {
   emptyValuePercentage: Record<string, number>;
 }
 
-async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConnectionChain: string, functions: Function[]): Promise<SemanticLayerState> {
+async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConnectionChain: string, functions?: Function[]): Promise<SemanticLayerState> {
   const dataStructure = await getDataStructure(prefixes, pgConnectionChain);
   const tables = dataStructure.split('\n\n').filter(table => table.startsWith('Table:'));
 
   let tableAnalysis: Record<string, TableAnalysis> = {};
 
   for (const table of tables) {
-    const tableName = table.split(':')[1].trim();
-    const columns = table.split('\n').slice(1).map(col => col.split('(')[0].trim());
+      const cleanedTable = table.split(':')[1].trim();
+      const tableName = cleanedTable.split('-')[0].trim();
+      const cleanedColumns = table.split('\n').slice(1).map(col => col.split('(')[0].trim());
+      const columns = table
+    .split('\n')[1] 
+    .split(';')     
+    .map(col => col.trim()) 
+    .filter(col => col !== '')  
+    .map(col => {
+      const match = col.match(/^\s*-\s*(\w+)/);  
+      return match ? match[1] : '';
+    })
+    .filter(col => col !== '' && col !== '_' && col !== '_1'); 
 
     tableAnalysis[tableName] = {
       missingValues: await getMissingValues(tableName, columns, pgConnectionChain),
@@ -45,7 +58,7 @@ async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConn
       distinctValues: await getDistinctValues(tableName, columns, pgConnectionChain),
       groupRatios: await getGroupRatios(tableName, columns, pgConnectionChain),
       dataSamples: await getDataSamples(tableName, columns, pgConnectionChain),
-      duplicatedRows: await getDuplicatedRows(tableName, pgConnectionChain),
+      duplicatedRows: await getDuplicatedRows(tableName, columns, pgConnectionChain),
       uniqueRatio: await getUniqueRatio(tableName, columns, pgConnectionChain),
       emptyValuePercentage: await getEmptyValuePercentage(tableName, columns, pgConnectionChain),
     };
@@ -56,27 +69,32 @@ async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConn
         .map(([col, percentage]) => `${col}: ${percentage.toFixed(2)}%`)
         .join('\n');
 
-    functions[0]('info', JSON.stringify({ message: emptyFieldsMessage }));
-    functions[0]('input', JSON.stringify({ 
-      message: "Please provide any insights or reasons for these empty fields:",
-      key: `${tableName}_empty_fields_reason`
-    }));
+        if(functions) {
+          functions[0]('info', JSON.stringify({ message: emptyFieldsMessage }));
+          functions[0]('input', JSON.stringify({ 
+            message: "Please provide any insights or reasons for these empty fields:",
+            key: `${tableName}_empty_fields_reason`
+          }));
+        }
 
     // Generate recommendations based on the analysis
     tableAnalysis[tableName].recommendations = generateRecommendations(tableAnalysis[tableName]);
 
     // Describe the data cleaning process to the user
     const cleaningDescription = describeDataCleaning(tableAnalysis[tableName]);
+    if(functions) {
     functions[0]('info', JSON.stringify({ message: cleaningDescription }));
     functions[0]('input', JSON.stringify({ 
       message: "Do you approve of this data cleaning approach? (yes/no)",
       key: `${tableName}_cleaning_approval`
     }));
+    }
   }
 
   return {
     ...state,
-    tableAnalysis
+    tableAnalysis,
+    dataStructure
   };
 }
 
@@ -84,8 +102,12 @@ function generateRecommendations(analysis: TableAnalysis): string[] {
   const recommendations: string[] = [];
 
   // Add recommendations based on the analysis results
-  if (Object.values(analysis.emptyValuePercentage).some(percentage => percentage > 10)) {
-    recommendations.push("Consider handling missing values for columns with high empty percentages.");
+  const highEmptyPercentageColumns = Object.entries(analysis.emptyValuePercentage)
+  .filter(([column, percentage]) => percentage > 10)
+  .map(([column, percentage]) => `${column} (${percentage.toFixed(2)}%)`);
+
+  if (highEmptyPercentageColumns.length > 0) {
+    recommendations.push(`Consider handling missing values for the following columns with high empty percentages: ${highEmptyPercentageColumns.join(', ')}.`);
   }
 
   if (analysis.duplicatedRows > 0) {
@@ -94,7 +116,7 @@ function generateRecommendations(analysis: TableAnalysis): string[] {
 
   Object.entries(analysis.uniqueRatio).forEach(([column, ratio]) => {
     if (ratio < 0.1) {
-      recommendations.push(`Consider grouping or binning values in column '${column}' due to low unique ratio.`);
+      recommendations.push(`'${column}' due to low unique ratio.`);
     }
   });
 
@@ -136,23 +158,47 @@ function describeDataCleaning(analysis: TableAnalysis): string {
 }
 
 async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticLayerState> {
-  const getCubeJsFiles = z.object({
-    cubeJsFiles: z.record(z.string(), z.string())
+  const filesSchema = z.object({ 
+    files: z.record(z.string(), z.string()).describe('A record with the name of the files pointing to the content of the files')
   });
+  const model = createStructuredResponseAgent(anthropicSonnet(), filesSchema);
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getCubeJsFiles);
+  const tableAnalysisArray = Object.entries(state.tableAnalysis).map(([key, value]) => ({
+    key,
+    ...value
+  }));
 
-  const message = await model.invoke([
-    new HumanMessage(`Generate Cube.js schema files for the following analyzed tables:
-    ${JSON.stringify(state.tableAnalysis, null, 2)}
-    
-    Create a separate file for each table, handling the missing and unusual values as recommended.
-    Establish all relevant joins between tables and define fields that may be useful for business analysis.
-    Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.`)
-  ]);
+  const summarizedAnalysis = tableAnalysisArray.map((table: any) => ({
+    name: table.key,
+    recommendation: table.recommendations || null
+  }));
 
-  const cubeJsFiles = (message as any).cubeJsFiles;
-  Logger.log('Generated Cube.js files:', Object.keys(cubeJsFiles));
+  const updatedTableStrings = insertRecommendations(state.dataStructure, summarizedAnalysis);
+
+  Logger.log('Updated table string', updatedTableStrings);
+
+  const cubeJsFiles: Record<string, string> = {};
+  const tablesPerIteration = 3;
+
+  for (let i = 0; i < tableAnalysisArray.length; i += tablesPerIteration) {
+    const currentTables = updatedTableStrings.split('\n\nTable: ')
+      .slice(i + 1, i + tablesPerIteration + 1)
+      .map(table => 'Table: ' + table.trim())
+      .join('\n\n');
+
+    const message = await model.invoke([
+      new HumanMessage(`Generate Cube.js schema files for the following tables, each table contains the columns, type, 3 examples & additionally it can also contain recommendations:
+      ${currentTables}
+
+      Create a separate string per file for these cubes, handling the missing and unusual values as recommended.
+      Fill columns with high empty values with a string like "none" "nothing" "missing" when they recover an empty value.
+      Establish all relevant joins between cubes and define fields that may be useful for business analysis.
+      Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.`)
+    ]);
+
+    Object.assign(cubeJsFiles, (message as any).files);
+    Logger.log(`Generated schema for tables ${i + 1} to ${Math.min(i + tablesPerIteration, tableAnalysisArray.length)}`);
+  }
 
   return {
     ...state,
@@ -167,23 +213,27 @@ async function writeSemanticLayerFiles(state: SemanticLayerState): Promise<Seman
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  for (const [fileName, fileContent] of Object.entries(state.cubeJsFiles)) {
+  Object.entries(state.cubeJsFiles).forEach(([fileName, fileContent]) => {
     const filePath = path.join(outputDir, fileName);
-    fs.writeFileSync(filePath, fileContent);
-  }
+
+    // Write the file with the original content, including all comments
+    fs.writeFileSync(filePath, fileContent.trim());
+
+    console.log(`Created file: ${fileName}`);
+  });
 
   return {
     ...state,
-    finalResult: `Semantic layer files have been created in the 'semantic_layer' directory. Files: ${Object.keys(state.cubeJsFiles).join(', ')}`
-  };
+    finalResult: `Semantic layer files have been created in the 'semantic_layer' directory.`
+  }
 }
 
 export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
   private prefixes: string;
   private pgConnectionChain: string;
-  private functions: Function[];
+  private functions?: Function[];
 
-  constructor(prefixes: string, pgConnectionChain: string, functions: Function[]) {
+  constructor(prefixes: string, pgConnectionChain: string, functions?: Function[]) {
     const graphState: StateGraphArgs<SemanticLayerState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -204,6 +254,10 @@ export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
       userConfirmations: {
         value: (x: Record<string, boolean>, y?: Record<string, boolean>) => (y ? y : x),
         default: () => ({}),
+      },
+      dataStructure: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
       },
     };
     super(graphState);
