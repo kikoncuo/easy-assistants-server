@@ -12,10 +12,19 @@ const thread_id = Math.floor(Math.random() * 1000);
 function connectToServer() {
   ws = new WebSocket('ws://localhost:8080');
   
+  // ws.on('open', () => {
+  //   Logger.log('Connected to server');
+  //   ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", process.env.TEST_POSTGRES_MANUAL] }));
+  //   promptUserInput();
+  // });
+
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", process.env.TEST_POSTGRES_MANUAL] }));
-    promptUserInput();
+    ws?.send(JSON.stringify({ 
+      type: 'createSemanticLayer', 
+      prefixes: "csv",
+      pgConnectionString: process.env.TEST_POSTGRES_MANUAL
+    }));
   });
 
   ws.on('message', (message: string) => {

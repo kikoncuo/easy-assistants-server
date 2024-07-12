@@ -92,6 +92,10 @@ if (isProd) {
   });
 }
 
+function waitForClientResponse(ws: WebSocket, key: string, timeout: number = 60000, defaultValue: any = 'no'): Promise<any> {
+  return Promise.resolve(defaultValue)
+}
+
 wss.on('connection', ws => {
   Logger.log('Client connected');
 
@@ -123,9 +127,22 @@ wss.on('connection', ws => {
     }
     else if (data.type === 'createSemanticLayer') {
       Logger.log('Creating semantic layer');
-      //onst semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, // TODO: Pass in the functions here to interact with the user, not sure how to do this
-      //const result = await semanticLayerGraph.getGraph().invoke({task:"Create a semantic layer for the company's data"});
-      //WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
+      const interactionFunctions = [
+        async (type: string, data: string) => {
+          const parsedData = JSON.parse(data);
+          
+          if (type === 'info') {
+            WebSocketService.outputHandler('semanticLayerInfo', parsedData.message, ws);
+          } else if (type === 'input') {
+            WebSocketService.outputHandler('semanticLayerInput', parsedData.message, ws);
+            const response = await waitForClientResponse(ws, parsedData.key);
+            return response;
+          }
+        }
+      ];
+      const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, interactionFunctions) // TODO: Pass in the functions here to interact with the user, not sure how to do this
+      const result = await semanticLayerGraph.getGraph().invoke({task:"Create a semantic layer for the company's data"});
+      WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     }
 
 
