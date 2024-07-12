@@ -1,7 +1,91 @@
+import fetch from 'node-fetch';
 import { Client } from 'pg';
 import Logger from './Logger';
 import dotenv from 'dotenv';
 dotenv.config();
+
+export const executeQuery = async (query: any, projectName: string) => {
+  try {
+    let continueWait = true;
+    let data;
+
+    while (continueWait) {
+      const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/executeQuery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query: query, projectName: projectName }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      data = await response.json();
+
+      if (data.error && data.error === "Continue wait") {
+        console.log(`Wait error - retry`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Timeout of 1 second
+        continueWait = true;
+      } else {
+        continueWait = false;
+      }
+    }
+
+    return JSON.stringify(data);
+  } catch (error) {
+    console.error('Error executing query:', error);
+    throw error;
+  }
+};
+
+
+export const getModelsData = async (projectName: string): Promise<string[]> => {
+  try {
+      const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/getMeta?projectName=${projectName}`, {
+          method: 'GET',
+          headers: {
+              'Content-Type': 'application/json'
+          }
+      });
+
+      if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const cubesStrings = data.cubes.map((cube: any) => JSON.stringify(cube));
+
+      return cubesStrings;
+  } catch (error) {
+      console.error('Error executing query:', error);
+      throw error;
+  }
+};
+
+export const getSQLQuery = async (projectName: string, query: any): Promise<string[]> => {
+  try {
+      const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/getQuery?projectName=${projectName}&query=${query}`, {
+          method: 'GET',
+          headers: {
+              'Content-Type': 'application/json'
+          }
+      });
+
+      if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const sqlString = data.sql.sql;
+
+      return sqlString;
+  } catch (error) {
+      console.error('Error executing query:', error);
+      throw error;
+  }
+};
 
 const viewPrefix = 'view_';
 
@@ -144,7 +228,6 @@ export async function getDataStructure(prefixes: string, pgConnectionString?: st
 
   try {
     const tableNames = await getTableNames(prefixes, client);
-    console.log({ tableNames });
     for (const tableName of tableNames) {
       const structureAndExamples = await getStructureAndExamples(client, tableName);
       tableReport.push({ tableName, structureAndExamples });
@@ -478,3 +561,4 @@ export async function getEmptyValuePercentage(tableName: string, columns: string
     await client.end();
   }
 }
+

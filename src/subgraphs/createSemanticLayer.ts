@@ -6,9 +6,12 @@ import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import Logger from '../utils/Logger';
 import { getDataStructure, getMissingValues, getUnusualValues, getDistinctValues, getGroupRatios, getDataSamples, getDuplicatedRows, getUniqueRatio, getEmptyValuePercentage } from '../utils/DataStructure';
-import fs from 'fs';
-import path from 'path';
+import fetch from 'node-fetch';
 import { insertRecommendations } from '../../tests/helpers';
+
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 interface SemanticLayerState extends BaseState {
   tableAnalysis: Record<string, TableAnalysis>;
@@ -189,11 +192,29 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
     const message = await model.invoke([
       new HumanMessage(`Generate Cube.js schema files for the following tables, each table contains the columns, type, 3 examples & additionally it can also contain recommendations:
       ${currentTables}
-
+    
       Create a separate string per file for these cubes, handling the missing and unusual values as recommended.
-      Fill columns with high empty values with a string like "none" "nothing" "missing" when they recover an empty value.
-      Establish all relevant joins between cubes and define fields that may be useful for business analysis.
-      Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.`)
+
+      While generating the Cube.js schema files, use the cube name as the file name, maintaining its original letter case and adding a .js extension.
+    
+      Crucial: Establish ALL relevant joins between cubes. For each table:
+      1. Identify potential foreign keys (columns that might reference other tables).
+      2. Create joins to all related tables using these keys.
+      3. Include both one-to-many and many-to-many relationships where applicable.
+      4. Use appropriate join types (e.g., belongsTo, hasMany, hasOne) based on the relationship.
+      5. Ensure that every table is connected to the schema through at least one join.
+    
+      Define fields that may be useful for business analysis, including measures and dimensions.
+      Make sure the types of the columns are accurate.
+      Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.
+      Add the recommendations as a comment inside of that particular measure or dimension.
+    
+      For columns with a high percentage of empty values:
+        - If the column data type is string: Replace empty values with "None" or "Missing".
+        - If the column data type is numeric: Replace empty values with 0.
+    
+      After generating each cube, review it to ensure all possible joins are included. If a table seems to lack joins, reconsider its relationships with other tables and add the necessary joins.
+      `)
     ]);
 
     Object.assign(cubeJsFiles, (message as any).files);
@@ -207,24 +228,46 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
 }
 
 async function writeSemanticLayerFiles(state: SemanticLayerState): Promise<SemanticLayerState> {
-  const outputDir = path.join(process.cwd(), 'semantic_layer'); // TODO: Use a configurable output directory based on the company data
-  
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
+  try {
+    const company_name = "omni_test"
+    const payload = {
+      companyName: company_name,
+      envVariables: "CUBEJS_DB_TYPE=postgres\nCUBEJS_DB_NAME=coffee_chain_db\n...", // This should be dynamically generated or passed in
+      cubeFiles: {
+        model: state.cubeJsFiles
+      }
+    };
 
-  Object.entries(state.cubeJsFiles).forEach(([fileName, fileContent]) => {
-    const filePath = path.join(outputDir, fileName);
+    Logger.log('payload', payload)
 
-    // Write the file with the original content, including all comments
-    fs.writeFileSync(filePath, fileContent.trim());
+    const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/company/create-company`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-    console.log(`Created file: ${fileName}`);
-  });
 
-  return {
-    ...state,
-    finalResult: `Semantic layer files have been created in the 'semantic_layer' directory.`
+    if (response.ok) {
+      Logger.log('Semantic layer data posted successfully');
+      return {
+        ...state,
+        finalResult: `Semantic layer data has been posted to the server successfully.`
+      };
+    } else {
+      Logger.error('Failed to post semantic layer data:', response.statusText);
+      return {
+        ...state,
+        finalResult: `Failed to post semantic layer data: ${response.statusText}`
+      };
+    }
+  } catch (error) {
+    Logger.error('Error posting semantic layer data:', error);
+    return {
+      ...state,
+      finalResult: `Error posting semantic layer data`
+    };
   }
 }
 
