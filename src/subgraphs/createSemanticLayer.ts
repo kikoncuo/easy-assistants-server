@@ -30,7 +30,7 @@ interface TableAnalysis {
   emptyValuePercentage: Record<string, number>;
 }
 
-async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConnectionChain: string, functions: Function[]): Promise<SemanticLayerState> {
+async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConnectionChain: string, functions?: Function[]): Promise<SemanticLayerState> {
   const dataStructure = await getDataStructure(prefixes, pgConnectionChain);
   const tables = dataStructure.split('\n\n').filter(table => table.startsWith('Table:'));
 
@@ -69,22 +69,26 @@ async function analyzeTables(state: SemanticLayerState, prefixes: string, pgConn
         .map(([col, percentage]) => `${col}: ${percentage.toFixed(2)}%`)
         .join('\n');
 
-    functions[0]('info', JSON.stringify({ message: emptyFieldsMessage }));
-    functions[0]('input', JSON.stringify({ 
-      message: "Please provide any insights or reasons for these empty fields:",
-      key: `${tableName}_empty_fields_reason`
-    }));
+        if(functions) {
+          functions[0]('info', JSON.stringify({ message: emptyFieldsMessage }));
+          functions[0]('input', JSON.stringify({ 
+            message: "Please provide any insights or reasons for these empty fields:",
+            key: `${tableName}_empty_fields_reason`
+          }));
+        }
 
     // Generate recommendations based on the analysis
     tableAnalysis[tableName].recommendations = generateRecommendations(tableAnalysis[tableName]);
 
     // Describe the data cleaning process to the user
     const cleaningDescription = describeDataCleaning(tableAnalysis[tableName]);
+    if(functions) {
     functions[0]('info', JSON.stringify({ message: cleaningDescription }));
     functions[0]('input', JSON.stringify({ 
       message: "Do you approve of this data cleaning approach? (yes/no)",
       key: `${tableName}_cleaning_approval`
     }));
+    }
   }
 
   return {
@@ -218,15 +222,18 @@ async function writeSemanticLayerFiles(state: SemanticLayerState): Promise<Seman
     console.log(`Created file: ${fileName}`);
   });
 
-  return state;
+  return {
+    ...state,
+    finalResult: `Semantic layer files have been created in the 'semantic_layer' directory.`
+  }
 }
 
 export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
   private prefixes: string;
   private pgConnectionChain: string;
-  private functions: Function[];
+  private functions?: Function[];
 
-  constructor(prefixes: string, pgConnectionChain: string, functions: Function[]) {
+  constructor(prefixes: string, pgConnectionChain: string, functions?: Function[]) {
     const graphState: StateGraphArgs<SemanticLayerState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
