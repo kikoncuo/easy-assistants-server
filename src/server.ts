@@ -22,7 +22,8 @@ const {
   GROQ_API_KEY,
   ANTHROPIC_API_KEY,
   MEMORY_STORAGE_SUPABASE_URL,
-  MEMORY_STORAGE_SUPABASE_KEY
+  MEMORY_STORAGE_SUPABASE_KEY,
+  CUBEJS_SERVER
 } = process.env;
 
 const missingApiKeys: string[] = [];
@@ -57,6 +58,10 @@ if (!MEMORY_STORAGE_SUPABASE_URL) {
 
 if (!MEMORY_STORAGE_SUPABASE_KEY) {
   Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_KEY is not set. Activity logging will be disabled.');
+}
+
+if (!CUBEJS_SERVER) {
+  Logger.warn('Warning: CUBEJS_SERVER is not set. Activity logging will be disabled.');
 }
 
 const isProd = process.env.BUN_ENV === 'production';

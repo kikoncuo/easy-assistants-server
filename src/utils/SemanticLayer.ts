@@ -1,48 +1,51 @@
-// File: ../utils/SemanticLayer.ts
-
-import fs from 'fs/promises';
+import fetch from 'node-fetch';
 import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import Logger from './Logger';
 import { extractCubeNames, separateCubes } from '../../tests/helpers';
 
-const execAsync = util.promisify(exec);
+import dotenv from 'dotenv';
 
-const SEMANTIC_LAYER_DIR = path.join(__dirname, '..', '..', 'semantic_layer');
+dotenv.config();
+
+const {CUBEJS_SERVER} = process.env;
+
+const execAsync = util.promisify(exec);
 
 export async function getCubes(cubeName?: string): Promise<string> {
   try {
     Logger.log('cube name',cubeName)
+    const company_name = "omni_test";
+    const url = `${CUBEJS_SERVER}/company-cube-files/${company_name}`
+    
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch cube files: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const cubeFiles = data;
+
     if (cubeName) {
-      const files = await fs.readdir(SEMANTIC_LAYER_DIR);
-      
-      // Find the file that contains the cube definition
-      for (const file of files) {
-        if (path.extname(file) === '.js') {
-          const filePath = path.join(SEMANTIC_LAYER_DIR, file);
-          const content = await fs.readFile(filePath, 'utf-8');
-          
-          // Check if the file contains the cube definition
-          if (content.includes(`cube(\`${cubeName}\``) || content.includes(`cube('${cubeName}'`) || content.includes(`cube("${cubeName}"`)) {
-            return `Cube: ${cubeName}\n${content}`;
-          }
-        }
+      // Find the specific cube
+      const cubeContent = Object.entries(cubeFiles).find(([filename, content]) => 
+        (content as string).includes(`cube(\`${cubeName}\``) || 
+        (content as string).includes(`cube('${cubeName}'`) || 
+        (content as string).includes(`cube("${cubeName}"`)
+      );
+
+      if (cubeContent) {
+        return `Cube: ${cubeName}\n${cubeContent[1]}`;
+      } else {
+        Logger.log(`No file found for cube: ${cubeName}`);
+        return '';
       }
-      
-      // If no matching file is found
-      Logger.log(`No file found for cube: ${cubeName}`);
-      return '';
     } else {
-      const files = await fs.readdir(SEMANTIC_LAYER_DIR);
-      Logger.log('files',files)
-      const cubeContents = await Promise.all(
-        files
-          .filter(file => file.endsWith('.js'))
-          .map(async file => {
-            const content = await fs.readFile(path.join(SEMANTIC_LAYER_DIR, file), 'utf-8');
-            return `Cube: ${path.basename(file, '.js')}\n${content}`;
-          })
+      // Return all cubes
+      const cubeContents = Object.entries(cubeFiles).map(([filename, content]) => 
+        `Cube: ${path.basename(filename, '.js')}\n${content}`
       );
       return cubeContents.join('\n\n');
     }
@@ -54,53 +57,46 @@ export async function getCubes(cubeName?: string): Promise<string> {
 
 export async function updateSemanticLayer(updatedContent: string): Promise<void> {
   try {
+    const company_name = "omni_test"
+    const extractedCubeNames = extractCubeNames(updatedContent);
+    const extractedCubeContent = separateCubes(updatedContent);
+    
+    const cubeFiles: Record<string, string> = {};
 
-    const files = await fs.readdir(SEMANTIC_LAYER_DIR);
-let fileUpdated = false;
-const extractedCubeNames = extractCubeNames(updatedContent);
-const extractedCubeContent = separateCubes(updatedContent);
-
-for (let i = 0; i < extractedCubeNames.length; i++) {
-  const cubeName = extractedCubeNames[i];
-  const cubeContent = extractedCubeContent[i];
-  
-  for (const file of files) {
-    if (path.extname(file) === '.js') {
-      const filePath = path.join(SEMANTIC_LAYER_DIR, file);
-      const content = await fs.readFile(filePath, 'utf-8');
+    for (let i = 0; i < extractedCubeNames.length; i++) {
+      const cubeName = extractedCubeNames[i];
+      const cubeContent = extractedCubeContent[i];
       
-      // Check if this file contains the definition for the cube we're updating
-      if (content.includes(`cube(\`${cubeName}\``) || 
-          content.includes(`cube('${cubeName}'`) || 
-          content.includes(`cube("${cubeName}"`)) {
-        
-        // This is the file we need to update
-        // Replace the old cube content with the new cube content
-        const updatedFileContent = content.replace(
-          /cube\([`'"](${cubeName})[`'"]\s*,\s*{[\s\S]*?}\s*\)\s*;?/,
-          cubeContent
-        );
-        
-        await fs.writeFile(filePath, updatedFileContent, 'utf-8');
-        console.log(`Semantic layer updated successfully for cube ${cubeName} in file ${file}`);
-        fileUpdated = true;
-        break;
-      }
+      const fileName = `${cubeName.toLowerCase()}.js`;
+      cubeFiles[fileName] = cubeContent;
     }
-  }
-  
-  if (!fileUpdated) {
-    console.log(`No existing file found for cube ${cubeName}. Creating a new file.`);
-    const newFilePath = path.join(SEMANTIC_LAYER_DIR, `${cubeName}.js`);
-    await fs.writeFile(newFilePath, cubeContent, 'utf-8');
-    fileUpdated = true;
-  }
-  
-  fileUpdated = false; // Reset for the next cube
-}
 
+    const payload = {
+      cubeFiles: {
+        model: {
+          cubes: cubeFiles
+        }
+      }
+    };
+
+    Logger.log('update payload', payload)
+
+    const response = await fetch(`${CUBEJS_SERVER}/edit-cube-files/${company_name}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update semantic layer: ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    console.log('Semantic layer updated successfully:', responseData);
   } catch (error) {
-    console.error('Error updating semantic layer:', error);
+    Logger.error('Error updating semantic layer:', error);
     throw error;
   }
 }

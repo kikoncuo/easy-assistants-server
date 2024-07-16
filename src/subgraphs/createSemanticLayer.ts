@@ -6,9 +6,14 @@ import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import Logger from '../utils/Logger';
 import { getDataStructure, getMissingValues, getUnusualValues, getDistinctValues, getGroupRatios, getDataSamples, getDuplicatedRows, getUniqueRatio, getEmptyValuePercentage } from '../utils/DataStructure';
-import fs from 'fs';
-import path from 'path';
+import fetch from 'node-fetch';
 import { insertRecommendations } from '../../tests/helpers';
+
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const {CUBEJS_SERVER} = process.env;
 
 interface SemanticLayerState extends BaseState {
   tableAnalysis: Record<string, TableAnalysis>;
@@ -223,24 +228,46 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
 }
 
 async function writeSemanticLayerFiles(state: SemanticLayerState): Promise<SemanticLayerState> {
-  const outputDir = path.join(process.cwd(), 'semantic_layer'); // TODO: Use a configurable output directory based on the company data
-  
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
+  try {
+    const company_name = "omni_test"
+    const payload = {
+      companyName: company_name,
+      envVariables: "CUBEJS_DB_TYPE=postgres\nCUBEJS_DB_NAME=coffee_chain_db\n...", // This should be dynamically generated or passed in
+      cubeFiles: {
+        model: state.cubeJsFiles
+      }
+    };
 
-  Object.entries(state.cubeJsFiles).forEach(([fileName, fileContent]) => {
-    const filePath = path.join(outputDir, fileName);
+    Logger.log('payload', payload)
 
-    // Write the file with the original content, including all comments
-    fs.writeFileSync(filePath, fileContent.trim());
+    const response = await fetch(`${CUBEJS_SERVER}/company/create-company`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-    console.log(`Created file: ${fileName}`);
-  });
 
-  return {
-    ...state,
-    finalResult: `Semantic layer files have been created in the 'semantic_layer' directory.`
+    if (response.ok) {
+      Logger.log('Semantic layer data posted successfully');
+      return {
+        ...state,
+        finalResult: `Semantic layer data has been posted to the server successfully.`
+      };
+    } else {
+      Logger.error('Failed to post semantic layer data:', response.statusText);
+      return {
+        ...state,
+        finalResult: `Failed to post semantic layer data: ${response.statusText}`
+      };
+    }
+  } catch (error) {
+    Logger.error('Error posting semantic layer data:', error);
+    return {
+      ...state,
+      finalResult: `Error posting semantic layer data`
+    };
   }
 }
 
