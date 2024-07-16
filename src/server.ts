@@ -143,9 +143,9 @@ wss.on('connection', ws => {
       WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     } else if (data.type === 'editSemanticLayer') {
       Logger.log('Started process for editing semantic layer')
-      const editCubeGraph = new EditCubeGraph((type: string, data: any) => {
-        WebSocketService.outputHandler(type, data, ws);
-      });
+      const editCubeGraph = new EditCubeGraph([
+        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws)
+      ]);
       const result = await editCubeGraph.getGraph().invoke({
       task: "I want to see which users are active",
       });

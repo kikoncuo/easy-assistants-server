@@ -201,11 +201,7 @@ export function extractCubeNames(content:any) {
 }
 
 export function separateCubes(input:string) {
-  Logger.log('inputsssssssss',input)
   const cubeDefinitions = input.split(/cube\(/).slice(1);
-  Logger.log('cubeDefinitions',cubeDefinitions)
   const cubes = cubeDefinitions.map(cubeDef => 'cube(' + cubeDef.trim());
-  Logger.log('cubes',cubes)
-
   return cubes;
 }

@@ -189,11 +189,27 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
     const message = await model.invoke([
       new HumanMessage(`Generate Cube.js schema files for the following tables, each table contains the columns, type, 3 examples & additionally it can also contain recommendations:
       ${currentTables}
-
+    
       Create a separate string per file for these cubes, handling the missing and unusual values as recommended.
-      Fill columns with high empty values with a string like "none" "nothing" "missing" when they recover an empty value and also add the recemmendation as a comment inside the of that measure or dimension.
-      Establish all relevant joins between cubes and define fields that may be useful for business analysis.
-      Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.`)
+    
+      Crucial: Establish ALL relevant joins between cubes. For each table:
+      1. Identify potential foreign keys (columns that might reference other tables).
+      2. Create joins to all related tables using these keys.
+      3. Include both one-to-many and many-to-many relationships where applicable.
+      4. Use appropriate join types (e.g., belongsTo, hasMany, hasOne) based on the relationship.
+      5. Ensure that every table is connected to the schema through at least one join.
+    
+      Define fields that may be useful for business analysis, including measures and dimensions.
+      Make sure the types of the columns are accurate.
+      Use best practices for Cube.js schema design, including appropriate naming conventions and annotations.
+      Add the recommendations as a comment inside of that particular measure or dimension.
+    
+      For columns with a high percentage of empty values:
+        - If the column data type is string: Replace empty values with "None" or "Missing".
+        - If the column data type is numeric: Replace empty values with 0.
+    
+      After generating each cube, review it to ensure all possible joins are included. If a table seems to lack joins, reconsider its relationships with other tables and add the necessary joins.
+      `)
     ]);
 
     Object.assign(cubeJsFiles, (message as any).files);

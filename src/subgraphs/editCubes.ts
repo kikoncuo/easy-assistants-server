@@ -45,7 +45,7 @@ async function identifyRelevantCubes(state: EditCubeState): Promise<EditCubeStat
   };
 }
 
-async function identifyCalculationMethod(state: EditCubeState, wsFunction: (type: string, data: any) => void): Promise<EditCubeState> {
+async function identifyCalculationMethod(state: EditCubeState, functions: Function[]): Promise<EditCubeState> {
   const getCalculationSchema = z.object({
     calculationMethods: z.array(z.string()).describe('Array of possible calculation methods'),
   });
@@ -68,19 +68,23 @@ async function identifyCalculationMethod(state: EditCubeState, wsFunction: (type
 
   let calculationStr = calculationMethods.join();
 
+  const calculationOptions = [
+    {
+      function_name: 'calculationOptions',
+      arguments: {
+        calculationOptions: `Here are possible ways to calculate the requested value. Please choose one: ${calculationStr}`
+      },
+    },
+  ];
+
   // Send options to user via WebSocket
-  wsFunction('calculationOptions',
-  `Here are possible ways to calculate the requested value. Please choose one: ${calculationStr}`
-  );
+  // await functions[0]('tool', calculationOptions);
 
   // Automatically select the first option
-  const selectedMethod = calculationMethods[4];
+  const selectedMethod = calculationMethods[calculationMethods.length - 1];
 
   // Simulate a delay to allow time for the message to be sent to the client
   await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // Send the selected method back to the client
-  wsFunction('selectedCalculationMethod', `Selected calculation method: ${selectedMethod}`);
 
   return {
     ...state,
@@ -125,7 +129,6 @@ async function updateAndTestSemanticLayer(state: EditCubeState): Promise<EditCub
   ]);
 
   const updatedLayer = (message as any).updatedLayer;
-  // Logger.log('\nUpdated semantic layer', updatedLayer);
 
   // Update the semantic layer
   await updateSemanticLayer(updatedLayer);
@@ -149,9 +152,10 @@ async function updateAndTestSemanticLayer(state: EditCubeState): Promise<EditCub
 }
 
 export class EditCubeGraph extends AbstractGraph<EditCubeState> {
-  private wsFunction: (type: string, data: any) => void;
+  // private wsFunction: (type: string, data: any) => void;
+  private functions: Function[];
 
-  constructor(wsFunction: (type: string, data: any) => void) {
+  constructor(functions: Function[]) {
     const graphState: StateGraphArgs<EditCubeState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -183,7 +187,7 @@ export class EditCubeGraph extends AbstractGraph<EditCubeState> {
       },
     };
     super(graphState);
-    this.wsFunction = wsFunction;
+    this.functions = functions;
   }
 
   getGraph(): CompiledStateGraph<EditCubeState> {
@@ -191,7 +195,7 @@ export class EditCubeGraph extends AbstractGraph<EditCubeState> {
 
     subGraphBuilder
       .addNode('identify_relevant_cubes', async state => await identifyRelevantCubes(state))
-      .addNode('identify_calculation_method', async state => await identifyCalculationMethod(state, this.wsFunction))
+      .addNode('identify_calculation_method', async state => await identifyCalculationMethod(state, this.functions))
       .addNode('update_and_test_semantic_layer', async state => await updateAndTestSemanticLayer(state))
       .addEdge(START, 'identify_relevant_cubes')
       .addEdge('identify_relevant_cubes', 'identify_calculation_method')
