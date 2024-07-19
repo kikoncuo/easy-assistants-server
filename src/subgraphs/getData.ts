@@ -134,8 +134,7 @@ async function createCubeQuery(state: DataRecoveryState): Promise<DataRecoverySt
           ],
           "order": [
             ["cube1.param1", "desc"]
-          ],
-          "limit": 1000
+          ]
         }
         `),
     description: z.string().describe('Task simple description, in a simple phrase.'),
