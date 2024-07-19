@@ -3,7 +3,7 @@ import { createStructuredResponseAgent, getFasterModel, getStrongestModel } from
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from "@langchain/langgraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from 'zod';
-import { dataExample } from './test/DataExample';
+import { dataExample } from './test/DataExample.ts';
 
 
 // Define a specific state type

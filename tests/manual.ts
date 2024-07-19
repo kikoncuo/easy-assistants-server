@@ -14,14 +14,20 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    // ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", process.env.TEST_POSTGRES_MANUAL] }));
-    // promptUserInput();
+    ws?.send(JSON.stringify({ type: 'configure', configData: ["csv_,at_", process.env.TEST_POSTGRES_MANUAL] }));
+    promptUserInput();
 
-    ws?.send(JSON.stringify({ 
-      type: 'createSemanticLayer', 
+   /* ws?.send(JSON.stringify({ 
+      type: 'editSemanticLayer', 
       prefixes: "csv",
       pgConnectionString: process.env.TEST_POSTGRES_MANUAL
-    }));
+    }));*/
+
+    // ws?.send(JSON.stringify({ 
+    //   type: 'createSemanticLayer', 
+    //   prefixes: "csv",
+    //   pgConnectionString: process.env.TEST_POSTGRES_MANUAL
+    // }));
   });
 
   ws.on('message', (message: string) => {
@@ -55,9 +61,7 @@ function connectToServer() {
             Logger.log(`Response for ${function_name}: ${result}`);
             response = result;
           } else {
-            const result = prompt(`Enter your response for ${function_name}:`);
-            Logger.log(`Response for ${function_name}: ${result}`);
-            response = result;
+            response = function_name;
           }
 
           return { function_name, response };

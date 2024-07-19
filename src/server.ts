@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import Logger from './utils/Logger';
 import { saveCsvTable } from './services/DirectFlowHandler';
 import { externalAgents } from './utils/ExternalAgents';
+import { EditCubeGraph } from './subgraphs/editCubes';
 
 dotenv.config();
 
@@ -21,7 +22,8 @@ const {
   GROQ_API_KEY,
   ANTHROPIC_API_KEY,
   MEMORY_STORAGE_SUPABASE_URL,
-  MEMORY_STORAGE_SUPABASE_KEY
+  MEMORY_STORAGE_SUPABASE_KEY,
+  CUBE_API_SERVER_URL
 } = process.env;
 
 const missingApiKeys: string[] = [];
@@ -56,6 +58,10 @@ if (!MEMORY_STORAGE_SUPABASE_URL) {
 
 if (!MEMORY_STORAGE_SUPABASE_KEY) {
   Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_KEY is not set. Activity logging will be disabled.');
+}
+
+if (!CUBE_API_SERVER_URL) {
+  Logger.warn('Warning: CUBE_API_SERVER_URL is not set. Activity logging will be disabled.');
 }
 
 const isProd = process.env.BUN_ENV === 'production';
@@ -139,6 +145,15 @@ wss.on('connection', ws => {
       // TODO create a interactive function to get response from the user
       const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString) // TODO: Pass in the functions here to interact with the user, not sure how to do this
       const result = await semanticLayerGraph.getGraph().invoke({task:"Create a semantic layer for the company's data"});
+      WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
+    } else if (data.type === 'editSemanticLayer') {
+      Logger.log('Started process for editing semantic layer')
+      const editCubeGraph = new EditCubeGraph([
+        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws)
+      ]);
+      const result = await editCubeGraph.getGraph().invoke({
+      task: "I want to see which users are active",
+      });
       WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     }
 
