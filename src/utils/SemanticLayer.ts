@@ -11,9 +11,8 @@ dotenv.config();
 
 const execAsync = util.promisify(exec);
 
-export async function getCubes(cubeName?: string): Promise<string> {
+export async function getCubes(company_name: string, cubeName?: string): Promise<string> {
   try {
-    const company_name = "omni_test";
     const url = `${process.env.CUBE_API_SERVER_URL}/company/company-cube-files/${company_name}`
     
     const response = await fetch(url);
@@ -52,9 +51,8 @@ export async function getCubes(cubeName?: string): Promise<string> {
   }
 }
 
-export async function updateSemanticLayer(updatedContent: string): Promise<void> {
+export async function updateSemanticLayer(updatedContent: string, company_name: string): Promise<void> {
   try {
-    const company_name = "omni_test"
     const extractedCubeNames = extractCubeNames(updatedContent);
     const extractedCubeContent = separateCubes(updatedContent);
     

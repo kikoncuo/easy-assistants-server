@@ -227,9 +227,8 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
   };
 }
 
-async function writeSemanticLayerFiles(state: SemanticLayerState): Promise<SemanticLayerState> {
+async function writeSemanticLayerFiles(state: SemanticLayerState, company_name: string): Promise<SemanticLayerState> {
   try {
-    const company_name = "omni_test"
     const payload = {
       companyName: company_name,
       envVariables: "CUBEJS_DB_TYPE=postgres\nCUBEJS_DB_NAME=coffee_chain_db\n...", // This should be dynamically generated or passed in
@@ -275,8 +274,9 @@ export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
   private prefixes: string;
   private pgConnectionChain: string;
   private functions?: Function[];
+  private company_name: string;
 
-  constructor(prefixes: string, pgConnectionChain: string, functions?: Function[]) {
+  constructor(prefixes: string, pgConnectionChain: string, company_name: string, functions?: Function[]) {
     const graphState: StateGraphArgs<SemanticLayerState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -307,6 +307,7 @@ export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
     this.prefixes = prefixes;
     this.pgConnectionChain = pgConnectionChain;
     this.functions = functions;
+    this.company_name = company_name;
   }
 
   getGraph(): CompiledStateGraph<SemanticLayerState> {
@@ -315,7 +316,7 @@ export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
     subGraphBuilder
       .addNode('analyze_tables', async state => await analyzeTables(state, this.prefixes, this.pgConnectionChain, this.functions))
       .addNode('generate_cubejs_files', async state => await generateCubeJsFiles(state))
-      .addNode('write_semantic_layer_files', async state => await writeSemanticLayerFiles(state))
+      .addNode('write_semantic_layer_files', async state => await writeSemanticLayerFiles(state, this.company_name))
       .addEdge(START, 'analyze_tables')
       .addEdge('analyze_tables', 'generate_cubejs_files')
       .addEdge('generate_cubejs_files', 'write_semantic_layer_files')
