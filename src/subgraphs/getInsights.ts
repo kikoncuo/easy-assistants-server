@@ -147,7 +147,7 @@ async function executeExploratoryQuery(state: InsightState, company_name: string
 
   return {
     ...state,
-    responses: [...state.responses, JSON.parse(exploratoryResult).data],
+    responses: [...state.responses, JSON.stringify(JSON.parse(exploratoryResult).data)], 
   };
 }
 
@@ -181,7 +181,7 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
 
     Provide a list of 3-5 key insights based on all the data. Each insight should have a title, description, and the index of the most relevant query.
     Do not mention directly measures or dimensions, you can only mention segments and filters to explain how they work in detail. IE: Anomalies of high pressure are identified by calculating values where the presion value exceeds the average by more than two standard deviations, highlighting outliers or anomalies. 
-    Always use the responses to explain the insight, mention specific values ranges or calculations to understand the data.
+    Always include in your insights based on the responses to explain the insight, even if they are empty, mention specific values ranges or calculations to understand the data.
     You can be certains about how the data is extracted from the cube file
     You can assume there are no issues with data retrieval, it's available and the query is correct.
     `),
