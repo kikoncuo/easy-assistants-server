@@ -133,6 +133,9 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
               "values": ["2023-12-31"]
             }
           ],
+          "segments": [
+            "cube1.segment1"
+          ],
           "order": [
             ["cube1.param1", "desc"]
           ]
