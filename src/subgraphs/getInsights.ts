@@ -121,6 +121,7 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
     
     Create an efficient query that will help gather insights. The query should return at most 1000 examples.
     Focus on a query that will provide meaningful data for analysis.
+    Multiple queries will be created to explore the data, you can create one that solves the task partially if it's too complex.
     
     Existing queries:
     ${existingQueries}
@@ -146,11 +147,11 @@ async function executeExploratoryQuery(state: InsightState, company_name: string
 
   return {
     ...state,
-    responses: [...state.responses, exploratoryResult],
+    responses: [...state.responses, JSON.parse(exploratoryResult).data],
   };
 }
 
-async function analyzeResults(state: InsightState, functions: Function[]): Promise<InsightState> {
+async function analyzeResults(state: InsightState, functions: Function[], company_name: string): Promise<InsightState> {
   const getInsights = z.object({
     insights: z.array(z.object({
       title: z.string().describe('Title for the insight'),
@@ -161,17 +162,28 @@ async function analyzeResults(state: InsightState, functions: Function[]): Promi
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getInsights);
 
+  const cubeModels = await getModels(company_name);
+
+  let filteredCubeModels = filterModels(cubeModels, state.relevantSources);;
+
   const message = await model.invoke([
     new HumanMessage(`Analyze the following exploratory query results and extract relevant insights:
     Task: ${state.task}
+
     Used cubes:
-    ${state.relevantSources.join('\n')}
+    ${filteredCubeModels.join('\n')}
+
     Queries:
     ${state.queries.join('\n')}
+
     Responses:
     ${state.responses.join('\n')}
+
     Provide a list of 3-5 key insights based on all the data. Each insight should have a title, description, and the index of the most relevant query.
-    You can reference SQL language as part of your response to explain the insight.
+    Do not mention directly measures or dimensions, you can only mention segments and filters to explain how they work in detail. IE: Anomalies of high pressure are identified by calculating values where the presion value exceeds the average by more than two standard deviations, highlighting outliers or anomalies. 
+    Always use the responses to explain the insight, mention specific values ranges or calculations to understand the data.
+    You can be certains about how the data is extracted from the cube file
+    You can assume there are no issues with data retrieval, it's available and the query is correct.
     `),
   ]);
 
@@ -218,7 +230,8 @@ async function checkResponseSufficiency(state: InsightState): Promise<InsightSta
 
     Determine if we have enough information to extract meaningful insights or if another query would help answer the task better.
 
-    You can assume if multiple responses were empty, that there is no data for that query which would help answer the task, which is a sufficient response.
+    If 2 or more responses are empty, assume that there is no data for that query which would help answer the task, which is a sufficient response.
+    If only 1 response is empty assume that the query was incorrect and try to generate a new one.
     `),
   ]);
 
@@ -278,7 +291,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
       .addNode('generate_query', async state => await generateExploratoryQuery(state, this.company_name))
       .addNode('execute_query', async state => await executeExploratoryQuery(state, this.company_name))
       .addNode('check_sufficiency', async state => await checkResponseSufficiency(state))
-      .addNode('analyze_results', async state => await analyzeResults(state, this.functions))
+      .addNode('analyze_results', async state => await analyzeResults(state, this.functions, this.company_name))
       .addEdge(START, 'identify_sources')
       .addEdge('identify_sources', 'generate_query')
       .addEdge('generate_query', 'execute_query')
