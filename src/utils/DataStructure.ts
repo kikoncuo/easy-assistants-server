@@ -8,14 +8,13 @@ export const executeQuery = async (query: any, projectName: string) => {
   try {
     let continueWait = true;
     let data;
-
     while (continueWait) {
       const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/executeQuery`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query: query, projectName: projectName }),
+        body: JSON.stringify({ query: JSON.stringify(query), projectName: projectName }),
       });
 
       if (!response.ok) {

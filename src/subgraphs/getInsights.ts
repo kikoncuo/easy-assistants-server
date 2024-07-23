@@ -8,12 +8,10 @@ import { executeQuery, getModelsData } from '../utils/DataStructure';
 
 interface InsightState extends BaseState {
   relevantSources: string[];
-  exploratoryQueries: string[];
-  exploratoryResults: string[];
-  titles: string[];
+  queries: string[];
+  responses: string[];
   finalResult: string;
-  resultExecutionErrors: string[];
-  resultExecutionErrorDetails: string[];
+  needsMoreInsight: boolean;
 }
 
 async function getModels(company_name: string): Promise<string[]> {
@@ -76,9 +74,9 @@ async function identifyRelevantSources(state: InsightState, company_name: string
   return updatedState;
 }
 
-async function generateExploratoryQueries(state: InsightState, company_name: string): Promise<InsightState> {
-  const getQueries = z.object({
-    queries: z.array(z.any()).describe(`Array of Cube queries to explore the data.
+async function generateExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
+  const getQuery = z.object({
+    query: z.any().describe(`A Cube query to explore the data.
       Query structure example:
       {
         "dimensions": [
@@ -87,9 +85,9 @@ async function generateExploratoryQueries(state: InsightState, company_name: str
           "cube2.param1"
         ],
         "measures": [
-          cube1.param5,
-          cube4.param2,
-          cube3.param1,
+          "cube1.param5",
+          "cube4.param2",
+          "cube3.param1"
         ],
         "filters": [
           {
@@ -98,102 +96,140 @@ async function generateExploratoryQueries(state: InsightState, company_name: str
             "values": ["2023-12-31"]
           }
         ],
+        "segments": [
+          "cube1.segment1"
+        ]
         "order": [
           ["cube1.param1", "desc"]
-        ],
-        "limit": 1000
+        ]
       }`),
-    titles: z.array(z.string()).describe(
-        'Insight title, IE: get me insights for my employees, the title returned should be `Employee insights`. ',
-      ),
   });
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getQueries);
+  const model = createStructuredResponseAgent(anthropicSonnet(), getQuery);
 
   const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
 
-
+  const existingQueries = state.queries.join('\n');
+  const existingResponses = state.responses.join('\n');
 
   const message = await model.invoke([
-    new HumanMessage(`Generate exploratory Cube queries for the following task:
+    new HumanMessage(`Generate an exploratory Cube query for the following task:
     ${state.task}
     
     Only use these cubes: ${filteredCubeModels}
     
-    Create 2-3 efficient queries that will help gather insights. Each query should return at most 50 examples.
-    Focus on queries that will provide meaningful data for analysis.`),
+    Create an efficient query that will help gather insights. The query should return at most 1000 examples.
+    Focus on a query that will provide meaningful data for analysis.
+    
+    Existing queries:
+    ${existingQueries}
+    
+    Existing responses:
+    ${existingResponses}
+    
+    Based on the existing queries and responses, create a new query that will provide additional insights to better answer the task.`),
   ]);
 
-  const exploratoryQueries = (message as any).queries;
-  const titles = (message as any).titles;
-  Logger.log('Exploratory queries:', exploratoryQueries);
+  const newQuery = (message as any).query;
+  Logger.log('New exploratory query:', newQuery);
 
   return {
     ...state,
-    titles,
-    exploratoryQueries
+    queries: [...state.queries, JSON.stringify(newQuery)],
   };
 }
 
-async function executeExploratoryQueries(state: InsightState, company_name: string): Promise<InsightState> {
-  let results = [];
-  for (let index = 0; index < state.exploratoryQueries.length; index++) {
-    const query = state.exploratoryQueries[index];
-    const exploratoryResult = await executeQuery(query, company_name);
-    results.push(exploratoryResult);   
-  }
+async function executeExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
+  const query = JSON.parse(state.queries[state.queries.length - 1]);
+  const exploratoryResult = await executeQuery(query, company_name);
 
   return {
     ...state,
-    exploratoryResults: results,
+    responses: [...state.responses, exploratoryResult],
   };
 }
 
 async function analyzeResults(state: InsightState, functions: Function[]): Promise<InsightState> {
   const getInsights = z.object({
-    insight: z.array(z.string()).describe('Insight extracted from the exploratory query result'),
+    insights: z.array(z.object({
+      title: z.string().describe('Title for the insight'),
+      description: z.string().describe('Detailed description of the insight'),
+      relevantQuery: z.number().describe('Index of the most relevant query for this insight'),
+    })).describe('Array of insights extracted from all query results'),
   });
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getInsights);
 
-  for (let i = 0; i < state.exploratoryQueries.length; i++) {
+  const message = await model.invoke([
+    new HumanMessage(`Analyze the following exploratory query results and extract relevant insights:
+    Task: ${state.task}
+    Used cubes:
+    ${state.relevantSources.join('\n')}
+    Queries:
+    ${state.queries.join('\n')}
+    Responses:
+    ${state.responses.join('\n')}
+    Provide a list of 3-5 key insights based on all the data. Each insight should have a title, description, and the index of the most relevant query.
+    You can reference SQL language as part of your response to explain the insight.
+    `),
+  ]);
 
-    const message = await model.invoke([
-      new HumanMessage(`Analyze the following exploratory query result and extract relevant insight:
-      Query ${state.exploratoryQueries[i]} results:\n${state.exploratoryResults[i]}
-      
-      Consider the original task:
-      ${state.task}
-      
-      Provide a list of 2-3 key insights based on the data.`),
-    ]);
+  const insights = (message as any).insights;
 
-    const insight = (message as any).insight;
+  Logger.log('Extracted insights:', insights);
 
-    Logger.log('Extracted insights:', insight);
+  let results = insights.map((insight: any, index: number) => ({
+    function_name: 'getInsights',
+    arguments: {
+      query: state.queries[insight.relevantQuery],
+      title: insight.title,
+      displayType: 'table',
+      insight: insight.description,
+      data: state.responses[insight.relevantQuery]
+    },
+  }));
 
-    let results = [];
-
- 
-    results.push({
-      function_name: 'getInsights',
-      arguments: {
-        query: state.exploratoryQueries[i],
-        title: state.titles[i],
-        displayType: 'table',
-        insight: insight,
-        data: state.exploratoryResults[i]
-      },
-    });
-
-    functions[0]('tool', results);
-  
-  }
+  functions[0]('tool', results);
 
   return {
     ...state,
-    finalResult: "Tables generated for the insights"
+    finalResult: "Insights generated from the data"
+  };
+}
+
+async function checkResponseSufficiency(state: InsightState): Promise<InsightState> {
+  const checkSufficiency = z.object({
+    isEnough: z.boolean().describe('Whether the current responses are sufficient to answer the task'),
+    explanation: z.string().describe('Explanation of why the responses are or are not sufficient'),
+  });
+
+  const model = createStructuredResponseAgent(anthropicSonnet(), checkSufficiency);
+
+  const message = await model.invoke([
+    new HumanMessage(`Check if the following responses are sufficient to answer the task:
+    Task: ${state.task}
+
+    Queries:
+    ${state.queries.join('\n')}
+
+    Responses:
+    ${state.responses.join('\n')}
+
+    Determine if we have enough information to extract meaningful insights or if another query would help answer the task better.
+
+    You can assume if multiple responses were empty, that there is no data for that query which would help answer the task, which is a sufficient response.
+    `),
+  ]);
+
+  const isEnough = (message as any).isEnough;
+  const explanation = (message as any).explanation;
+
+  Logger.log('Response sufficiency check:', { isEnough, explanation });
+
+  return {
+    ...state,
+    needsMoreInsight: !isEnough,
   };
 }
 
@@ -216,26 +252,18 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
       },
-      exploratoryQueries: {
+      queries: {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
       },
-      exploratoryResults: {
+      responses: {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
       },
-      resultExecutionErrors: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
+      needsMoreInsight: {
+        value: (x: boolean, y?: boolean) => (y !== undefined ? y : x),
+        default: () => true,
       },
-      resultExecutionErrorDetails: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      titles: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      }
     };
     super(graphState);
     this.functions = functions;
@@ -247,13 +275,21 @@ export class InsightGraph extends AbstractGraph<InsightState> {
 
     subGraphBuilder
       .addNode('identify_sources', async state => await identifyRelevantSources(state, this.company_name))
-      .addNode('generate_queries', async state => await generateExploratoryQueries(state, this.company_name))
-      .addNode('execute_queries', async state => await executeExploratoryQueries(state, this.company_name))
-      .addNode('analyze_results', async state => await analyzeResults(state, this.functions,))
+      .addNode('generate_query', async state => await generateExploratoryQuery(state, this.company_name))
+      .addNode('execute_query', async state => await executeExploratoryQuery(state, this.company_name))
+      .addNode('check_sufficiency', async state => await checkResponseSufficiency(state))
+      .addNode('analyze_results', async state => await analyzeResults(state, this.functions))
       .addEdge(START, 'identify_sources')
-      .addEdge('identify_sources', 'generate_queries')
-      .addEdge('generate_queries', 'execute_queries')
-      .addEdge('execute_queries', 'analyze_results')
+      .addEdge('identify_sources', 'generate_query')
+      .addEdge('generate_query', 'execute_query')
+      .addEdge('execute_query', 'check_sufficiency')
+      .addConditionalEdges('check_sufficiency', state => {
+        if (state.needsMoreInsight === true ) { 
+          return 'generate_query';
+        } else {
+          return 'analyze_results';
+        }
+      })
       .addEdge('analyze_results', END);
 
     return subGraphBuilder.compile();
