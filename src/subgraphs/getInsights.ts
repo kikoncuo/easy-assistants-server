@@ -16,8 +16,8 @@ interface InsightState extends BaseState {
   resultExecutionErrorDetails: string[];
 }
 
-async function getModels(): Promise<string[]> {
-  return await getModelsData("omni_test");
+async function getModels(company_name: string): Promise<string[]> {
+  return await getModelsData(company_name);
 }
 
 function filterModels(models: string[], sources: string[]): string[] {
@@ -29,9 +29,9 @@ function filterModels(models: string[], sources: string[]): string[] {
 }
 
 // Node function to recover sources
-async function identifyRelevantSources(state: InsightState): Promise<InsightState> {
+async function identifyRelevantSources(state: InsightState, company_name: string): Promise<InsightState> {
 
-  const cubeModels = await getModels();
+  const cubeModels = await getModels(company_name);
 
   const getSources = z.object({
     sources: z.array(z.string()).describe('Array with the names of the sources'),
@@ -76,7 +76,7 @@ async function identifyRelevantSources(state: InsightState): Promise<InsightStat
   return updatedState;
 }
 
-async function generateExploratoryQueries(state: InsightState): Promise<InsightState> {
+async function generateExploratoryQueries(state: InsightState, company_name: string): Promise<InsightState> {
   const getQueries = z.object({
     queries: z.array(z.any()).describe(`Array of Cube queries to explore the data.
       Query structure example:
@@ -110,7 +110,7 @@ async function generateExploratoryQueries(state: InsightState): Promise<InsightS
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getQueries);
 
-  const cubeModels = await getModels();
+  const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
 
 
@@ -136,11 +136,11 @@ async function generateExploratoryQueries(state: InsightState): Promise<InsightS
   };
 }
 
-async function executeExploratoryQueries(state: InsightState): Promise<InsightState> {
+async function executeExploratoryQueries(state: InsightState, company_name: string): Promise<InsightState> {
   let results = [];
   for (let index = 0; index < state.exploratoryQueries.length; index++) {
     const query = state.exploratoryQueries[index];
-    const exploratoryResult = await executeQuery(query, 'omni_test');
+    const exploratoryResult = await executeQuery(query, company_name);
     results.push(exploratoryResult);   
   }
 
@@ -199,11 +199,10 @@ async function analyzeResults(state: InsightState, functions: Function[]): Promi
 
 
 export class InsightGraph extends AbstractGraph<InsightState> {
-  private prefixes: string;
-  private pgConnectionChain: string | undefined;
+  private company_name: string;
   private functions: Function[];
 
-  constructor(functions: Function[], prefixes: string, pgConnectionChain?: string) {
+  constructor(company_name: string, functions: Function[]) {
     const graphState: StateGraphArgs<InsightState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -240,17 +239,16 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     };
     super(graphState);
     this.functions = functions;
-    this.prefixes = prefixes;
-    this.pgConnectionChain = pgConnectionChain;
+    this.company_name = company_name;
   }
 
   getGraph(): CompiledStateGraph<InsightState> {
     const subGraphBuilder = new StateGraph<InsightState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('identify_sources', async state => await identifyRelevantSources(state))
-      .addNode('generate_queries', async state => await generateExploratoryQueries(state))
-      .addNode('execute_queries', async state => await executeExploratoryQueries(state))
+      .addNode('identify_sources', async state => await identifyRelevantSources(state, this.company_name))
+      .addNode('generate_queries', async state => await generateExploratoryQueries(state, this.company_name))
+      .addNode('execute_queries', async state => await executeExploratoryQueries(state, this.company_name))
       .addNode('analyze_results', async state => await analyzeResults(state, this.functions,))
       .addEdge(START, 'identify_sources')
       .addEdge('identify_sources', 'generate_queries')

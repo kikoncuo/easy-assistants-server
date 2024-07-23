@@ -16,13 +16,13 @@ interface EditCubeState extends BaseState {
   finalResult: string; 
 }
 
-async function identifyRelevantCubes(state: EditCubeState): Promise<EditCubeState> {
+async function identifyRelevantCubes(state: EditCubeState, company_name: string): Promise<EditCubeState> {
   const getCubesSchema = z.object({
     relevantCubes: z.array(z.string()).describe('Array with the names of the relevant cubes'),
   });
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getCubesSchema);
-  const cubes = await getCubes();
+  const cubes = await getCubes(company_name);
 
   const message = await model.invoke([
     new HumanMessage(`You are tasked with identifying relevant cubes for a given request. Your goal is to analyze the provided cube descriptions and determine which cubes could be useful in addressing the request.
@@ -93,7 +93,7 @@ async function identifyCalculationMethod(state: EditCubeState, functions: Functi
   };
 }
 
-async function updateAndTestSemanticLayer(state: EditCubeState): Promise<EditCubeState> {
+async function updateAndTestSemanticLayer(state: EditCubeState, company_name: string): Promise<EditCubeState> {
   const updateSchema = z.object({
     updatedLayer: z.string().describe('Updated semantic layer content'),
   });
@@ -122,7 +122,7 @@ async function updateAndTestSemanticLayer(state: EditCubeState): Promise<EditCub
   const updatedLayer = (message as any).updatedLayer;
 
   // Update the semantic layer
-  await updateSemanticLayer(updatedLayer);
+  await updateSemanticLayer(updatedLayer, company_name);
 
   // Test the new value
   const testResult = await testValue(state.task, state.calculationMethod);
@@ -145,8 +145,9 @@ async function updateAndTestSemanticLayer(state: EditCubeState): Promise<EditCub
 export class EditCubeGraph extends AbstractGraph<EditCubeState> {
   // private wsFunction: (type: string, data: any) => void;
   private functions: Function[];
+  private company_name: string;
 
-  constructor(functions: Function[]) {
+  constructor(company_name: string, functions: Function[]) {
     const graphState: StateGraphArgs<EditCubeState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -179,15 +180,16 @@ export class EditCubeGraph extends AbstractGraph<EditCubeState> {
     };
     super(graphState);
     this.functions = functions;
+    this.company_name = company_name;
   }
 
   getGraph(): CompiledStateGraph<EditCubeState> {
     const subGraphBuilder = new StateGraph<EditCubeState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('identify_relevant_cubes', async state => await identifyRelevantCubes(state))
+      .addNode('identify_relevant_cubes', async state => await identifyRelevantCubes(state, this.company_name))
       .addNode('identify_calculation_method', async state => await identifyCalculationMethod(state, this.functions))
-      .addNode('update_and_test_semantic_layer', async state => await updateAndTestSemanticLayer(state))
+      .addNode('update_and_test_semantic_layer', async state => await updateAndTestSemanticLayer(state, this.company_name))
       .addEdge(START, 'identify_relevant_cubes')
       .addEdge('identify_relevant_cubes', 'identify_calculation_method')
       .addEdge('identify_calculation_method', 'update_and_test_semantic_layer')
