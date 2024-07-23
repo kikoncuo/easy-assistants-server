@@ -115,14 +115,15 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
   const existingResponses = state.responses.join('\n');
 
   const message = await model.invoke([
-    new HumanMessage(`Generate up to 3 exploratory Cube queries for the following task:
+    new HumanMessage(`Generate up to 5 exploratory Cube queries for the following task:
     ${state.task}
     
     Only use these cubes: ${filteredCubeModels}
     
     Create efficient queries that will help gather insights. Each query should return at most 1000 examples.
     Focus on queries that will provide meaningful data for analysis.
-    You can create queries that solve the task partially if it's too complex.
+    You can make queries with only dimensions and no measures if you need to.
+    Segments and filters are additive, so try not to apply opposite segments or filters.
     
     Existing queries:
     ${existingQueries}
@@ -185,7 +186,7 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
     Responses:
     ${state.responses.join('\n')}
 
-    Provide a list of 3-5 key insights based on all the data. Each insight should have a title, description, and the index of the most relevant query.
+    Provide a list of 3-5 key insights based on all the data. Each insight should have a title, a detaileddescription, and the index of the most relevant query.
     Do not mention directly measures or dimensions, you can only mention segments and filters to explain how they work in detail. IE: Anomalies of high pressure are identified by calculating values where the presion value exceeds the average by more than two standard deviations, highlighting outliers or anomalies. 
     Always include in your insights based on the responses to explain the insight, even if they are empty, mention specific values ranges or calculations to understand the data.
     You can be certains about how the data is extracted from the cube file
