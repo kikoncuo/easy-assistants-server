@@ -23,8 +23,8 @@ interface DataRecoveryState extends BaseState {
   semanticTask: string; // Nueva propiedad para la tarea semántica
 }
 
-async function getModels(): Promise<string[]> {
-  return await getModelsData("omni_test");
+async function getModels(company_name: string): Promise<string[]> {
+  return await getModelsData(company_name);
 }
 
 function filterModels(models: string[], sources: string[]): string[] {
@@ -38,8 +38,9 @@ function filterModels(models: string[], sources: string[]): string[] {
 // Node function to recover sources
 async function recoverSources(
   state: DataRecoveryState,
+  company_name: string
 ): Promise<DataRecoveryState> {
-  const cubeModels = await getModels();
+  const cubeModels = await getModels(company_name);
 
   const getSources = z.object({
     sources: z.array(z.string()).describe('Array with the names of the sources'),
@@ -102,7 +103,7 @@ async function recoverSources(
 }
 
 // Node function to create Cube query
-async function createCubeQuery(state: DataRecoveryState): Promise<DataRecoveryState> {
+async function createCubeQuery(state: DataRecoveryState, company_name: string): Promise<DataRecoveryState> {
   const getCubeQuery = z.object({
     assumptions: z
       .string()
@@ -132,6 +133,9 @@ async function createCubeQuery(state: DataRecoveryState): Promise<DataRecoverySt
               "values": ["2023-12-31"]
             }
           ],
+          "segments": [
+            "cube1.segment1"
+          ],
           "order": [
             ["cube1.param1", "desc"]
           ]
@@ -148,7 +152,7 @@ async function createCubeQuery(state: DataRecoveryState): Promise<DataRecoverySt
       .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, lineChart, or dataPoint.'),
   });
   
-  const cubeModels = await getModels();
+  const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.examples);
 
   const model = createStructuredResponseAgent(anthropicSonnet(), getCubeQuery);
@@ -189,6 +193,7 @@ async function createCubeQuery(state: DataRecoveryState): Promise<DataRecoverySt
 async function evaluateResult(
   state: DataRecoveryState,
   functions: Function[],
+  company_name: string
 ): Promise<DataRecoveryState> {
   
 
@@ -203,7 +208,7 @@ async function evaluateResult(
 
     const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
 
-    const resultExecution = await executeQuery(state.cubeQuery, 'omni_test'); //await functions[0]('tool', getCubeQuery);
+    const resultExecution = await executeQuery(state.cubeQuery, company_name); //await functions[0]('tool', getCubeQuery);
 
     console.log('\n\nresultExecution', JSON.parse(resultExecution).data);
     // log the first 10 results
@@ -272,6 +277,7 @@ async function evaluateResult(
 async function returnSqlDescription(
   state: DataRecoveryState,
   functions: Function[],
+  company_name: string
 ): Promise<DataRecoveryState> {
   
 
@@ -280,7 +286,7 @@ async function returnSqlDescription(
       description: z.string().describe('Description on how the SQL query is solving the initial task'),
     });
 
-    const sqlQuery = await getSQLQuery('omni_test', state.cubeQuery);
+    const sqlQuery = await getSQLQuery(company_name, state.cubeQuery);
 
     const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
     const message = await model.invoke([
@@ -322,8 +328,8 @@ async function returnSqlDescription(
   }
 }
 
-async function handleEditCubeGraph(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
-  const editCubeGraph = new EditCubeGraph(functions);
+async function handleEditCubeGraph(state: DataRecoveryState, functions: Function[], company_name: string): Promise<DataRecoveryState> {
+  const editCubeGraph = new EditCubeGraph(company_name, functions);
   const result = await editCubeGraph.getGraph().invoke({
     task: state.semanticTask,
   });
@@ -337,8 +343,9 @@ async function handleEditCubeGraph(state: DataRecoveryState, functions: Function
 // DataRecoveryGraph Class
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
+  private company_name: string;
 
-  constructor(functions: Function[], prefixes: string, connectionChain?: string) {
+  constructor(company_name: string, functions: Function[]) {
     const graphState: StateGraphArgs<DataRecoveryState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -395,17 +402,18 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     };
     super(graphState);
     this.functions = functions;
+    this.company_name = company_name;
   }
 
   getGraph(): CompiledStateGraph<DataRecoveryState> {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('recover_sources', async state => await recoverSources(state))
-      //.addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions))
-      .addNode('create_cube_query', async state => await createCubeQuery(state))
-      .addNode('evaluate_result', async state => await evaluateResult(state, this.functions))
-      .addNode('return_sql_description', async state => await returnSqlDescription(state, this.functions))
+      .addNode('recover_sources', async state => await recoverSources(state, this.company_name))
+      //.addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions, this.company_name))
+      .addNode('create_cube_query', async state => await createCubeQuery(state, this.company_name))
+      .addNode('evaluate_result', async state => await evaluateResult(state, this.functions, this.company_name))
+      .addNode('return_sql_description', async state => await returnSqlDescription(state, this.functions, this.company_name))
       .addEdge(START, 'recover_sources')
       .addEdge('recover_sources', 'create_cube_query')
       /*.addConditionalEdges('recover_sources', state => {

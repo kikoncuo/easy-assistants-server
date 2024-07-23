@@ -45,9 +45,9 @@ export class GraphApplication {
     const sonnet = anthropicSonnet();
     const opus = anthropicOpus();
     // If clientData is smaller than 3 elements, throw an error
-    if (clientData.length < 2) {
+    if (clientData.length < 1) {
       throw new Error(
-        'When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure',
+        `When creating your GraphApplication you must provide at least 1 field for clientData, [0] must be the Cube's company name`,
       );
     }
 
@@ -104,16 +104,15 @@ export class GraphApplication {
     const subgraphs = {
       dataAgent: {
         agentSubGraph: new DataRecoveryGraph(
-          [clientAgentFunction],
           clientData[0],
-          this.getConnectionChain(clientData[1]),
+          [clientAgentFunction],
         ),
       },
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
       },
       getInsights: {
-        agentSubGraph: new InsightGraph([clientAgentFunction], clientData[0], this.getConnectionChain(clientData[1])),
+        agentSubGraph: new InsightGraph(clientData[0], [clientAgentFunction]),
       },
     };
 
@@ -131,18 +130,4 @@ export class GraphApplication {
     );
   }
 
-  getConnectionChain(anonKey: string) {
-    switch (anonKey) {
-      case 'dbhhziresrambrdyptjh': //OmniTest
-        return process.env.OMNITEST_CHAIN;
-      case 'zsjqampwrmtxrjscpuud': //TalentClass
-        return process.env.TALENTCLASS_CHAIN;
-      case 'juqxwywkrymbfioutzvn': //BlankStreet
-        return process.env.BLANKSTREET_CHAIN;
-      case 'qttgkvelmnvqldyaocxq': //Akkio
-        return process.env.AKKIO_CHAIN;
-      default:
-        return process.env.OMNITEST_CHAIN;
-    }
-  }
 }
