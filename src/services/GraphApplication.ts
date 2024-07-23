@@ -47,7 +47,7 @@ export class GraphApplication {
     // If clientData is smaller than 3 elements, throw an error
     if (clientData.length < 1) {
       throw new Error(
-        'When creating your GraphApplication you must provide at least 2 fields for clientData, 0 must be company and user description (TODO: use this), 1 must be the tables and their structure',
+        `When creating your GraphApplication you must provide at least 1 field for clientData, [0] must be the Cube's company name`,
       );
     }
 
