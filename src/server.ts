@@ -23,7 +23,7 @@ const {
   ANTHROPIC_API_KEY,
   MEMORY_STORAGE_SUPABASE_URL,
   MEMORY_STORAGE_SUPABASE_KEY,
-  CUBE_API_SERVER_URL
+  CUBE_API_SERVER_URL,
 } = process.env;
 
 const missingApiKeys: string[] = [];
@@ -104,12 +104,13 @@ if (isProd) {
 wss.on('connection', ws => {
   Logger.log('Client connected');
 
-  let graphApp = new GraphApplication( // TODO: Delete this once we've migrated to always calling configure afrter connection
-    (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
-    (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
-      WebSocketService.queryUser(type, functions, ws),
-    [""],
-  );
+  let graphApp = {} as any;
+  // = new GraphApplication( // TODO: Delete this once we've migrated to always calling configure afrter connection
+  //   (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
+  //   (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+  //     WebSocketService.queryUser(type, functions, ws),
+  //   [""],
+  // );
 
   if (graphApp.error) {
     Logger.error(graphApp);
@@ -120,18 +121,17 @@ wss.on('connection', ws => {
     if (data.type === 'query') {
       Logger.log('Processing task:', data.task);
       await graphApp.processTask(data.task, data.thread_id, ws);
-    }
-    else if (data.type === 'csvLoader') {
+    } else if (data.type === 'csvLoader') {
       Logger.log('Processing task:', data.task);
-      const { agent, agentPrompt } = externalAgents.csvLoader;
+      const { agent, agentPrompt } = externalAgents.csvLoader;
       await saveCsvTable(
-        agent, agentPrompt,
+        agent,
+        agentPrompt,
         (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
-            WebSocketService.queryUser(type, functions, ws),
-        data.task
+          WebSocketService.queryUser(type, functions, ws),
+        data.task,
       );
-    }
-    else if (data.type === 'configure') {
+    } else if (data.type === 'configure') {
       Logger.log('Configuring new graph application');
       graphApp = new GraphApplication(
         (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
@@ -139,25 +139,24 @@ wss.on('connection', ws => {
           WebSocketService.queryUser(type, functions, ws),
         data.configData,
       );
-    }
-    else if (data.type === 'createSemanticLayer') {
+    } else if (data.type === 'createSemanticLayer') {
       Logger.log('Creating semantic layer');
       // TODO create a interactive function to get response from the user
-      const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, data.company_name) // TODO: Pass in the functions here to interact with the user, not sure how to do this
-      const result = await semanticLayerGraph.getGraph().invoke({task:"Create a semantic layer for the company's data"});
+      const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, data.company_name); // TODO: Pass in the functions here to interact with the user, not sure how to do this
+      const result = await semanticLayerGraph
+        .getGraph()
+        .invoke({ task: "Create a semantic layer for the company's data" });
       WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     } else if (data.type === 'editSemanticLayer') {
-      Logger.log('Started process for editing semantic layer')
+      Logger.log('Started process for editing semantic layer');
       const editCubeGraph = new EditCubeGraph(data.company_name, [
-        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws)
+        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
       ]);
       const result = await editCubeGraph.getGraph().invoke({
-      task: "I want to see which users are active",
+        task: 'I want to see which users are active',
       });
       WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     }
-
-
   });
 
   ws.on('close', () => {
