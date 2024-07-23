@@ -133,6 +133,12 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
               "values": ["2023-12-31"]
             }
           ],
+          "timeDimensions": [
+            {
+              "dimension": "cube1.param1",
+              "granularity": "hour"
+            }
+          ],
           "segments": [
             "cube1.segment1"
           ],
