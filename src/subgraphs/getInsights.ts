@@ -75,8 +75,8 @@ async function identifyRelevantSources(state: InsightState, company_name: string
 }
 
 async function generateExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
-  const getQuery = z.object({
-    query: z.any().describe(`A Cube query to explore the data.
+  const getQueries = z.object({
+    queries: z.array(z.any()).describe(`An array of up to 3 Cube queries to explore the data.
       Query structure example:
       {
         "dimensions": [
@@ -98,14 +98,15 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
         ],
         "segments": [
           "cube1.segment1"
-        ]
+        ],
         "order": [
           ["cube1.param1", "desc"]
-        ]
+        ],
+        "limit": 1000
       }`),
   });
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getQuery);
+  const model = createStructuredResponseAgent(anthropicSonnet(), getQueries);
 
   const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
@@ -114,14 +115,14 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
   const existingResponses = state.responses.join('\n');
 
   const message = await model.invoke([
-    new HumanMessage(`Generate an exploratory Cube query for the following task:
+    new HumanMessage(`Generate up to 3 exploratory Cube queries for the following task:
     ${state.task}
     
     Only use these cubes: ${filteredCubeModels}
     
-    Create an efficient query that will help gather insights. The query should return at most 1000 examples.
-    Focus on a query that will provide meaningful data for analysis.
-    Multiple queries will be created to explore the data, you can create one that solves the task partially if it's too complex.
+    Create efficient queries that will help gather insights. Each query should return at most 1000 examples.
+    Focus on queries that will provide meaningful data for analysis.
+    You can create queries that solve the task partially if it's too complex.
     
     Existing queries:
     ${existingQueries}
@@ -129,25 +130,30 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
     Existing responses:
     ${existingResponses}
     
-    Based on the existing queries and responses, create a new query that will provide additional insights to better answer the task.`),
+    Based on the existing queries and responses, create up to 3 new queries that will provide additional insights to better answer the task.`),
   ]);
 
-  const newQuery = (message as any).query;
-  Logger.log('New exploratory query:', newQuery);
+  const newQueries = (message as any).queries;
+  Logger.log('New exploratory queries:', newQueries);
 
   return {
     ...state,
-    queries: [...state.queries, JSON.stringify(newQuery)],
+    queries: [...state.queries, ...newQueries.map((query: any) => JSON.stringify(query))],
   };
 }
 
 async function executeExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
-  const query = JSON.parse(state.queries[state.queries.length - 1]);
-  const exploratoryResult = await executeQuery(query, company_name);
+  const newQueries = state.queries.slice(-3); // Get the last 3 queries (or fewer if less than 3 were added)
+  const exploratoryResults = await Promise.all(
+    newQueries.map(async (queryString) => {
+      const query = JSON.parse(queryString);
+      return await executeQuery(query, company_name);
+    })
+  );
 
   return {
     ...state,
-    responses: [...state.responses, JSON.stringify(JSON.parse(exploratoryResult).data)], 
+    responses: [...state.responses, ...exploratoryResults],
   };
 }
 
