@@ -12,6 +12,7 @@ interface InsightState extends BaseState {
   responses: string[];
   finalResult: string;
   needsMoreInsight: boolean;
+  sufficiencyChecks: number;
 }
 
 async function getModels(company_name: string): Promise<string[]> {
@@ -55,7 +56,7 @@ async function identifyRelevantSources(state: InsightState, company_name: string
     }
   };
 
-  const model = createStructuredResponseAgent(groqChatLlama(), [getSources]);
+  const model = createStructuredResponseAgent(getFasterModel(), [getSources]);
 
 
   const message = await model.invoke([
@@ -144,7 +145,7 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
     }
   };
 
-  const model = createStructuredResponseAgent(getFasterModel(), [getQueries]);
+  const model = createStructuredResponseAgent(getStrongestModel(), [getQueries]);
 
   const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
@@ -183,14 +184,33 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
   };
 }
 
-async function executeExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
-  const newQueries = state.queries.slice(-3); // Get the last 3 queries (or fewer if less than 3 were added)
+async function executeExploratoryQuery(state: InsightState, company_name: string, functions: Function[]): Promise<InsightState> {
+  const existingQueriesCount = state.queries.length;
+  const existingResponsesCount = state.responses.length;
+  const newQueriesCount = existingQueriesCount - existingResponsesCount;
+  
+  if (newQueriesCount <= 0) {
+    return state; // No new queries to execute
+  }
+
+  const newQueries = state.queries.slice(-newQueriesCount);
   const exploratoryResults = await Promise.all(
     newQueries.map(async (queryString) => {
       const query = JSON.parse(queryString);
       return await executeQuery(query, company_name);
     })
   );
+
+    // Call functions[0]('tool', queries) with the new queries
+    const toolQueries = newQueries.map((query: any, index: number) => ({
+      function_name: 'generateExploratoryQuery',
+      arguments: {
+        query: query,
+        queryIndex: state.queries.length + index,
+        data: exploratoryResults[index]
+      },
+    }));
+    functions[0]('tool', toolQueries);
 
   return {
     ...state,
@@ -248,10 +268,17 @@ async function checkResponseSufficiency(state: InsightState): Promise<InsightSta
 
   Logger.log('Response sufficiency check:', { isEnough, explanation });
 
-  return {
+  const updatedState = {
     ...state,
     needsMoreInsight: !isEnough,
+    sufficiencyChecks: state.sufficiencyChecks + 1,
   };
+  // If sufficiency checks exceed 3 times, set the finalResult
+  if (updatedState.sufficiencyChecks > 3) {
+    updatedState.finalResult = explanation;
+    updatedState.needsMoreInsight = false; // Ensure that it goes to END
+  }
+  return updatedState;
 }
 
 
@@ -296,7 +323,7 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
 
   const cubeModels = await getModels(company_name);
 
-  let filteredCubeModels = filterModels(cubeModels, state.relevantSources);;
+  let filteredCubeModels = filterModels(cubeModels, state.relevantSources);
 
   const message = await model.invoke([
     new HumanMessage(`Analyze the following exploratory query results and extract relevant insights:
@@ -375,6 +402,10 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         value: (x: boolean, y?: boolean) => (y !== undefined ? y : x),
         default: () => true,
       },
+      sufficiencyChecks: {  // New state channel for sufficiency check count
+        value: (x: number, y?: number) => (y !== undefined ? y : x),
+        default: () => 0,
+      },
     };
     super(graphState);
     this.functions = functions;
@@ -387,7 +418,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     subGraphBuilder
       .addNode('identify_sources', async state => await identifyRelevantSources(state, this.company_name))
       .addNode('generate_query', async state => await generateExploratoryQuery(state, this.company_name))
-      .addNode('execute_query', async state => await executeExploratoryQuery(state, this.company_name))
+      .addNode('execute_query', async state => await executeExploratoryQuery(state, this.company_name, this.functions))
       .addNode('check_sufficiency', async state => await checkResponseSufficiency(state))
       .addNode('analyze_results', async state => await analyzeResults(state, this.functions, this.company_name))
       .addEdge(START, 'identify_sources')
@@ -397,6 +428,8 @@ export class InsightGraph extends AbstractGraph<InsightState> {
       .addConditionalEdges('check_sufficiency', state => {
         if (state.needsMoreInsight === true ) { 
           return 'generate_query';
+        } else if (state.sufficiencyChecks > 3) {  // Check if sufficiency checks are more than 3
+          return END;
         } else {
           return 'analyze_results';
         }

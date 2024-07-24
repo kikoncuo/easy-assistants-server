@@ -18,8 +18,9 @@ export const executeQuery = async (query: any, projectName: string) => {
       });
 
       if (!response.ok) {
-        Logger.error(`HTTP error! status: ${response.status}`);
-        return await response.json();
+        const responseJson = await response.json();
+        Logger.error(`HTTP error! status: ${response.status} - ${responseJson}`);
+        return responseJson;
       }
 
       data = await response.json();
@@ -51,8 +52,9 @@ export const getModelsData = async (projectName: string): Promise<string[]> => {
       });
 
       if (!response.ok) {
-        Logger.error(`HTTP error! status: ${response.status}`);
-        return await response.json();
+        const responseJson = await response.json();
+        Logger.error(`HTTP error! status: ${response.status} - ${responseJson}`);
+        return responseJson;
       }
 
       const data = await response.json();
