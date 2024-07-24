@@ -1,5 +1,5 @@
 import { AbstractGraph, BaseState } from './baseGraph';
-import { createStructuredResponseAgent, anthropicSonnet, groqChatLlama } from '../models/Models';
+import { createStructuredResponseAgent, anthropicSonnet, groqChatLlama, getFasterModel, getStrongestModel } from '../models/Models';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
@@ -74,7 +74,7 @@ async function recoverSources(
     }
   };
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), [getSources]);
+  const model = createStructuredResponseAgent(getFasterModel(), [getSources]);
 
   const message = await model.invoke([
     new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
@@ -160,7 +160,7 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
   const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.examples);
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), [getCubeQuery]);
+  const model = createStructuredResponseAgent(getStrongestModel(), [getCubeQuery]);
 
   const messageContent = `Based on the following sources
         ${filteredCubeModels}
@@ -230,7 +230,7 @@ async function evaluateResult(
       }
     };
 
-    const model = createStructuredResponseAgent(anthropicSonnet(), [getFeedback]);
+    const model = createStructuredResponseAgent(getStrongestModel(), [getFeedback]);
 
     const resultExecution = await executeQuery(state.cubeQuery, company_name); //await functions[0]('tool', getCubeQuery);
 
@@ -328,7 +328,7 @@ async function returnSqlDescription(
 
     const sqlQuery = await getSQLQuery(company_name, state.cubeQuery);
 
-    const model = createStructuredResponseAgent(anthropicSonnet(), [getFeedback]);
+    const model = createStructuredResponseAgent(getFasterModel(), [getFeedback]);
     const message = await model.invoke([
       new HumanMessage(`Based on the following user request 
                 ${state.task},

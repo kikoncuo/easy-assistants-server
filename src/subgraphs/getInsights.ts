@@ -133,7 +133,18 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
                     required: ["member", "direction"]
                   }
                 },
-                limit: { type: "integer", maximum: 1000 }
+                timeDimensions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      dimension: { type: "string" },
+                      granularity: { type: "string", enum: ["day", "week", "month", "year"] }
+                    },
+                    required: ["dimension", "granularity"]
+                  }
+                },
+                limit: { type: "integer", maximum: 500 },
               },
               required: ["dimensions", "measures", "limit"]
             },
@@ -159,7 +170,7 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
     
     Only use these cubes: ${filteredCubeModels}
     
-    Create efficient queries that will help gather insights. Each query should return at most 1000 examples.
+    Create efficient queries that will help gather insights. Each query should return at most 500 examples.
     Focus on queries that will provide meaningful data for analysis.
     You can make queries with only dimensions and no measures if you need to.
     Segments and filters are additive, so try not to apply opposite segments or filters.
@@ -319,7 +330,7 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
     }
   };
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), [getInsights]);
+  const model = createStructuredResponseAgent(getFasterModel(), [getInsights]);
 
   const cubeModels = await getModels(company_name);
 
