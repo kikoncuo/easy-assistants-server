@@ -62,7 +62,7 @@ function createStructuredResponseAgent(llm: BaseChatModel, structuredResponseSch
 
   if (llm.bindTools) {
     bindedLLM = llm.bindTools(structuredResponseSchema);
-  } else {
+  } else { // TODO: Remove this when we test the new version of langchain with all models
     bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(structuredResponseSchema) : llm;
   }
   return bindedLLM as BaseChatModel;
