@@ -1,10 +1,10 @@
 import { AbstractGraph, BaseState } from './baseGraph';
-import { createStructuredResponseAgent, anthropicSonnet } from '../models/Models';
+import { createStructuredResponseAgent, anthropicSonnet, getFasterModel, getStrongestModel, groqChatLlama } from '../models/Models';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
-import { z } from 'zod';
 import Logger from '../utils/Logger';
 import { executeQuery, getModelsData } from '../utils/DataStructure';
+import { ToolDefinition } from '@langchain/core/language_models/base';
 
 interface InsightState extends BaseState {
   relevantSources: string[];
@@ -31,33 +31,51 @@ async function identifyRelevantSources(state: InsightState, company_name: string
 
   const cubeModels = await getModels(company_name);
 
-  const getSources = z.object({
-    sources: z.array(z.string()).describe('Array with the names of the sources'),
-    isPossible: z
-      .string()
-      .describe(
-        '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable',
-      ),
-  });
+  const getSources: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "getSources",
+      description: "Identify relevant data sources for a given request",
+      parameters: {
+        type: "object",
+        properties: {
+          sources: {
+            type: "array",
+            items: { type: "string" },
+            description: "Array with the names of the cubes"
+          },
+          isPossible: {
+            type: "string",
+            enum: ["true", "maybe", "false"],
+            description: '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable'
+          }
+        },
+        required: ["isPossible"]
+      }
+    }
+  };
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getSources);
+  const model = createStructuredResponseAgent(groqChatLlama(), [getSources]);
+
 
   const message = await model.invoke([
-    new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
-        and determine which data sources could be useful in addressing the request.
+    new HumanMessage(`You are tasked with identifying relevant data cube for a given request. Your goal is to analyze the provided model descriptions and examples,
+        and determine which data cubes could be useful in addressing the request.
 
-        First, review the following model descriptions to know the dimensions and measures available:
+        First, review the following cube descriptions to know the dimensions and measures available:
         ${cubeModels.join('\n')}
         Now, consider the following request:
         ${state.task}
         
-        Keep in mind that multiple data sources may be relevant to a single request.
-        If a data source seems even slightly relevant to the request, include it in your list.
+        Keep in mind that multiple data cubes may be relevant to a single request.
+        If a data cube seems even slightly relevant to the request, include it in your list.
         `),
   ]);
 
-  const sources = (message as any).sources;
-  const isPossible = (message as any).isPossible;
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const sources = args.sources;
+  const isPossible = args.isPossible;
   Logger.log('\nisPossible', isPossible);
   Logger.log('\nsources', sources);
 
@@ -75,44 +93,58 @@ async function identifyRelevantSources(state: InsightState, company_name: string
 }
 
 async function generateExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
-  const getQueries = z.object({
-    queries: z.array(z.any()).describe(`An array of up to 3 Cube queries to explore the data.
-      Query structure example:
-      {
-        "dimensions": [
-          "cube1.param1",
-          "cube1.param2",
-          "cube2.param1"
-        ],
-        "measures": [
-          "cube1.param5",
-          "cube4.param2",
-          "cube3.param1"
-        ],
-        "filters": [
-          {
-            "member": "cube6.param1",
-            "operator": "beforeDate",
-            "values": ["2023-12-31"]
+  const getQueries: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "getQueries",
+      description: "Generate exploratory Cube queries to gather insights",
+      parameters: {
+        type: "object",
+        properties: {
+          queries: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                dimensions: { type: "array", items: { type: "string" } },
+                measures: { type: "array", items: { type: "string" } },
+                filters: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      member: { type: "string" },
+                      operator: { type: "string" },
+                      values: { type: "array", items: { type: "string" } }
+                    },
+                    required: ["member", "operator", "values"]
+                  }
+                },
+                segments: { type: "array", items: { type: "string" } },
+                order: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      member: { type: "string" },
+                      direction: { type: "string", enum: ["asc", "desc"] }
+                    },
+                    required: ["member", "direction"]
+                  }
+                },
+                limit: { type: "integer", maximum: 1000 }
+              },
+              required: ["dimensions", "measures", "limit"]
+            },
+            description: "An array of up to 3 Cube queries to explore the data"
           }
-        ],
-        "timeDimensions": [
-          {
-            "dimension": "cube1.param1",
-            "granularity": "hour"
-          }
-        ],
-        "segments": [
-          "cube1.segment1"
-        ],
-        "order": [
-          ["cube1.param1", "desc"]
-        ],
-        "limit": 1000
-      }`),
-  });
+        },
+        required: ["queries"]
+      }
+    }
+  };
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getQueries);
+  const model = createStructuredResponseAgent(getFasterModel(), [getQueries]);
 
   const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
@@ -140,7 +172,9 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
     Based on the existing queries and responses, create up to 3 new queries that will provide additional insights to better answer the task.`),
   ]);
 
-  const newQueries = (message as any).queries;
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const newQueries = args.queries;
   Logger.log('New exploratory queries:', newQueries);
 
   return {
@@ -164,16 +198,101 @@ async function executeExploratoryQuery(state: InsightState, company_name: string
   };
 }
 
-async function analyzeResults(state: InsightState, functions: Function[], company_name: string): Promise<InsightState> {
-  const getInsights = z.object({
-    insights: z.array(z.object({
-      title: z.string().describe('Title for the insight'),
-      description: z.string().describe('Detailed description of the insight'),
-      relevantQuery: z.number().describe('Index of the most relevant query for this insight'),
-    })).describe('Array of insights extracted from all query results'),
-  });
+async function checkResponseSufficiency(state: InsightState): Promise<InsightState> {
+  const checkSufficiency: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "checkSufficiency",
+      description: "Check if the current responses are sufficient to answer the task",
+      parameters: {
+        type: "object",
+        properties: {
+          isEnough: {
+            type: "boolean",
+            description: "Whether the current responses are sufficient to answer the task"
+          },
+          explanation: {
+            type: "string",
+            description: "Explanation of why the responses are or are not sufficient"
+          }
+        },
+        required: ["isEnough", "explanation"]
+      }
+    }
+  };
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getInsights);
+  const model = createStructuredResponseAgent(getFasterModel(), [checkSufficiency]);
+
+
+  const message = await model.invoke([
+    new HumanMessage(`Check if the following responses are sufficient to answer the task:
+    Task: ${state.task}
+
+    Queries:
+    ${state.queries.join('\n')}
+
+    Responses:
+    ${state.responses.join('\n')}
+
+    Determine if we have enough information to extract meaningful insights or if another query would help answer the task better.
+
+    If 2 or more responses are empty, assume that there is no data for that query which would help answer the task, which is a sufficient response.
+    If only 1 response is empty assume that the query was incorrect and try to generate a new one.
+    `),
+  ]);
+
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const isEnough = args.isEnough;
+  const explanation = args.explanation;
+
+  Logger.log('Response sufficiency check:', { isEnough, explanation });
+
+  return {
+    ...state,
+    needsMoreInsight: !isEnough,
+  };
+}
+
+
+async function analyzeResults(state: InsightState, functions: Function[], company_name: string): Promise<InsightState> {
+  const getInsights: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "getInsights",
+      description: "Extract insights from exploratory query results",
+      parameters: {
+        type: "object",
+        properties: {
+          insights: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: {
+                  type: "string",
+                  description: "Title for the insight"
+                },
+                description: {
+                  type: "string",
+                  description: "Detailed description of the insight"
+                },
+                relevantQuery: {
+                  type: "integer",
+                  description: "Index of the most relevant query for this insight"
+                }
+              },
+              required: ["title", "description", "relevantQuery"]
+            },
+            description: "Array of insights extracted from all query results"
+          }
+        },
+        required: ["insights"]
+      }
+    }
+  };
+
+  const model = createStructuredResponseAgent(anthropicSonnet(), [getInsights]);
 
   const cubeModels = await getModels(company_name);
 
@@ -200,7 +319,9 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
     `),
   ]);
 
-  const insights = (message as any).insights;
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const insights = args.insights;
 
   Logger.log('Extracted insights:', insights);
 
@@ -220,42 +341,6 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
   return {
     ...state,
     finalResult: "Insights generated from the data"
-  };
-}
-
-async function checkResponseSufficiency(state: InsightState): Promise<InsightState> {
-  const checkSufficiency = z.object({
-    isEnough: z.boolean().describe('Whether the current responses are sufficient to answer the task'),
-    explanation: z.string().describe('Explanation of why the responses are or are not sufficient'),
-  });
-
-  const model = createStructuredResponseAgent(anthropicSonnet(), checkSufficiency);
-
-  const message = await model.invoke([
-    new HumanMessage(`Check if the following responses are sufficient to answer the task:
-    Task: ${state.task}
-
-    Queries:
-    ${state.queries.join('\n')}
-
-    Responses:
-    ${state.responses.join('\n')}
-
-    Determine if we have enough information to extract meaningful insights or if another query would help answer the task better.
-
-    If 2 or more responses are empty, assume that there is no data for that query which would help answer the task, which is a sufficient response.
-    If only 1 response is empty assume that the query was incorrect and try to generate a new one.
-    `),
-  ]);
-
-  const isEnough = (message as any).isEnough;
-  const explanation = (message as any).explanation;
-
-  Logger.log('Response sufficiency check:', { isEnough, explanation });
-
-  return {
-    ...state,
-    needsMoreInsight: !isEnough,
   };
 }
 
