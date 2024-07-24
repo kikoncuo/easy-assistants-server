@@ -2,10 +2,10 @@ import { AbstractGraph, BaseState } from './baseGraph';
 import { createStructuredResponseAgent, anthropicSonnet, groqChatLlama } from '../models/Models';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
-import { z } from 'zod';
 import Logger from '../utils/Logger';
 import { executeQuery, getModelsData, getSQLQuery } from '../utils/DataStructure';
 import { EditCubeGraph } from './editCubes';
+import { ToolDefinition } from '@langchain/core/language_models/base';
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
@@ -42,23 +42,39 @@ async function recoverSources(
 ): Promise<DataRecoveryState> {
   const cubeModels = await getModels(company_name);
 
-  const getSources = z.object({
-    sources: z.array(z.string()).describe('Array with the names of the sources'),
-    isPossible: z
-      .string()
-      .describe(
-        '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable',
-      ),
-    needsSemanticUpdate: z
-      .boolean()
-      .describe('Whether a semantic layer update is needed for the task.'),
-    semanticTask: z
-      .string()
-      .optional()
-      .describe('Specific measure or dimension to create on the semantic layer if needed.'),
-  });
+  const getSources: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "getSources",
+      description: "Identify relevant data sources for a given request",
+      parameters: {
+        type: "object",
+        properties: {
+          sources: {
+            type: "array",
+            items: { type: "string" },
+            description: "Array with the names of the sources"
+          },
+          isPossible: {
+            type: "string",
+            enum: ["true", "maybe", "false"],
+            description: '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable'
+          },
+          needsSemanticUpdate: {
+            type: "boolean",
+            description: "Whether a semantic layer update is needed for the task."
+          },
+          semanticTask: {
+            type: "string",
+            description: "Specific measure or dimension to create on the semantic layer if needed."
+          }
+        },
+        required: ["sources", "isPossible", "needsSemanticUpdate"]
+      }
+    }
+  };
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getSources);
+  const model = createStructuredResponseAgent(anthropicSonnet(), [getSources]);
 
   const message = await model.invoke([
     new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
@@ -77,10 +93,12 @@ async function recoverSources(
         `),
   ]);
 
-  const sources = (message as any).sources;
-  const isPossible = (message as any).isPossible;
-  const needsSemanticUpdate = (message as any).needsSemanticUpdate;
-  const semanticTask = (message as any).semanticTask || '';
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const sources = args.sources;
+  const isPossible = args.isPossible;
+  const needsSemanticUpdate = args.needsSemanticUpdate;
+  const semanticTask = args.semanticTask || '';
 
   Logger.log('\nisPossible', isPossible);
   Logger.log('\nsources', sources);
@@ -104,64 +122,46 @@ async function recoverSources(
 
 // Node function to create Cube query
 async function createCubeQuery(state: DataRecoveryState, company_name: string): Promise<DataRecoveryState> {
-  const getCubeQuery = z.object({
-    assumptions: z
-      .string()
-      .optional()
-      .describe(
-        "Assumptions we made about what the user said vs how we built the query. The assumptions need to be understood by a non technical person who doesn't know the details of the database.",
-      ),
-    cubeQuery: z.string() // TODO: Time dimensions don't work yet we need to fix this and add it to the example
-      .describe(`Cube query that returns a table which satisfies the task.
-        Provide insightful queries, avoid simple logic unless asked to, the results of your queries will be evaluated by business and marketing experts.
-        Query structure example with all available options:
-        {
-          "dimensions": [
-            "cube1.param1",
-            "cube1.param2",
-            "cube2.param1"
-          ],
-          "measures": [
-            cube1.param5,
-            cube4.param2,
-            cube3.param1,
-          ],
-          "filters": [
-            {
-              "member": "cube6.param1",
-              "operator": "beforeDate",
-              "values": ["2023-12-31"]
-            }
-          ],
-          "timeDimensions": [
-            {
-              "dimension": "cube1.param1",
-              "granularity": "hour"
-            }
-          ],
-          "segments": [
-            "cube1.segment1"
-          ],
-          "order": [
-            ["cube1.param1", "desc"]
-          ]
-        }
-        `),
-    description: z.string().describe('Task simple description, in a simple phrase.'),
-    title: z
-      .string()
-      .describe(
-        'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
-      ),
-    displayType: z
-      .enum(['table', 'barChart', 'doghnutChart', 'lineChart', 'dataPoint'])
-      .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, lineChart, or dataPoint.'),
-  });
+  const getCubeQuery: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "getCubeQuery",
+      description: "Generate a Cube query that satisfies the given task",
+      parameters: {
+        type: "object",
+        properties: {
+          assumptions: {
+            type: "string",
+            description: "Assumptions made about what the user said vs how we built the query. The assumptions need to be understood by a non-technical person who doesn't know the details of the database."
+          },
+          cubeQuery: {
+            type: "string",
+            description: "Cube query that returns a table which satisfies the task. Provide insightful queries, avoid simple logic unless asked to."
+          },
+          description: {
+            type: "string",
+            description: "Task simple description, in a simple phrase."
+          },
+          title: {
+            type: "string",
+            description: "Task title, e.g., 'Top 5 Whole Bean/Teas Products by Price' for a request to create a chart for top 5 beans based on price."
+          },
+          displayType: {
+            type: "string",
+            enum: ["table", "barChart", "doghnutChart", "lineChart", "dataPoint"],
+            description: "Type of display for the query result."
+          }
+        },
+        required: ["cubeQuery", "description", "title", "displayType"]
+      }
+    }
+  };
   
   const cubeModels = await getModels(company_name);
   const filteredCubeModels = filterModels(cubeModels, state.examples);
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), getCubeQuery);
+  const model = createStructuredResponseAgent(anthropicSonnet(), [getCubeQuery]);
+
   const messageContent = `Based on the following sources
         ${filteredCubeModels}
         please provide a Cube query that returns a table that satisfies the following task:
@@ -173,11 +173,14 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
        
 
   const message = await model.invoke(messageContent);
-  const cubeQuery = (message as any).cubeQuery;
-  const assumptions = (message as any).assumptions;
-  const description = (message as any).description;
-  const title = (message as any).title;
-  const displayType = (message as any).displayType;
+
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const cubeQuery = args.cubeQuery;
+  const assumptions = args.assumptions;
+  const description = args.description;
+  const title = args.title;
+  const displayType = args.displayType;
 
   Logger.log('cubeQuery', cubeQuery);
   Logger.log('assumptions', assumptions);
@@ -204,15 +207,30 @@ async function evaluateResult(
   
 
   try {
-    const getFeedback = z.object({
-      resultStatus: z.enum(['correct', 'maybe', 'incorrect']).describe('Evaluation of the query result'),
-      feedbackMessage: z
-        .string()
-        .optional()
-        .describe('Feedback message if the query was incorrect or needs further exploration.'),
-    });
+    const getFeedback: ToolDefinition = {
+      type: "function",
+      function: {
+        name: "getFeedback",
+        description: "Evaluate the Cube query result and provide feedback",
+        parameters: {
+          type: "object",
+          properties: {
+            resultStatus: {
+              type: "string",
+              enum: ["correct", "maybe", "incorrect"],
+              description: "Evaluation of the query result"
+            },
+            feedbackMessage: {
+              type: "string",
+              description: "Feedback message if the query was incorrect or needs further exploration."
+            }
+          },
+          required: ["resultStatus"]
+        }
+      }
+    };
 
-    const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
+    const model = createStructuredResponseAgent(anthropicSonnet(), [getFeedback]);
 
     const resultExecution = await executeQuery(state.cubeQuery, company_name); //await functions[0]('tool', getCubeQuery);
 
@@ -240,10 +258,12 @@ async function evaluateResult(
                 Provide a feedback message for 'maybe' or 'incorrect' results, explaining what needs further exploration or how to improve the query.
             `),
     ]);
-    
-    const resultStatus = (message as any).resultStatus;
-    const feedbackMessage = (message as any).feedbackMessage || '';
 
+    const args = message.lc_kwargs.tool_calls[0].args;
+
+    const resultStatus = args.resultStatus;
+    const feedbackMessage = args.feedbackMessage || '';
+    
     Logger.log('resultStatus', resultStatus);
     Logger.log('feedbackMessage', feedbackMessage);
 
@@ -288,13 +308,27 @@ async function returnSqlDescription(
   
 
   try {
-    const getFeedback = z.object({
-      description: z.string().describe('Description on how the SQL query is solving the initial task'),
-    });
+    const getFeedback: ToolDefinition = {
+      type: "function",
+      function: {
+        name: "getFeedback",
+        description: "Describe how the SQL query solves the initial task",
+        parameters: {
+          type: "object",
+          properties: {
+            description: {
+              type: "string",
+              description: "Description on how the SQL query is solving the initial task"
+            }
+          },
+          required: ["description"]
+        }
+      }
+    };
 
     const sqlQuery = await getSQLQuery(company_name, state.cubeQuery);
 
-    const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
+    const model = createStructuredResponseAgent(anthropicSonnet(), [getFeedback]);
     const message = await model.invoke([
       new HumanMessage(`Based on the following user request 
                 ${state.task},
@@ -304,8 +338,10 @@ async function returnSqlDescription(
                 Describe how the SQL has solved the initial request.
             `),
     ]);
+
+    const args = message.lc_kwargs.tool_calls[0].args;
     
-    const description = (message as any).description;
+    const description = args.description;
 
     Logger.log('description', description);
 
