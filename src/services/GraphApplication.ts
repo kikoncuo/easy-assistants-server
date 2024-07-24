@@ -116,7 +116,7 @@ export class GraphApplication {
       },
     };
 
-    this.graphManager = new GraphManager(createPlanner(llama70bGroq), agents, subgraphs, llama8bGroq, outputHandler);
+    this.graphManager = new GraphManager(createPlanner(fasterModel), agents, subgraphs, fasterModel, outputHandler);
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket) {

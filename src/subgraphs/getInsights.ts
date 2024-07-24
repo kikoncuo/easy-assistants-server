@@ -139,9 +139,18 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
                     type: "object",
                     properties: {
                       dimension: { type: "string" },
-                      granularity: { type: "string", enum: ["day", "week", "month", "year"] }
+                      granularity: { type: "string", enum: ["day", "week", "month", "year"] },
+                      dateRange: {
+                        type: "array",
+                        items: { type: "string", format: "date" }
+                      }
                     },
-                    required: ["dimension", "granularity"]
+                    required: ["dimension"],
+                    oneOf: [
+                      { required: ["granularity"] },
+                      { required: ["dateRange"] }
+                    ],
+                    additionalProperties: false
                   }
                 },
                 limit: { type: "integer", maximum: 500 },
@@ -173,7 +182,7 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
     Create efficient queries that will help gather insights. Each query should return at most 500 examples.
     Focus on queries that will provide meaningful data for analysis.
     You can make queries with only dimensions and no measures if you need to.
-    Segments and filters are additive, so try not to apply opposite segments or filters.
+    Segments and filters are additive, so try not to apply opposite segments or filters (IE: don't use both high pressure and low pressure segments).
     
     Existing queries:
     ${existingQueries}
