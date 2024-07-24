@@ -126,6 +126,7 @@ export class GraphApplication {
       {
         ...config,
         streamMode: 'values',
+        recursion_limit: 2,
       },
     );
   }
