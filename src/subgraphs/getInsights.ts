@@ -375,15 +375,52 @@ async function analyzeResults(state: InsightState, functions: Function[], compan
   let results = insights.map((insight: any, index: number) => ({
     function_name: 'getInsights',
     arguments: {
-      query: state.queries[insight.relevantQuery],
+      query: insight.relevantQuery,
       title: insight.title,
-      displayType: 'table',
       insight: insight.description,
-      data: state.responses[insight.relevantQuery]
     },
   }));
 
   functions[0]('tool', results);
+
+
+  const summarizeInsights: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "summarizeInsights",
+      description: "Summarize the insights",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: {
+            type: "string",
+            description: "Summary of the insights"
+          }
+        },
+        required: ["summary"]
+      }
+    }
+  };
+  const finalModel = createStructuredResponseAgent(getFasterModel(), [summarizeInsights]);
+  const finalMessage = await finalModel.invoke([
+    new HumanMessage(`Create a detailed message explaining the following insights:  
+      ${insights.map((insight: any) => insight.description).join('\n')}`),
+  ]);
+
+  const finalArgs = finalMessage.lc_kwargs.tool_calls[0].args;
+  const summary = finalArgs.summary;
+
+  const getSummary = [
+    {
+      function_name: 'getSummary',
+      arguments: {
+        summary:  summary
+      },
+    }
+  ];
+
+  functions[0]('tool', getSummary);
+
 
   return {
     ...state,
