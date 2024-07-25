@@ -21,6 +21,7 @@ interface DataRecoveryState extends BaseState {
   resultExecution: string;
   needsSemanticUpdate: boolean;
   semanticTask: string; // Nueva propiedad para la tarea semántica
+  queryAttempts: number; // New property to track query generation attempts
 }
 
 async function getModels(company_name: string): Promise<string[]> {
@@ -187,7 +188,7 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
 
   //const resultExecution = await executeQueries([cubeQuery]);
 
-  return {
+  const updatedState = {
     ...state,
     cubeQuery: cubeQuery,
     explanation: assumptions,
@@ -195,7 +196,15 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
     title: title,
     displayType: displayType,
     //resultExecution: resultExecution
+    queryAttempts: (state.queryAttempts || 0) + 1
   };
+
+  if (updatedState.queryAttempts > 3) {
+    updatedState.finalResult = "Unable to generate a suitable query after 3 attempts.";
+    updatedState.resultStatus = 'incorrect';
+  }
+
+  return updatedState;
 }
 
 // Node function to evaluate result
@@ -441,6 +450,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      queryAttempts: {
+        value: (x: number, y?: number) => (y !== undefined ? y : x),
+        default: () => 0,
+      },
     };
     super(graphState);
     this.functions = functions;
@@ -466,7 +479,13 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         }
       })
       .addEdge('edit_cube_graph', 'create_cube_query')*/
-      .addEdge('create_cube_query', 'evaluate_result')
+      .addConditionalEdges('create_cube_query', state => {
+        if (state.queryAttempts > 3) {
+          return END;
+        } else {
+          return 'evaluate_result';
+        }
+      })
       .addConditionalEdges('evaluate_result', state => {
         if (state.resultStatus === 'correct' || state.resultStatus === 'maybe') { // TODO: Create a working path for maybe, right now it enters an infinite loop if data is empty
           return 'return_sql_description';
