@@ -187,3 +187,17 @@ export function insertRecommendations(tableString:string, recommendations:any) {
   // Join the updated tables back into a single string
   return updatedTables.join('\n\n');
 }
+
+
+export function getConnectionChain(anonKey: string) {
+  switch (anonKey) {
+    case 'omni_Test': //OmniTest
+      return process.env.OMNITEST_CHAIN;
+    case 'talent_class': //TalentClass
+      return process.env.TALENTCLASS_CHAIN;
+    case 'blank_street': //BlankStreet
+      return process.env.BLANKSTREET_CHAIN;
+    default:
+      return process.env.OMNITEST_CHAIN;
+  }
+}
