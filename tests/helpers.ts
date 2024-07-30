@@ -205,3 +205,16 @@ export function separateCubes(input:string) {
   const cubes = cubeDefinitions.map(cubeDef => 'cube(' + cubeDef.trim());
   return cubes;
 }
+
+export function getConnectionChain(anonKey: string) {
+  switch (anonKey) {
+    case 'omni_Test': //OmniTest
+      return process.env.OMNITEST_CHAIN;
+    case 'talent_class': //TalentClass
+      return process.env.TALENTCLASS_CHAIN;
+    case 'blank_street': //BlankStreet
+      return process.env.BLANKSTREET_CHAIN;
+    default:
+      return process.env.OMNITEST_CHAIN;
+  }
+}
