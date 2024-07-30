@@ -27,11 +27,11 @@ interface TableAnalysis {
   missingValues: Record<string, number>;
   unusualValues: Record<string, any[]>;
   recommendations: string[];
-  distinctValues: Record<string, number>;
-  groupRatios: Record<string, Record<string, number>>;
-  dataSamples: Record<string, any[]>;
-  duplicatedRows: number;
-  uniqueRatio: Record<string, number>;
+  distinctValues?: Record<string, number>;
+  groupRatios?: Record<string, Record<string, number>>;
+  dataSamples?: Record<string, any[]>;
+  duplicatedRows?: number;
+  uniqueRatio?: Record<string, number>;
   emptyValuePercentage: Record<string, number>;
 }
 
@@ -41,6 +41,10 @@ interface Recommendation {
 
 interface RecommendationOptions {
   [tableName: string]: Recommendation;
+}
+
+interface Args {
+  RecommendationOptions: RecommendationOptions;
 }
 
 async function analyzeTables(state: SemanticLayerState, prefixes: string, company_name: string, functions: Function[]): Promise<SemanticLayerState> {
@@ -68,11 +72,11 @@ async function analyzeTables(state: SemanticLayerState, prefixes: string, compan
       missingValues: await getMissingValues(tableName, columns, pgConnectionChain),
       unusualValues: await getUnusualValues(tableName, columns, pgConnectionChain),
       recommendations: [],
-      distinctValues: await getDistinctValues(tableName, columns, pgConnectionChain),
-      groupRatios: await getGroupRatios(tableName, columns, pgConnectionChain),
-      dataSamples: await getDataSamples(tableName, columns, pgConnectionChain),
-      duplicatedRows: await getDuplicatedRows(tableName, columns, pgConnectionChain),
-      uniqueRatio: await getUniqueRatio(tableName, columns, pgConnectionChain),
+      // distinctValues: await getDistinctValues(tableName, columns, pgConnectionChain),
+      // groupRatios: await getGroupRatios(tableName, columns, pgConnectionChain),
+      // dataSamples: await getDataSamples(tableName, columns, pgConnectionChain),
+      // duplicatedRows: await getDuplicatedRows(tableName, columns, pgConnectionChain),
+      // uniqueRatio: await getUniqueRatio(tableName, columns, pgConnectionChain),
       emptyValuePercentage: await getEmptyValuePercentage(tableName, columns, pgConnectionChain),
     };
 
@@ -105,15 +109,15 @@ function generateRecommendations(analysis: TableAnalysis): string[] {
     recommendations.push(`Consider handling missing values for the following columns with high empty percentages: ${highEmptyPercentageColumns.join(', ')}.`);
   }
 
-  if (analysis.duplicatedRows > 0) {
-    recommendations.push("Address duplicated rows in the dataset.");
-  }
+  // if (analysis.duplicatedRows > 0) {
+  //   recommendations.push("Address duplicated rows in the dataset.");
+  // }
 
-  Object.entries(analysis.uniqueRatio).forEach(([column, ratio]) => {
-    if (ratio < 0.1) {
-      recommendations.push(`'${column}' due to low unique ratio.`);
-    }
-  });
+  // Object.entries(analysis.uniqueRatio).forEach(([column, ratio]) => {
+  //   if (ratio < 0.1) {
+  //     recommendations.push(`'${column}' due to low unique ratio.`);
+  //   }
+  // });
 
   // TODO: Talk with expert to add more recommendations based on other analysis results 
 
@@ -121,14 +125,6 @@ function generateRecommendations(analysis: TableAnalysis): string[] {
 }
 
 async function generateRecommendationOptions(state: SemanticLayerState): Promise<SemanticLayerState> {
-  // const optionsSchema = z.object({
-  //   RecommendationOptions: z.record(z.object({
-  //     options: z.array(z.string()).length(2).describe('Array of two possible recommendation options'),
-  //   }))
-  // });
-
-  // const model = createStructuredResponseAgent(anthropicSonnet(), optionsSchema);
-
   const recommendationOptionsSchema: ToolDefinition = {
     type: "function",
     function: {
@@ -188,22 +184,23 @@ async function generateRecommendationOptions(state: SemanticLayerState): Promise
       Ensure that each table name is a key in the RecommendationOptions object, and each table has exactly two options in its options array.`)
   ]);
 
-  const recommendationOptions = message as unknown as { RecommendationOptions: RecommendationOptions };
+  const args = message.lc_kwargs.tool_calls[0].args;
 
-  type TransformedOptions = Record<string, { option1: string; option2: string }>;
+  const recommendationOptions: Args = args;
 
-  // Transform the data structure to match the expected RecommendationOptions format
-  const transformedOptions = Object.entries(recommendationOptions.RecommendationOptions).reduce<TransformedOptions>((acc, [tableName, value]) => {
-    if (value && Array.isArray(value.options) && value.options.length === 2) {
-      acc[tableName] = {
-        option1: value.options[0],
-        option2: value.options[1]
-      };
-    } else {
-      console.warn(`Unexpected structure for table ${tableName}:`, value);
-    }
-    return acc;
-  }, {} as TransformedOptions);
+
+type TransformedOptions = Record<string, { option1: string; option2: string }>;
+
+// Transform the data structure to match the expected RecommendationOptions format
+const transformedOptions = Object.entries(recommendationOptions.RecommendationOptions).reduce<TransformedOptions>((acc, [tableName, value]) => {
+  if (value && Array.isArray(value.options) && value.options.length === 2) {
+    acc[tableName] = {
+      option1: value.options[0],
+      option2: value.options[1]
+    };
+  }
+  return acc;
+}, {});
 
   return {
     ...state,
@@ -212,11 +209,6 @@ async function generateRecommendationOptions(state: SemanticLayerState): Promise
 }
 
 async function selectRecommendations(state: SemanticLayerState, functions: Function[]): Promise<SemanticLayerState> {
-  // const optionsSchema = z.object({
-  //   SelectedRecommendation: z.string().describe('The selected recommendation based on user input')
-  // });
-
-  // const model = createStructuredResponseAgent(anthropicSonnet(), optionsSchema);
   const selectedRecommendationSchema: ToolDefinition = {
     type: "function",
     function: {
@@ -267,7 +259,9 @@ async function selectRecommendations(state: SemanticLayerState, functions: Funct
         Return the selected or adapted recommendation.`)
     ]);
 
-    const aiSelection = message as unknown as { SelectedRecommendation: string };
+    const args = message.lc_kwargs.tool_calls[0].args;
+
+    const aiSelection = args
     selectedRecommendations[tableName] = aiSelection.SelectedRecommendation;
 
   }
@@ -280,11 +274,6 @@ async function selectRecommendations(state: SemanticLayerState, functions: Funct
 
 
 async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticLayerState> {
-  // const filesSchema = z.object({ 
-  //   files: z.record(z.string(), z.string()).describe('A record with the name of the files pointing to the content of the files')
-  // });
-  // const model = createStructuredResponseAgent(anthropicSonnet(), filesSchema);
-
   const filesSchema: ToolDefinition = {
     type: "function",
     function: {
@@ -369,7 +358,11 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
       `)
     ]);
 
-    Object.assign(cubeJsFiles, (message as any).files);
+    const args = message.lc_kwargs.tool_calls[0].args;
+
+    Logger.log('cubeJsFiles args', args)
+
+    Object.assign(cubeJsFiles, args.files);
     Logger.log(`Generated schema for tables ${i + 1} to ${Math.min(i + tablesPerIteration, tableAnalysisArray.length)}`);
   }
 
@@ -437,6 +430,11 @@ async function writeSemanticLayerFiles(state: SemanticLayerState, company_name: 
         finalResult: `Failed to post semantic layer data: ${response.statusText}`
       };
     }
+
+      return {
+        ...state,
+        finalResult: `Failed to post semantic layer data.`
+      };
 
   } catch (error) {
     Logger.error('Error posting semantic layer data:', error);
