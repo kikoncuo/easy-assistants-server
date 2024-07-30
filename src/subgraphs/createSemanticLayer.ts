@@ -431,11 +431,6 @@ async function writeSemanticLayerFiles(state: SemanticLayerState, company_name: 
       };
     }
 
-      return {
-        ...state,
-        finalResult: `Failed to post semantic layer data.`
-      };
-
   } catch (error) {
     Logger.error('Error posting semantic layer data:', error);
     return {
