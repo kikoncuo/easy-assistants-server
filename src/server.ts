@@ -140,9 +140,11 @@ wss.on('connection', ws => {
         data.configData,
       );
     } else if (data.type === 'createSemanticLayer') {
-      Logger.log('Creating semantic layer');
       // TODO create a interactive function to get response from the user
-      const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, data.company_name); // TODO: Pass in the functions here to interact with the user, not sure how to do this
+      const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.configData[0], [
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+          WebSocketService.queryUser(type, functions, ws)
+      ]); // TODO: Pass in the functions here to interact with the user, not sure how to do this
       const result = await semanticLayerGraph
         .getGraph()
         .invoke({ task: "Create a semantic layer for the company's data" });
