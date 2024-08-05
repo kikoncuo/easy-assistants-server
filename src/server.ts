@@ -153,7 +153,7 @@ wss.on('connection', ws => {
         (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
       ]);
       const result = await editCubeGraph.getGraph().invoke({
-        task: 'I want to see which users are active',
+        task: data.task,
       });
       WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
     }

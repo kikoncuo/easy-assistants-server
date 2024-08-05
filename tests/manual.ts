@@ -14,13 +14,13 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: ["demo"] }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: ["omni_test"] }));
     promptUserInput();
 
-   /* ws?.send(JSON.stringify({ 
+   /*ws?.send(JSON.stringify({ 
       type: 'editSemanticLayer', 
-      prefixes: "csv",
-      pgConnectionString: process.env.TEST_POSTGRES_MANUAL
+      task: "Create a measure for Total Lifetime Value (TLV) of customers",
+      company_name: "omni_test"
     }));*/
 
     // ws?.send(JSON.stringify({ 
@@ -57,6 +57,14 @@ function connectToServer() {
             Logger.log(`Returning mock data: ${JSON.stringify(userData, null, 2)}`);
             response = JSON.stringify(userData, null, 2)
           } else if (function_name === 'askHuman') {
+            const result = prompt(`Enter your response for ${function_name}:`);
+            Logger.log(`Response for ${function_name}: ${result}`);
+            response = result;
+          } else if (function_name === 'calculationOptions') {
+            const result = prompt(`Enter your response for ${function_name}:`);
+            Logger.log(`Response for ${function_name}: ${result}`);
+            response = result;
+          } else if (function_name === 'approveSemantycLayerChanges') {
             const result = prompt(`Enter your response for ${function_name}:`);
             Logger.log(`Response for ${function_name}: ${result}`);
             response = result;

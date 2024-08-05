@@ -39,7 +39,8 @@ function filterModels(models: string[], sources: string[]): string[] {
 // Node function to recover sources
 async function recoverSources(
   state: DataRecoveryState,
-  company_name: string
+  company_name: string,
+  functions: Function[]
 ): Promise<DataRecoveryState> {
   const cubeModels = await getModels(company_name);
 
@@ -75,7 +76,7 @@ async function recoverSources(
     }
   };
 
-  const model = createStructuredResponseAgent(getFasterModel(), [getSources]);
+  const model = createStructuredResponseAgent(anthropicSonnet(), [getSources]); //Using anthropic to have an accure response on 'needsSemanticUpdate' and 'semanticTask'
 
   const message = await model.invoke([
     new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
@@ -114,6 +115,15 @@ async function recoverSources(
   };
 
   if (isPossible === 'false') {
+    const processInfo = [
+      {
+        function_name: 'processInfo',
+        arguments: {
+          infoMessage: `It wasn't possible to resolve the query with the available data`
+        },
+      },
+    ];
+    functions[0]('tool', processInfo);
     updatedState.finalResult = "It wasn't possible to resolve the query with the available data.";
     return updatedState;
   }
@@ -122,7 +132,7 @@ async function recoverSources(
 }
 
 // Node function to create Cube query
-async function createCubeQuery(state: DataRecoveryState, company_name: string): Promise<DataRecoveryState> {
+async function createCubeQuery(state: DataRecoveryState, company_name: string, functions: Function[]): Promise<DataRecoveryState> {
   const getCubeQuery: ToolDefinition = {
     type: "function",
     function: {
@@ -153,7 +163,7 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
             description: "Type of display for the query result."
           }
         },
-        required: ["cubeQuery", "description", "title", "displayType"]
+        required: ["assumptions", "cubeQuery", "description", "title", "displayType"]
       }
     }
   };
@@ -200,6 +210,15 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string): 
   };
 
   if (updatedState.queryAttempts > 3) {
+    const processInfo = [
+      {
+        function_name: 'processInfo',
+        arguments: {
+          infoMessage: `Unable to generate a suitable query after 3 attempts.`
+        },
+      },
+    ];
+    functions[0]('tool', processInfo);
     updatedState.finalResult = "Unable to generate a suitable query after 3 attempts.";
     updatedState.resultStatus = 'incorrect';
   }
@@ -243,7 +262,7 @@ async function evaluateResult(
 
     const resultExecution = await executeQuery(state.cubeQuery, company_name); //await functions[0]('tool', getCubeQuery);
 
-    console.log('\n\nresultExecution', JSON.parse(resultExecution).data);
+    Logger.log('\n\nresultExecution', JSON.parse(resultExecution).data);
     // log the first 10 results
 
     const message = await model.invoke([
@@ -384,10 +403,12 @@ async function handleEditCubeGraph(state: DataRecoveryState, functions: Function
   const result = await editCubeGraph.getGraph().invoke({
     task: state.semanticTask,
   });
-  Logger.log(`Edit cube graph result: ${result}`);
+  
+  Logger.log(`Edit cube graph result: ${result.finalResult}`);
+  //TODO: Inform frontend user that the result is OK.
+  
   return {
     ...state,
-    ...result,
   };
 }
 
@@ -464,21 +485,21 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('recover_sources', async state => await recoverSources(state, this.company_name))
-      //.addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions, this.company_name))
-      .addNode('create_cube_query', async state => await createCubeQuery(state, this.company_name))
+      .addNode('recover_sources', async state => await recoverSources(state, this.company_name, this.functions))
+      .addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions, this.company_name))
+      .addNode('create_cube_query', async state => await createCubeQuery(state, this.company_name, this.functions))
       .addNode('evaluate_result', async state => await evaluateResult(state, this.functions, this.company_name))
       .addNode('return_sql_description', async state => await returnSqlDescription(state, this.functions, this.company_name))
       .addEdge(START, 'recover_sources')
-      .addEdge('recover_sources', 'create_cube_query')
-      /*.addConditionalEdges('recover_sources', state => {
+      //.addEdge('recover_sources', 'create_cube_query')
+      .addConditionalEdges('recover_sources', state => {
         if (state.needsSemanticUpdate) {
           return 'edit_cube_graph';
         } else {
           return 'create_cube_query';
         }
       })
-      .addEdge('edit_cube_graph', 'create_cube_query')*/
+      .addEdge('edit_cube_graph', 'create_cube_query')
       .addConditionalEdges('create_cube_query', state => {
         if (state.queryAttempts > 3) {
           return END;
