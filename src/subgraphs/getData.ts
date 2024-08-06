@@ -180,10 +180,29 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string, f
         For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
         For tables, the query should include a date column.
 
+        Use proper filter structure in your query. Here's an example of correctly formatted filters:
+
+        "filters": [
+          {
+            "member": "CUBE1.PARAMETER1",
+            "operator": "equals",
+            "values": ["2022-10-06 12:47:04"]
+          },
+          {
+            "member": "CUBE2.PARAMETER2",
+            "operator": "equals",
+            "values": ["true"]
+          }
+        ]
+
+        Ensure that the "member" parameter uses the correct cube and dimension/measure names, the "operator" is appropriate for the data type, and "values" contains the correct data type for the filter.
+
        ${state.feedbackMessage ? `Previous attempt resulted in an error: ${state.feedbackMessage}\nPlease adjust the query to avoid this error` : ''}`;
        
 
   const message = await model.invoke(messageContent);
+
+  // Logger.log('messageContent',messageContent)
 
   const args = message.lc_kwargs.tool_calls[0].args;
 

@@ -122,17 +122,24 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
                   }
                 },
                 segments: { type: "array", items: { type: "string" } },
-                order: {
-                  type: "array",
-                  items: {
+                  order: {
                     type: "object",
-                    properties: {
-                      member: { type: "string" },
-                      direction: { type: "string", enum: ["asc", "desc"] }
-                    },
-                    required: ["member", "direction"]
+                      additionalProperties: {
+                        type: "string",
+                      enum: ["asc", "desc"]
                   }
                 },
+                // order: {
+                //   type: "array",
+                //   items: {
+                //     type: "object",
+                //     properties: {
+                //       member: { type: "string" },
+                //       direction: { type: "string", enum: ["asc", "desc"] }
+                //     },
+                //     required: ["member", "direction"]
+                //   }
+                // },
                 timeDimensions: {
                   type: "array",
                   items: {
