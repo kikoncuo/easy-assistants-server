@@ -24,7 +24,7 @@ interface DataRecoveryState extends BaseState {
   queryAttempts: number; // New property to track query generation attempts
 }
 
-async function getModels(company_name: string): Promise<string[]> {
+/*async function getModels(company_name: string): Promise<string[]> {
   return await getModelsData(company_name);
 }
 
@@ -34,7 +34,7 @@ function filterModels(models: string[], sources: string[]): string[] {
     return sources.includes(model.name);
   });
   return filteredModels.map(model => JSON.stringify(model));
-}
+}*/
 
 // Node function to recover sources
 async function recoverSources(
@@ -42,9 +42,9 @@ async function recoverSources(
   company_name: string,
   functions: Function[]
 ): Promise<DataRecoveryState> {
-  const cubeModels = await getModels(company_name);
+  //const cubeModels = await getModels(company_name);
 
-  const getSources: ToolDefinition = {
+  /*const getSources: ToolDefinition = {
     type: "function",
     function: {
       name: "getSources",
@@ -129,10 +129,48 @@ async function recoverSources(
   }
 
   return updatedState;
+  */
+
+  const newDatasetQuery = {
+    database: 2,
+    type: "query",
+    query: {
+      "source-table": 38,
+      aggregation: [
+        [
+          "count",
+        ]
+      ],
+      breakout: [
+        [
+          "field",
+          283,
+          {
+            "base-type": "type/Text"
+          }
+        ]
+      ]
+    }
+  };
+
+  const datasetQuery = [
+    {
+      function_name: 'datasetQuery',
+      arguments: {
+        dataset: newDatasetQuery
+      },
+    },
+  ];
+  functions[0]('tool', datasetQuery);
+
+  return {
+    ...state,
+    finalResult: "DataSet Query for Metabase returned"
+  }
 }
 
 // Node function to create Cube query
-async function createCubeQuery(state: DataRecoveryState, company_name: string, functions: Function[]): Promise<DataRecoveryState> {
+/*async function createCubeQuery(state: DataRecoveryState, company_name: string, functions: Function[]): Promise<DataRecoveryState> {
   const getCubeQuery: ToolDefinition = {
     type: "function",
     function: {
@@ -411,7 +449,7 @@ async function handleEditCubeGraph(state: DataRecoveryState, functions: Function
     ...state,
   };
 }
-
+*/
 // DataRecoveryGraph Class
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
@@ -486,7 +524,9 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     subGraphBuilder
       .addNode('recover_sources', async state => await recoverSources(state, this.company_name, this.functions))
-      .addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions, this.company_name))
+      .addEdge(START, 'recover_sources')
+      .addEdge('recover_sources', END);
+      /*.addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions, this.company_name))
       .addNode('create_cube_query', async state => await createCubeQuery(state, this.company_name, this.functions))
       .addNode('evaluate_result', async state => await evaluateResult(state, this.functions, this.company_name))
       .addNode('return_sql_description', async state => await returnSqlDescription(state, this.functions, this.company_name))
@@ -514,7 +554,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'create_cube_query';
         }
       })
-      .addEdge('return_sql_description', END);
+      .addEdge('return_sql_description', END);*/
 
     return subGraphBuilder.compile();
   }
