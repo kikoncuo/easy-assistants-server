@@ -202,8 +202,6 @@ async function createCubeQuery(state: DataRecoveryState, company_name: string, f
 
   const message = await model.invoke(messageContent);
 
-  // Logger.log('messageContent',messageContent)
-
   const args = message.lc_kwargs.tool_calls[0].args;
 
   const cubeQuery = args.cubeQuery;
