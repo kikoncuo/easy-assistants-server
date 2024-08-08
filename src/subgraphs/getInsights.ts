@@ -129,17 +129,6 @@ async function generateExploratoryQuery(state: InsightState, company_name: strin
                       enum: ["asc", "desc"]
                   }
                 },
-                // order: {
-                //   type: "array",
-                //   items: {
-                //     type: "object",
-                //     properties: {
-                //       member: { type: "string" },
-                //       direction: { type: "string", enum: ["asc", "desc"] }
-                //     },
-                //     required: ["member", "direction"]
-                //   }
-                // },
                 timeDimensions: {
                   type: "array",
                   items: {
