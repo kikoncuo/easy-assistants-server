@@ -32,7 +32,7 @@ let ws: WebSocket | null = null;
 
 export function connectToServer(): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    ws = new WebSocket('ws://localhost:8080');
+    ws = new WebSocket('ws://localhost:8090');
 
     ws.on('open', () => {
       Logger.log('Connected to server');

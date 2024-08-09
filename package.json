@@ -25,6 +25,7 @@
     "@supabase/supabase-js": "^2.43.5",
     "@types/pg": "^8.11.6",
     "async_hooks": "^1.0.0",
+    "axios": "^1.7.3",
     "dotenv": "^16.4.5",
     "langchain": "^0.2.7",
     "pdf-parse": "^1.1.1",

@@ -57,7 +57,7 @@ bun run build
 bun start
 ```
 
-This will start the WebSocket server on port 8080.
+This will start the WebSocket server on port 8090.
 
 ## Usage
 

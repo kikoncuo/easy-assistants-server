@@ -70,7 +70,7 @@ if (!isProd) {
   Logger.log('Development mode');
 }
 
-const port = isProd ? 443 : 8080;
+const port = isProd ? 443 : 8090;
 
 const server = http.createServer();
 const wss = new WebSocketServer({ server });

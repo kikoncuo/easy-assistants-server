@@ -10,11 +10,11 @@ let ws: WebSocket | null = null;
 const thread_id = Math.floor(Math.random() * 1000);
 
 function connectToServer() {
-  ws = new WebSocket('ws://localhost:8080');
+  ws = new WebSocket('ws://localhost:8090');
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: ["omni_test"] }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [2] }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 
