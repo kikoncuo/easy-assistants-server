@@ -26,7 +26,7 @@ import {
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { DataRecoveryGraph } from '../subgraphs/getData';
+import { DataRecoveryGraph } from '../subgraphs/getDataMetabase';
 import { ViewCreationGraph } from '../subgraphs/createView';
 import { InsightGraph } from '../subgraphs/getInsights';
 
@@ -104,8 +104,8 @@ export class GraphApplication {
     const subgraphs = {
       dataAgent: {
         agentSubGraph: new DataRecoveryGraph(
-          clientData[0],
-          [clientAgentFunction],
+          //clientData[0],
+          //[clientAgentFunction],
         ),
       },
       createView: {
