@@ -135,7 +135,7 @@ export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a
       return { result: result, agentName: ""};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { result: 'Error in agent execution, please try again or contact support.' };
+      return { result: 'Error in agent execution, please try again or contact support.' + error, agentName: ""};
     }
   }
   return agentNode;
@@ -161,7 +161,7 @@ export function getDirectResponseNode(outputHandler: Function) {
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) { 
   async function solve(state: TaskState): Promise<Partial<TaskState>> {
 
-      const finalResult = await solverModel.invoke(['human', 'Rewrite this in a concise manner:' + state.result]);
+      const finalResult = await solverModel.invoke(['human', 'My user is seeing this content, give a super concise summary or relevant comment on it:' + state.result]);
       outputHandler('result', finalResult.content);
       Logger.log('Final response:', finalResult.content)
       
