@@ -90,6 +90,73 @@ export const getSQLQuery = async (projectName: string, query: any): Promise<stri
   }
 };
 
+/**
+ * 
+ * @param dbId 
+ * @returns Structure like: 
+ {
+  "tableName": {
+    "id": "1",
+    "fields": {
+      "field1": "101",
+      "field2": "102"
+    }
+  },
+  "products": {
+    "id": "2",
+    "fields": {
+      "id": "201",
+      "name": "202"
+    }
+  }
+}
+ */
+export const getDatabaseIds = async (dbId: number): Promise<any> => {
+  const client = new Client({
+    connectionString: process.env.PG_CONNECTION_STRING,
+  });
+
+  try {
+    await client.connect();
+
+    // Obtener tablas
+    const tableRes = await client.query(`
+      SELECT id, name FROM metabase_table WHERE db_id = ${dbId};
+    `);
+
+    const schema: { [tableName: string]: any } = {};
+
+    for (const table of tableRes.rows) {
+      const tableId = table.id;
+      const tableName = table.name;
+
+      // Obtener campos de la tabla actual
+      const fieldRes = await client.query(`
+        SELECT id, name FROM metabase_field WHERE table_id = ${tableId};
+      `);
+
+      const fields: { [fieldName: string]: string } = {};
+      fieldRes.rows.forEach((field) => {
+        fields[field.name] = field.id;
+      });
+
+      // Agregar tabla y sus campos al esquema
+      schema[tableName] = {
+        id: tableId,
+        fields: fields,
+      };
+    }
+
+    return schema;
+
+  } catch (error) {
+    console.warn(`Error executing query to get database schema: ${error}`);
+    throw error;
+  } finally {
+    await client.end();
+  }
+};
+
 const viewPrefix = 'view_';
 
 interface Column {

@@ -23,7 +23,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
 # Expose the port the app runs on
-EXPOSE 8080
+EXPOSE 8090
 
 # Command to run the application
 CMD ["bun", "src/server.ts"]

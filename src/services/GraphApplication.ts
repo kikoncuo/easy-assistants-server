@@ -44,7 +44,7 @@ export class GraphApplication {
     const llama8bGroq = groqChatSmallLlama();
     const sonnet = anthropicSonnet();
     const opus = anthropicOpus();
-    // If clientData is smaller than 3 elements, throw an error
+    // If clientData is smaller than 1 elements, throw an error. [0] is the DatabaseId
     if (clientData.length < 1) {
       throw new Error(
         `When creating your GraphApplication you must provide at least 1 field for clientData, [0] must be the Cube's company name`,
@@ -104,16 +104,16 @@ export class GraphApplication {
     const subgraphs = {
       dataAgent: {
         agentSubGraph: new DataRecoveryGraph(
-          clientData[0],
+          +clientData[0] , //Database ID
           [clientAgentFunction],
         ),
       },
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
       },
-      getInsights: {
+      /*getInsights: {
         agentSubGraph: new InsightGraph(clientData[0], [clientAgentFunction]),
-      },
+      },*/
     };
 
     this.graphManager = new GraphManager(createPlanner(fasterModel), agents, subgraphs, fasterModel, outputHandler);
