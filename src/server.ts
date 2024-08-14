@@ -23,6 +23,9 @@ const {
   ANTHROPIC_API_KEY,
   MEMORY_STORAGE_SUPABASE_URL,
   MEMORY_STORAGE_SUPABASE_KEY,
+  METABASE_URL,
+  METABASE_USERNAME,
+  METABASE_PASSWORD,
   CUBE_API_SERVER_URL,
 } = process.env;
 
@@ -40,9 +43,21 @@ if (!ANTHROPIC_API_KEY) {
   missingApiKeys.push('ANTHROPIC_API_KEY');
 }
 
-if (missingApiKeys.length === 3) {
+if (!METABASE_URL) {
+  missingApiKeys.push('METABASE_URL');
+}
+
+if (!METABASE_USERNAME) {
+  missingApiKeys.push('METABASE_USERNAME');
+}
+
+if (!METABASE_PASSWORD) {
+  missingApiKeys.push('METABASE_PASSWORD');
+}
+
+if (missingApiKeys.length === 6) {
   throw new Error(
-    'All API keys (OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY) are missing. Please provide at least one API key.',
+    'All API keys (OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, METABASE_URL, METABASE_USERNAME, METABASE_PASSWORD) are missing. Please provide at least one API key.',
   );
 } else if (missingApiKeys.length > 0) {
   Logger.warn(`Warning: The following API keys are missing: ${missingApiKeys.join(', ')}`);

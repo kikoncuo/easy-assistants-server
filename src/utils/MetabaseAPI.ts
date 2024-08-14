@@ -1,9 +1,11 @@
 import axios from 'axios';
 import Logger from '../utils/Logger';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const METABASE_URL = 'http://localhost:3000/api';  // Replace with your Metabase instance URL
-const METABASE_USERNAME = 'test@omniloy.com';  // Replace with your Metabase username
-const METABASE_PASSWORD = 'testomniloy2024';  // Replace with your Metabase password
+const METABASE_URL = process.env.METABASE_URL;  
+const METABASE_USERNAME = process.env.METABASE_USERNAME;  
+const METABASE_PASSWORD = process.env.METABASE_PASSWORD;  
 
 /**
  * Authenticate with Metabase and return a session token.
