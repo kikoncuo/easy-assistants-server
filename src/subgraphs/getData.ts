@@ -382,7 +382,7 @@ async function createMetabaseCard(
   
     Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
   
-    ${state.feedbackMessage ? `Previous attempt resulted in an error: ${state.feedbackMessage}\n Please adjust the query to avoid this error` : ''}
+    ${state.feedbackMessage ? `Previous attempt has generated the following query ${state.metabaseQuery}, and resulted in an error: ${state.feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
 
            
     Here are some examples of a natural language query and its corresponding JSON representation:
@@ -976,7 +976,8 @@ async function createMetabaseCard(
     return {
       ...state,
       queryAttempts,
-      feedbackMessage: JSON.parse(cardIdResponse.error).message
+      feedbackMessage: JSON.parse(cardIdResponse.error).message,
+      metabaseQuery: JSON.stringify(metabaseQuery)
     };
   } else {
     return {
