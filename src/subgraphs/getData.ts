@@ -1065,8 +1065,8 @@ async function getReasoning(state: DataRecoveryState, functions: Function[]): Pr
       This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
       due the following database schema: ${state.schema} 
       
-      The results of execution of the card are: ${state.queryResult}
-      
+      The first 20 results of execution of the card are: ${JSON.stringify(state.queryResult.slice(0, 20))} 
+
       Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used.`),
   ]);
 
