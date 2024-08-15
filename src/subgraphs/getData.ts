@@ -1,5 +1,5 @@
 import { AbstractGraph, BaseState } from './baseGraph';
-import { createStructuredResponseAgent, anthropicSonnet } from '../models/Models';
+import { createStructuredResponseAgent, anthropicSonnet, getFasterModel } from '../models/Models';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
@@ -8,7 +8,7 @@ import { authenticate, createCard, deleteCard, executeQuery, getSchema } from '.
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
-  relevantSources: string[];
+  metabaseQuery: any;
   feedbackMessage: string | null;
   finalResult: string;
   queryAttempts: number;
@@ -928,27 +928,17 @@ async function createMetabaseCard(
       ...state,
       queryAttempts,
       cardId: cardIdResponse,
+      metabaseQuery: JSON.stringify(metabaseQuery)
     };
   }
 
   
 }
 
-
-async function executeMetabaseQuery(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
+async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecoveryState> {
   let cardId = state.cardId;
   const queryResult = await executeQuery(state.sessionToken, state.cardId);
-  if (!("error" in queryResult)) {
-    const getDatasetQuery = [
-      {
-        function_name: 'getDatasetQuery',
-        arguments: {
-          cardId: state.cardId,
-        }
-      },
-    ];
-    functions[0]('tool', getDatasetQuery);
-  } else {
+  if (("error" in queryResult)) {
     Logger.log("Error executing query. Deleting card...")
     await deleteCard(state.sessionToken, state.cardId);
     cardId = 0;
@@ -962,6 +952,91 @@ async function executeMetabaseQuery(state: DataRecoveryState, functions: Functio
     finalResult: JSON.stringify(queryResult, null, 2),
   };
 }
+
+async function getReasoning(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
+  const getReasoning: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "getReasoning",
+      description: "Explains the reasoning behind how the card was created",
+      parameters: {
+        type: "object",
+        properties: {
+          reasoning: {
+            type: "string",
+            description: "Reasoning behind how the card was created"
+          },
+          sources: {
+            type: "object",
+            description: "An object containing the tables and fields used to create the card",
+            properties: {
+              tables: {
+                type: "array",
+                description: "Array of objects representing tables and their corresponding fields",
+                items: {
+                  type: "object",
+                  properties: {
+                    tableName: {
+                      type: "string",
+                      description: "Name of the table"
+                    },
+                    fields: {
+                      type: "array",
+                      description: "Fields used in this table",
+                      items: {
+                        type: "string",
+                        description: "Name of the field"
+                      }
+                    }
+                  },
+                  required: ["tableName", "fields"]
+                }
+              }
+            },
+            required: ["tables"]
+          }
+        },
+        required: ["reasoning", "sources"]
+      }
+    }
+  };
+
+  const model = createStructuredResponseAgent(getFasterModel(), [getReasoning]); 
+
+  const message = await model.invoke([
+    new HumanMessage(`You were asked to perform this task: ${state.task}
+
+      This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
+      due the following database schema: ${state.schema} 
+      
+      The results of execution of the card are: ${state.queryResult}
+      
+      Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used.`),
+  ]);
+
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const reasoning = args.reasoning;
+  const sources = args.sources;
+
+  const getDatasetQuery = [
+    {
+      function_name: 'getDatasetQuery',
+      arguments: {
+        cardId: state.cardId,
+        reasoning,
+        sources
+      }
+    },
+  ];
+  functions[0]('tool', getDatasetQuery);
+ 
+  return {
+    ...state
+  };
+}
+
+
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
   private database: number;
@@ -972,9 +1047,9 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      relevantSources: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
+      metabaseQuery: {
+        value: (x: any, y?: any) => (y ? y : x),
+        default: () => null,
       },
       feedbackMessage: {
         value: (x: string | null, y?: string | null) => (y ? y : x),
@@ -1016,7 +1091,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     subGraphBuilder
       .addNode('fetch_schema', async state => await fetchSchema(state, this.database))
       .addNode('create_card', async (state) => await createMetabaseCard(state, this.database))
-      .addNode('execute_query', async state => await executeMetabaseQuery(state, this.functions))
+      .addNode('execute_query', async state => await executeMetabaseQuery(state))
+      .addNode('getReasoning', async state => await getReasoning(state, this.functions))
       .addEdge(START, 'fetch_schema')
       .addEdge('fetch_schema', 'create_card')
       .addConditionalEdges('create_card', (state) => {
@@ -1032,11 +1108,12 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         if (state.queryAttempts > 3) {
           return END;
         } else if (state.queryResult && !("error" in state.queryResult)) {
-          return END;
+          return 'getReasoning';
         } else {
           return 'create_card';
         }
       })
+      .addEdge('getReasoning', END)
     return subGraphBuilder.compile();
   }
 }
