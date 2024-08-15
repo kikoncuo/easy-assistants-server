@@ -97,6 +97,7 @@ export async function executeQuery(sessionToken: string, cardId: number): Promis
       }
     );
 
+    Logger.log(`Response data for card ${cardId}`, response.data);
     return response.data; 
 
   } catch (error: any) {
@@ -116,7 +117,7 @@ export async function executeQuery(sessionToken: string, cardId: number): Promis
  */
 export async function deleteCard(sessionToken: string, cardId: number): Promise<string | { error: string; status: number }> {
   try {
-    const response = await axios.delete(`${METABASE_URL}/card/${cardId}`, {
+    await axios.delete(`${METABASE_URL}/card/${cardId}`, {
       headers: {
         'X-Metabase-Session': sessionToken,
         'Content-Type': 'application/json',
@@ -133,6 +134,34 @@ export async function deleteCard(sessionToken: string, cardId: number): Promise<
     } else {
       return { error: 'An unexpected error occurred', status: 500 };
     }
+  }
+}
+
+/**
+ * Fetch details of a field
+ * @param sessionToken The session token obtained from authentication.
+ * @param fieldId The ID of the field.
+ */
+export async function fetchFieldDetails(sessionToken: string, fieldId: number): Promise<any> {
+  try {
+    const fieldDetailsResponse = await axios.get(`${METABASE_URL}/field/${fieldId}`, {
+      headers: {
+        'X-Metabase-Session': sessionToken,
+      },
+    });
+    const fieldValuesResponse = await axios.get(`${METABASE_URL}/field/${fieldId}/values`, {
+      headers: {
+        'X-Metabase-Session': sessionToken,
+      },
+    });
+    
+    return {
+      details: fieldDetailsResponse.data.fingerprint ? JSON.stringify(fieldDetailsResponse.data.fingerprint ) : null,
+      values: fieldValuesResponse.data.values
+    };
+  } catch (error: any) {
+    Logger.error('Error fetching field details:', error);
+    return null;
   }
 }
 

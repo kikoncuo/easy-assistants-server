@@ -4,7 +4,7 @@ import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@lan
 import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
 import { ToolDefinition } from '@langchain/core/language_models/base';
-import { authenticate, createCard, deleteCard, executeQuery, getSchema } from '../utils/MetabaseAPI';
+import { authenticate, createCard, deleteCard, executeQuery, fetchFieldDetails, getSchema } from '../utils/MetabaseAPI';
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
@@ -16,6 +16,7 @@ interface DataRecoveryState extends BaseState {
   schema: any[];
   cardId: number;
   queryResult: any;
+  fieldDetails: Record<number, any>; 
 }
 
 async function fetchSchema(state: DataRecoveryState, database: number): Promise<DataRecoveryState> {
@@ -25,6 +26,57 @@ async function fetchSchema(state: DataRecoveryState, database: number): Promise<
     ...state,
     sessionToken,
     schema,
+  };
+}
+
+async function evaluateFieldRequirements(state: DataRecoveryState): Promise<DataRecoveryState> {
+  const identifyFields: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "identifyFields",
+      description: "Identify fields in the schema that require additional details for the query.",
+      parameters: {
+        type: "object",
+        properties: {
+          fieldIds: {
+            type: "array",
+            description: "An array of IDs of the fields that require additional details.",
+            items: {
+              type: "integer",
+              description: "The ID of a field."
+            }
+          },
+        },
+        required: ["fieldIds"]
+      }
+    }
+  };
+
+  const model = createStructuredResponseAgent(getFasterModel(), [identifyFields]);
+
+  const message = await model.invoke([
+    new HumanMessage(`Given the task: "${state.task}", identify which fields in the schema might need additional information such as distinct values or fingerprints to successfully complete the query. The schema is as follows: ${JSON.stringify(state.schema, null, 2)}`)
+  ]);
+  const requiredFieldIds: number[] = message.lc_kwargs.tool_calls[0].args.fieldIds;
+
+  const fieldDetails: Record<number, any> = {};
+
+  for (const fieldId of requiredFieldIds) {
+    const details = await fetchFieldDetails(state.sessionToken, fieldId);
+    if (details) {
+      const limitedValues = details.values.slice(0, 20);
+      if (limitedValues) {
+        fieldDetails[fieldId] = {
+          ...details,
+          values: limitedValues,
+        };
+      }
+    }
+  }
+
+  return {
+    ...state,
+    fieldDetails,
   };
 }
 
@@ -324,10 +376,13 @@ async function createMetabaseCard(
   
     The schema of the database is:
     ${JSON.stringify(state.schema, null, 2)}
+
+    Here are some value examples for some of the fields of the schema:
+    ${state.fieldDetails}
   
     Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
   
-    ${state.feedbackMessage ? `Previous attempt resulted in an error: ${state.feedbackMessage}\n Please adjust the query to avoid this error` : ''}
+    ${state.feedbackMessage ? `Previous attempt has generated the following query ${state.metabaseQuery}, and resulted in an error: ${state.feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
 
            
     Here are some examples of a natural language query and its corresponding JSON representation:
@@ -921,7 +976,8 @@ async function createMetabaseCard(
     return {
       ...state,
       queryAttempts,
-      feedbackMessage: JSON.parse(cardIdResponse.error).message
+      feedbackMessage: JSON.parse(cardIdResponse.error).message,
+      metabaseQuery: JSON.stringify(metabaseQuery)
     };
   } else {
     return {
@@ -1079,6 +1135,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: any, y?: any) => (y ? y : x),
         default: () => null,
       },
+      fieldDetails: {   // Añadir esta línea para incluir el nuevo estado
+        value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
+        default: () => ({}),
+      },
     };
     super(graphState);
     this.functions = functions;
@@ -1090,11 +1150,13 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     subGraphBuilder
       .addNode('fetch_schema', async state => await fetchSchema(state, this.database))
+      .addNode('evaluate_fields', async state => await evaluateFieldRequirements(state)) 
       .addNode('create_card', async (state) => await createMetabaseCard(state, this.database))
       .addNode('execute_query', async state => await executeMetabaseQuery(state))
       .addNode('getReasoning', async state => await getReasoning(state, this.functions))
       .addEdge(START, 'fetch_schema')
-      .addEdge('fetch_schema', 'create_card')
+      .addEdge('fetch_schema', 'evaluate_fields') 
+      .addEdge('evaluate_fields', 'create_card')
       .addConditionalEdges('create_card', (state) => {
         if (state.queryAttempts > 3) {
           return END;
