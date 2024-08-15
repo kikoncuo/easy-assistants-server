@@ -381,8 +381,6 @@ async function createMetabaseCard(
     ${state.fieldDetails}
   
     Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
-
-    Avoid using fields that only show IDs. A human will be reading this information, so find fields that they can use to identify what the IDs represent.
   
     ${state.feedbackMessage ? `Previous attempt has generated the following query ${state.metabaseQuery}, and resulted in an error: ${state.feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
 
@@ -1067,8 +1065,8 @@ async function getReasoning(state: DataRecoveryState, functions: Function[]): Pr
       This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
       due the following database schema: ${state.schema} 
       
-      The first 20 results of execution of the card are: ${JSON.stringify(state.queryResult.slice(0, 20))} 
-
+      The results of execution of the card are: ${state.queryResult}
+      
       Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used.`),
   ]);
 
