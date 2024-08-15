@@ -381,6 +381,8 @@ async function createMetabaseCard(
     ${state.fieldDetails}
   
     Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
+
+    Avoid using fields that only show IDs. A human will be reading this information, so find fields that they can use to identify what the IDs represent.
   
     ${state.feedbackMessage ? `Previous attempt has generated the following query ${state.metabaseQuery}, and resulted in an error: ${state.feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
 
