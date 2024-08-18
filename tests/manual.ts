@@ -14,7 +14,7 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: [2] }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [9] }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 
