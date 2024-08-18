@@ -113,7 +113,7 @@ async function createMetabaseCard(
                 },
                 unit: { type: ["string", "null"] },
                 name: { type: "string" },
-                field_ref: { type: ["array", "null"], items: { type: ["string", "integer"] } },
+                field_ref: { type: ["array", "null"]},
                 id: { type: ["integer", "null"], minimum: 1 },
                 display_name: { type: "string" },
                 fingerprint: {
@@ -189,7 +189,7 @@ async function createMetabaseCard(
             properties: {
               database: { type: "integer", description: "The ID of the database to query." },
               type: { type: "string", enum: ["query"], description: "The type of the query." },
-              query: { type: "object", description: "The query structure, including filters, aggregations, etc." }
+              query: { type: "object", description: "The query structure, including filters, aggregations, etc. Remember to use the CubeJoinField fields that all tables have to as source tables and identify the fields by their IDs" }
             },
             required: ["database", "type", "query"]
           },
@@ -364,7 +364,7 @@ async function createMetabaseCard(
     return {
       ...state,
       queryAttempts, 
-      finalResult: "Unable to generate a suitable query after 3 attempts."
+      finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage
     }
   }
 
@@ -372,484 +372,82 @@ async function createMetabaseCard(
     new HumanMessage(`You are tasked with generating a Metabase query based on the following natural language task: 
     "${state.task}"
 
-    The query must be interpretable by a business analyst, you should avoid using IDs and you should strive to make them easy to interpret and good looking.
+    The query must be interpretable by a business analyst, you should strive to make them easy to interpret and good looking.
   
     The schema of the database is:
     ${JSON.stringify(state.schema, null, 2)}
+    You can only use the tables and fields that are provided in the schema.
 
     Here are some value examples for some of the fields of the schema:
     ${state.fieldDetails}
   
     Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
+    When applying filters, try to apply is not empty filters and prioritize contains filters over equals filters.
   
     ${state.feedbackMessage ? `Previous attempt has generated the following query ${state.metabaseQuery}, and resulted in an error: ${state.feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
 
+    Try to leverage the "CubeJoinField" fields that all tables have to as source tables 
            
-    Here are some examples of a natural language query and its corresponding JSON representation:
+    Here are some examples of a natural language query and its corresponding JSON representation (which used other tables you may not be able to use):
   
     **Example 1:**
 
     **Natural Language Query:**
-    "Show me the cumulative revenue and the number of orders placed each month for the last 24 months. The revenue should be plotted as a line graph, and the number of orders should be plotted on the same graph with a different color."
-  
-    **JSON Representation:**
-    {
-      "description": "Matches the cumulative revenue month over month with the number of orders placed each month",
-      "collection_position": 1,
-      "result_metadata": [
-        {
-          "description": "The date and time an order was submitted.",
-          "semantic_type": "type/CreationTimestamp",
-          "unit": "month",
-          "name": "CREATED_AT",
-          "field_ref": [
-            "field",
-            41,
-            {
-              "base-type": "type/DateTime",
-              "temporal-unit": "month"
-            }
-          ],
-          "effective_type": "type/DateTime",
-          "id": 41,
-          "display_name": "Created At",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 10001,
-              "nil%": 0
-            },
-            "type": {
-              "type/DateTime": {
-                "earliest": "2022-04-30T18:56:13.352Z",
-                "latest": "2026-04-19T14:07:15.657Z"
-              }
-            }
-          },
-          "base_type": "type/DateTime"
-        },
-        {
-          "display_name": "Sum of Total",
-          "field_ref": [
-            "aggregation",
-            0
-          ],
-          "base_type": "type/Float",
-          "effective_type": "type/Float",
-          "name": "sum",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 24,
-              "nil%": 0
-            },
-            "type": {
-              "type/Number": {
-                "min": 4960.6397462410805,
-                "q1": 11169.135645794311,
-                "q3": 35724.252952714145,
-                "max": 45506.820164951256,
-                "sd": 13137.991436252625,
-                "avg": 21649.1095952852
-              }
-            }
-          }
-        },
-        {
-          "display_name": "Sum of Quantity",
-          "semantic_type": "type/Quantity",
-          "field_ref": [
-            "aggregation",
-            1
-          ],
-          "base_type": "type/BigInteger",
-          "effective_type": "type/BigInteger",
-          "name": "sum_2",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 24,
-              "nil%": 0
-            },
-            "type": {
-              "type/Number": {
-                "min": 292,
-                "q1": 491,
-                "q3": 1743,
-                "max": 2803,
-                "sd": 791.9851216853853,
-                "avg": 1170.4583333333333
-              }
-            }
-          }
-        }
-      ],
-      "collection_id": 2,
-      "name": "Revenue and orders over time",
-      "type": "question",
-      "dataset_query": {
-        "database": ${database},
-        "type": "query",
-        "query": {
-          "aggregation": [
-            [
-              "sum",
-              [
-                "field",
-                42,
-                {
-                  "base-type": "type/Float"
-                }
-              ]
-            ],
-            [
-              "sum",
-              [
-                "field",
-                39,
-                {
-                  "base-type": "type/Integer"
-                }
-              ]
-            ]
-          ],
-          "breakout": [
-            [
-              "field",
-              41,
-              {
-                "base-type": "type/DateTime",
-                "temporal-unit": "month"
-              }
-            ]
-          ],
-          "source-table": 5,
-          "filter": [
-            "time-interval",
-            [
-              "field",
-              41,
-              {
-                "base-type": "type/DateTime"
-              }
-            ],
-            -24,
-            "month"
-          ]
-        }
-      },
-      "display": "combo",
-      "visualization_settings": {
-        "graph.dimensions": [
-          "CREATED_AT"
-        ],
-        "graph.show_trendline": false,
-        "graph.x_axis.title_text": "Orders date",
-        "graph.y_axis.title_text": "Revenue",
-        "series_settings": {
-          "sum": {
-            "display": "line",
-            "line.interpolate": "linear",
-            "line.marker_enabled": false,
-            "show_series_values": true,
-            "title": "Revenue"
-          },
-          "sum_2": {
-            "color": "#51528D",
-            "title": "Number of orders"
-          }
-        },
-        "graph.metrics": [
-          "sum",
-          "sum_2"
-        ]
-      },
-      "parameters": []
-    }
-    
-    **Example 2:**
+    Show me a bar chart of the top 20 items by number of orders for the last month.
 
-    **Natural Language Query:**
-    "Show me the most successful products, excluding the 'Incredible Aluminum Knife', and order them by the number of orders placed, from highest to lowest, make units a suffix and set a goal line of 150 units."
-    
     **JSON Representation:**
     {
-      "description": "An ordered list of our most successful products",
-      "collection_position": 1,
-      "result_metadata": [
-        {
-          "description": "The name of the product as it should be displayed to customers.",
-          "semantic_type": "type/Title",
-          "name": "TITLE",
-          "field_ref": [
+    "name": "Top 20 Items by Orders (Last Month)",
+    "display": "bar",
+    "dataset_query": {
+      "database": ${database},
+      "type": "query",
+      "query": {
+        "filter": [
+          "not-empty",
+          [
             "field",
-            65,
+            "Product - CubeJoinField__itemName",
             {
-              "base-type": "type/Text",
-              "source-field": 40
+              "base-type": "type/Text"
             }
-          ],
-          "effective_type": "type/Text",
-          "id": 65,
-          "display_name": "Product → Title",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 199,
-              "nil%": 0
-            },
-            "type": {
-              "type/Text": {
-                "percent-json": 0,
-                "percent-url": 0,
-                "percent-email": 0,
-                "percent-state": 0,
-                "average-length": 21.495
-              }
-            }
-          },
-          "base_type": "type/Text"
-        },
-        {
-          "description": "The type of product, valid values include: Doohicky, Gadget, Gizmo and Widget",
-          "semantic_type": "type/Category",
-          "name": "CATEGORY",
-          "field_ref": [
-            "field",
-            58,
+          ]
+        ],
+        "source-query": {
+          "source-table": 136,
+          "joins": [
             {
-              "base-type": "type/Text",
-              "source-field": 40
-            }
-          ],
-          "effective_type": "type/Text",
-          "id": 58,
-          "display_name": "Product → Category",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 4,
-              "nil%": 0
-            },
-            "type": {
-              "type/Text": {
-                "percent-json": 0,
-                "percent-url": 0,
-                "percent-email": 0,
-                "percent-state": 0,
-                "average-length": 6.375
-              }
-            }
-          },
-          "base_type": "type/Text"
-        },
-        {
-          "display_name": "Count",
-          "semantic_type": "type/Quantity",
-          "field_ref": [
-            "field",
-            "count",
-            {
-              "base-type": "type/Integer"
-            }
-          ],
-          "name": "count",
-          "base_type": "type/BigInteger",
-          "effective_type": "type/BigInteger",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 8,
-              "nil%": 0
-            },
-            "type": {
-              "type/Number": {
-                "min": 109,
-                "q1": 109.36150801752578,
-                "q3": 117.41886116991581,
-                "max": 120,
-                "sd": 4.254710813035841,
-                "avg": 113.53846153846153
-              }
-            }
-          }
-        }
-      ],
-      "collection_id": 2,
-      "name": "Best selling products",
-      "type": "question",
-      "dataset_query": {
-        "database":  ${database},
-        "type": "query",
-        "query": {
-          "filter": [
-            ">",
-            [
-              "field",
-              "count",
-              {
-                "base-type": "type/Integer"
-              }
-            ],
-            108
-          ],
-          "source-query": {
-            "aggregation": [
-              [
-                "count"
-              ]
-            ],
-            "breakout": [
-              [
-                "field",
-                65,
-                {
-                  "base-type": "type/Text",
-                  "source-field": 40
-                }
-              ],
-              [
-                "field",
-                58,
-                {
-                  "base-type": "type/Text",
-                  "source-field": 40
-                }
-              ]
-            ],
-            "order-by": [
-              [
-                "desc",
+              "strategy": "left-join",
+              "alias": "Product - CubeJoinField",
+              "condition": [
+                "=",
                 [
-                  "aggregation",
-                  0
+                  "field",
+                  1937,
+                  {
+                    "base-type": "type/Text"
+                  }
+                ],
+                [
+                  "field",
+                  1973,
+                  {
+                    "base-type": "type/Text",
+                    "join-alias": "Product - CubeJoinField"
+                  }
                 ]
-              ]
-            ],
-            "source-table": 5,
-            "filter": [
-              "!=",
-              [
-                "field",
-                65,
-                {
-                  "base-type": "type/Text",
-                  "source-field": 40
-                }
               ],
-              "Incredible Aluminum Knife"
-            ]
-          }
-        }
-      },
-      "display": "row",
-      "visualization_settings": {
-        "graph.show_goal": true,
-        "graph.y_axis.title_text": "total orders",
-        "graph.show_values": true,
-        "table.pivot": false,
-        "graph.x_axis.title_text": "Products",
-        "graph.goal_value": 150,
-        "graph.metrics": [
-          "count"
-        ],
-        "graph.label_value_formatting": "compact",
-        "column_settings": {
-          "[\"name\",\"count\"]": {
-            "suffix": "  units"
-          }
-        },
-        "series_settings": {
-          "count": {
-            "color": "#999AC4"
-          }
-        },
-        "graph.dimensions": [
-          "TITLE"
-        ],
-        "stackable.stack_type": null
-      },
-      "parameters": []
-    }
-    
-    **Example 3:**
-
-    **Natural Language Query:**
-    "Show me the the total orders placed each quarter, broken down by the source of the order. The table should highlight the best and worst quarters."
-  
-    **JSON Representation:**
-    {
-      "description": "Orders placed per quarter broken down by source and formatted to highlight best and worst quarters",
-      "collection_position": 1,
-      "result_metadata": [
-        {
-          "description": "The channel through which we acquired this user. Valid values include: Affiliate, Facebook, Google, Organic and Twitter",
-          "semantic_type": null,
-          "name": "SOURCE",
-          "field_ref": [
-            "expression",
-            "pivot-grouping"
-          ],
-          "effective_type": "type/Text",
-          "id": 45,
-          "display_name": "pivot-grouping",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 1,
-              "nil%": 0
-            },
-            "type": {
-              "type/Number": {
-                "min": 3,
-                "q1": 3,
-                "q3": 3,
-                "max": 3,
-                "sd": null,
-                "avg": 3
-              }
+              "source-table": 139
             }
-          },
-          "base_type": "type/Integer"
-        },
-        {
-          "description": "The date and time an order was submitted.",
-          "semantic_type": null,
-          "name": "CREATED_AT",
-          "field_ref": [
-            "aggregation",
-            0
           ],
-          "effective_type": "type/DateTime",
-          "id": 41,
-          "display_name": "Sum of Subtotal",
-          "fingerprint": {
-            "global": {
-              "distinct-count": 1,
-              "nil%": 0
-            },
-            "type": {
-              "type/Number": {
-                "min": 498467.3866983962,
-                "q1": 498467.3866983962,
-                "q3": 498467.3866983962,
-                "max": 498467.3866983962,
-                "sd": null,
-                "avg": 498467.3866983962
-              }
-            }
-          },
-          "base_type": "type/Float"
-        }
-      ],
-      "collection_id": 2,
-      "name": "Orders according to sources per quarter",
-      "type": "question",
-      "dataset_query": {
-        "database":  ${database},
-        "type": "query",
-        "query": {
           "aggregation": [
             [
               "sum",
               [
                 "field",
-                44,
+                1944,
                 {
-                  "base-type": "type/Float"
+                  "base-type": "type/BigInteger"
                 }
               ]
             ]
@@ -857,129 +455,74 @@ async function createMetabaseCard(
           "breakout": [
             [
               "field",
-              45,
+              1969,
               {
                 "base-type": "type/Text",
-                "source-field": 43
-              }
-            ],
-            [
-              "field",
-              41,
-              {
-                "base-type": "type/DateTime",
-                "temporal-unit": "quarter"
+                "join-alias": "Product - CubeJoinField"
               }
             ]
           ],
-          "source-table": 5,
+          "limit": 20,
+          "order-by": [
+            [
+              "desc",
+              [
+                "aggregation",
+                0
+              ]
+            ]
+          ],
           "filter": [
             "time-interval",
             [
               "field",
-              41,
+              1940,
               {
                 "base-type": "type/DateTime"
               }
             ],
-            -24,
+            -1,
             "month"
           ]
         }
-      },
-      "display": "pivot",
-      "visualization_settings": {
-        "graph.dimensions": [
-          "CREATED_AT",
-          "SOURCE"
-        ],
-        "graph.series_labels": [
-          null
-        ],
-        "pivot_table.column_split": {
-          "columns": [
-            [
-              "field",
-              45,
-              {
-                "base-type": "type/Text",
-                "source-field": 43
-              }
-            ]
-          ],
-          "rows": [
-            [
-              "field",
-              41,
-              {
-                "base-type": "type/DateTime",
-                "temporal-unit": "quarter"
-              }
-            ]
-          ],
-          "values": [
-            [
-              "aggregation",
-              0
-            ]
-          ]
-        },
-        "pivot_table.column_widths": {
-          "leftHeaderWidths": [
-            141
-          ],
-          "totalLeftHeaderWidths": 141,
-          "valueHeaderWidths": {}
-        },
-        "stackable.stack_type": "stacked",
-        "table.column_formatting": [
-          {
-            "max_value": 100,
-            "color": "#509EE3",
-            "columns": [
-              "sum"
-            ],
-            "value": "",
-            "type": "range",
-            "colors": [
-              "#ED6E6E",
-              "#FFFFFF",
-              "#84BB4C"
-            ],
-            "highlight_row": false,
-            "min_value": 0,
-            "min_type": null,
-            "id": 0,
-            "operator": "=",
-            "max_type": null
-          }
-        ],
-        "graph.metrics": [
-          "sum"
-        ]
-      },
-      "parameters": []
+      }
+    },
+    "visualization_settings": {
+      "graph.show_values": true,
+      "graph.x_axis.title_text": "Item name",
+      "graph.y_axis.title_text": "Number of orders",
+      "graph.dimensions": [
+        "itemName"
+      ],
+      "graph.metrics": [
+        "sum"
+      ]
     }
-    
-    
+  }
     `)
   ]);
   
   const metabaseQuery = message.lc_kwargs.tool_calls[0].args;
 
   const cardIdResponse = await createCard(state.sessionToken, metabaseQuery); 
-  Logger.log('Card ID:', cardIdResponse); 
 
-
+  let feedbackMessage = '';
   if (typeof cardIdResponse === 'object' && ('error' in cardIdResponse)) {
-    Logger.error(`Failed to create card: ${JSON.parse(cardIdResponse.error).message} (Status: ${cardIdResponse.status})`); 
+    if (JSON.parse(cardIdResponse.error).message) {
+      Logger.error(`Failed to create card: ${JSON.parse(cardIdResponse.error).message} (Status: ${cardIdResponse.status})`);
+      feedbackMessage = JSON.parse(cardIdResponse.error).message;
+    } else {
+      Logger.error(`Failed to create card: ${JSON.stringify(cardIdResponse.error, null, 2)} (Status: ${cardIdResponse.status})`);
+      feedbackMessage = "unknown error, try to create the query in a different way";
+    }
     return {
       ...state,
       queryAttempts,
-      feedbackMessage: JSON.parse(cardIdResponse.error).message,
+      feedbackMessage: feedbackMessage,
       metabaseQuery: JSON.stringify(metabaseQuery)
     };
   } else {
+    Logger.log('Card ID:', cardIdResponse); 
     return {
       ...state,
       queryAttempts,
@@ -994,15 +537,21 @@ async function createMetabaseCard(
 async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecoveryState> {
   let cardId = state.cardId;
   const queryResult = await executeQuery(state.sessionToken, state.cardId);
+  let feedbackMessage = queryResult.error ?? "";
   if (("error" in queryResult)) {
     Logger.log("Error executing query. Deleting card...")
     await deleteCard(state.sessionToken, state.cardId);
     cardId = 0;
   }
 
+  if (queryResult.error && queryResult.error.includes("Can't detect Cube query")) {
+    Logger.error("We tried to execute a SQL query not supported by cubejs")
+    feedbackMessage = "The SQL created from your query is not supported by cubejs, please try to create the query in a different way";
+  }
+
   return {
     ...state,
-    feedbackMessage: queryResult.error ?? "", 
+    feedbackMessage: feedbackMessage,
     queryResult,
     cardId, 
     finalResult: JSON.stringify(queryResult, null, 2),
@@ -1059,15 +608,28 @@ async function getReasoning(state: DataRecoveryState, functions: Function[]): Pr
 
   const model = createStructuredResponseAgent(getFasterModel(), [getReasoning]); 
 
+  let resultString = '';
+
+  if (typeof state.queryResult === 'object') {
+    resultString = JSON.stringify(state.queryResult);
+  }
+
+  if (resultString.length > 5000) {
+    resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
+  }
+
+  Logger.log('Result string:', resultString);
+
   const message = await model.invoke([
     new HumanMessage(`You were asked to perform this task: ${state.task}
-
+  
       This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
       due the following database schema: ${state.schema} 
       
-      The results of execution of the card are: ${state.queryResult}
+      The results of execution of the card are: ${resultString})()
+      }
       
-      Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used.`),
+      Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used. Note that the query result has been truncated to 5000 characters if it exceeded that length.`),
   ]);
 
   const args = message.lc_kwargs.tool_calls[0].args;
@@ -1088,7 +650,8 @@ async function getReasoning(state: DataRecoveryState, functions: Function[]): Pr
   functions[0]('tool', getDatasetQuery);
  
   return {
-    ...state
+    ...state,
+    finalResult: resultString // we reassign here the truncated result
   };
 }
 
@@ -1135,7 +698,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: any, y?: any) => (y ? y : x),
         default: () => null,
       },
-      fieldDetails: {   // Añadir esta línea para incluir el nuevo estado
+      fieldDetails: {  
         value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
         default: () => ({}),
       },
@@ -1149,15 +712,15 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('fetch_schema', async state => await fetchSchema(state, this.database))
-      .addNode('evaluate_fields', async state => await evaluateFieldRequirements(state)) 
-      .addNode('create_card', async (state) => await createMetabaseCard(state, this.database))
-      .addNode('execute_query', async state => await executeMetabaseQuery(state))
-      .addNode('getReasoning', async state => await getReasoning(state, this.functions))
+      .addNode('fetch_schema', async (state: DataRecoveryState) => await fetchSchema(state, this.database))
+      .addNode('evaluate_fields', async (state: DataRecoveryState) => await evaluateFieldRequirements(state)) 
+      .addNode('create_card', async (state: DataRecoveryState) => await createMetabaseCard(state, this.database))
+      .addNode('execute_query', async (state: DataRecoveryState) => await executeMetabaseQuery(state))
+      .addNode('getReasoning', async (state: DataRecoveryState) => await getReasoning(state, this.functions))
       .addEdge(START, 'fetch_schema')
       .addEdge('fetch_schema', 'evaluate_fields') 
       .addEdge('evaluate_fields', 'create_card')
-      .addConditionalEdges('create_card', (state) => {
+      .addConditionalEdges('create_card', (state: { queryAttempts: number; cardId: any; }) => {
         if (state.queryAttempts > 3) {
           return END;
         } else if (!state.cardId) {
@@ -1166,7 +729,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'execute_query';
         }
       })
-      .addConditionalEdges('execute_query', (state) => {
+      .addConditionalEdges('execute_query', (state: { queryAttempts: number; queryResult: any; }) => {
         if (state.queryAttempts > 3) {
           return END;
         } else if (state.queryResult && !("error" in state.queryResult)) {
