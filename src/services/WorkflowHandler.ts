@@ -160,8 +160,8 @@ export function getDirectResponseNode(outputHandler: Function) {
 
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) { 
   async function solve(state: TaskState): Promise<Partial<TaskState>> {
-
-    const finalResult = await solverModel.invoke(['human', 'My user is seeing this content, give a super concise summary or relevant comment on it:' + state.result]);
+    Logger.log('Invoking solver model', state.result);
+    const finalResult = await solverModel.invoke(['human', 'My user is seeing this content, give a super concise summary or relevant comment on it which will be relevant to the user without mentioning specific tecnologies like SQL or CubeJS:' + state.result]);
     outputHandler('result', finalResult.content);
       Logger.log('Final response:', finalResult.content)
       

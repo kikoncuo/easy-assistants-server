@@ -30,10 +30,13 @@ export async function getSchema(sessionToken: string, databaseId: number): Promi
       'X-Metabase-Session': sessionToken,
     },
   });
-  const filteredTables = responseTables.data.filter((item: any) => item.db_id === databaseId)
+
+  const filteredTables = responseTables.data
+    .filter((item: any) => item.db_id === databaseId)
     .map((item: any) => ({
       display_name: item.display_name,
-      id: item.id
+      id: item.id,
+      fields: [], // Initialize the fields array
     }));
 
   const responseFields = await axios.get(`${METABASE_URL}/database/${databaseId}/fields`, {
@@ -42,11 +45,22 @@ export async function getSchema(sessionToken: string, databaseId: number): Promi
     },
   });
 
-  return {
-    tables: filteredTables,  
-    fields: responseFields.data
-  }; 
+  // Iterate over the fields and assign them to the corresponding table
+  responseFields.data.forEach((field: any) => {
+    const table = filteredTables.find((table: any) => table.display_name === field.table_name);
+
+    if (table) {
+      // Remove the schema field to save tokens
+      const { schema, ...fieldWithoutSchema } = field;
+      table.fields.push(fieldWithoutSchema);
+    }
+  });
+
+  console.log('Combined tables and fields:', filteredTables);
+
+  return filteredTables;
 }
+
 
 /**
  * Create a new card (question) in Metabase.
@@ -72,6 +86,7 @@ export async function createCard(sessionToken: string, cardData: any): Promise<n
       if (error.response.data["specific-errors"]) {
         return { error: JSON.stringify(error.response.data["specific-errors"], null, 2), status: error.response.status };
       } else if (error.response.data) {
+        Logger.error('Couldn\'t identify the error type');
         return { error: JSON.stringify(error.response.data, null, 2), status: error.response.status };
       } 
     }
@@ -96,13 +111,21 @@ export async function executeQuery(sessionToken: string, cardId: number): Promis
         },
       }
     );
-
     Logger.log(`Response data for card ${cardId}`, response.data);
+    if (response.data && 
+      response.data.via && 
+      Array.isArray(response.data.via) && 
+      response.data.via.length > 0 && 
+      response.data.via[0].error !== undefined) {
+    Logger.warn(`Error executing query: ${response.data.via[0].error}`);
+    return { error: response.data.via[0].error, status: 500 };
+    } 
     return response.data; 
 
   } catch (error: any) {
+    Logger.error('Error executing query:', error);
     if (error.response) {
-      Logger.error('error.response', error.response.data);
+      Logger.error('Got error response:', error.response.data);
       return { error: error.response.data || 'Unknown error occurred', status: error.response.status };
     } else {
       return { error: 'An unexpected error occurred', status: 500 };
