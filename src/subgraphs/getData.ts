@@ -17,6 +17,7 @@ interface DataRecoveryState extends BaseState {
   cardId: number;
   queryResult: any;
   fieldDetails: Record<number, any>; 
+  stopExecution: boolean;
 }
 
 async function fetchSchema(state: DataRecoveryState, database: number): Promise<DataRecoveryState> {
@@ -549,12 +550,21 @@ async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecov
     feedbackMessage = "The SQL created from your query is not supported by cubejs, please try to create the query in a different way";
   }
 
+  let stopExecution = false;
+  let errorResult;
+  if (queryResult.error && queryResult.error.includes("Can't find join path")) {
+    Logger.error("There is no JOIN between the sources ")
+    stopExecution = true;
+    errorResult = "Is not possible to create a card with the requested info because the relevant sources don't have a proper JOIN. Please define the schema and create the JOINS in order to get this data.";
+  }
+
   return {
     ...state,
     feedbackMessage: feedbackMessage,
     queryResult,
     cardId, 
-    finalResult: JSON.stringify(queryResult, null, 2),
+    stopExecution,
+    finalResult: errorResult ? errorResult : JSON.stringify(queryResult, null, 2),
   };
 }
 
@@ -614,23 +624,46 @@ async function getReasoning(state: DataRecoveryState, functions: Function[]): Pr
     resultString = JSON.stringify(state.queryResult);
   }
 
-  if (resultString.length > 5000) {
-    resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
+  let message;
+  if (state.queryResult.length === 0) {
+    Logger.log('No results!');
+    resultString = "The query has not returned values";
+    message = await model.invoke([
+      new HumanMessage(`You were asked to perform this task: ${state.task}
+    
+        This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
+        
+        This query does not return values. 
+        
+        The details of the relevant fields are: ${JSON.stringify(state.fieldDetails)}
+
+        Analyze details of the relevant fields to explain why there is no data. 
+        Reference the contents of those fields. 
+        
+        IE: There are no results because the field 'Date' has data ranging from 2024-01-11 to 2024-08-13. 
+
+        The current date is ${new Date()}
+      `),
+    ]);
+  } else {
+    if (resultString.length > 5000) {
+      resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
+    }
+
+    Logger.log('Query result:', resultString);
+
+    message = await model.invoke([
+      new HumanMessage(`You were asked to perform this task: ${state.task}
+    
+        This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
+        due the following database schema: ${state.schema} 
+        
+        The results of execution of the card are: ${resultString})()
+        }
+        
+        Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used. Note that the query result has been truncated to 5000 characters if it exceeded that length.`),
+    ]);
   }
-
-  Logger.log('Result string:', resultString);
-
-  const message = await model.invoke([
-    new HumanMessage(`You were asked to perform this task: ${state.task}
-  
-      This is the query created for the card: ${state.metabaseQuery.dataset_query ? (state.metabaseQuery.dataset_query.query ?? state.metabaseQuery.dataset_query) : state.metabaseQuery}, 
-      due the following database schema: ${state.schema} 
-      
-      The results of execution of the card are: ${resultString})()
-      }
-      
-      Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used. Note that the query result has been truncated to 5000 characters if it exceeded that length.`),
-  ]);
 
   const args = message.lc_kwargs.tool_calls[0].args;
 
@@ -702,6 +735,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
         default: () => ({}),
       },
+      stopExecution: {  
+        value: (x: boolean, y?: boolean) => (y ? y : x),
+        default: () => (false),
+      },
     };
     super(graphState);
     this.functions = functions;
@@ -729,8 +766,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'execute_query';
         }
       })
-      .addConditionalEdges('execute_query', (state: { queryAttempts: number; queryResult: any; }) => {
-        if (state.queryAttempts > 3) {
+      .addConditionalEdges('execute_query', (state: { queryAttempts: number; queryResult: any; stopExecution: boolean; }) => {
+        if (state.queryAttempts > 3 || state.stopExecution) {
           return END;
         } else if (state.queryResult && !("error" in state.queryResult)) {
           return 'getReasoning';
