@@ -111,9 +111,12 @@ export class GraphApplication {
       createView: {
         agentSubGraph: new ViewCreationGraph([clientAgentFunction]),
       },
-      /*getInsights: {
-        agentSubGraph: new InsightGraph(clientData[0], [clientAgentFunction]),
-      },*/
+      getInsights: {
+        agentSubGraph: new InsightGraph(
+          +clientData[0], //Database ID
+          [clientAgentFunction]
+        ),
+      },
     };
 
     this.graphManager = new GraphManager(createPlanner(fasterModel), agents, subgraphs, fasterModel, outputHandler);

@@ -56,9 +56,35 @@ export async function getSchema(sessionToken: string, databaseId: number): Promi
     }
   });
 
-  console.log('Combined tables and fields:', filteredTables);
+  Logger.log('Combined tables and fields:', filteredTables);
 
   return filteredTables;
+}
+
+/**
+ * Get details of a specific card (question) by its ID.
+ * @param sessionToken The session token obtained from authentication.
+ * @param cardId The ID of the card to fetch.
+ */
+export async function getCard(sessionToken: string, cardId: number): Promise<any | { error: string; status: number }> {
+  try {
+    const response = await axios.get(`${METABASE_URL}/card/${cardId}`, {
+      headers: {
+        'X-Metabase-Session': sessionToken,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    return response.data; 
+
+  } catch (error: any) {
+    Logger.error('Error fetching card details:', error);
+    if (error.response) {
+      return { error: error.response.data || 'Unknown error occurred', status: error.response.status };
+    } else {
+      return { error: 'An unexpected error occurred', status: 500 };
+    }
+  }
 }
 
 
@@ -188,3 +214,29 @@ export async function fetchFieldDetails(sessionToken: string, fieldId: number): 
   }
 }
 
+export const getCards = async (sessionToken: string, dbId: number): Promise<any> => {
+  try {
+    const response = await axios.get(`${METABASE_URL}/card/?f=database&model_id=${dbId}`, {
+      headers: {
+        'X-Metabase-Session': sessionToken,
+      },
+    });
+    const cardsData = response.data;
+
+    let allCards: { [id: string]: { name: string; description: string, datasetQuery: string} } = {};
+
+    for (const card of cardsData) {
+      allCards[card.id] = {
+        name: card.name,
+        description: card.description,
+        datasetQuery: JSON.stringify(card.dataset_query) // Convertimos el objeto dataset_query a un string
+      };
+    }
+
+    return allCards;
+
+  } catch (error) {
+    console.warn(`Error fetching cards from API: ${error}`);
+    throw error;
+  }
+};

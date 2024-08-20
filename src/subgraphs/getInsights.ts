@@ -3,491 +3,411 @@ import { createStructuredResponseAgent, anthropicSonnet, getFasterModel, getStro
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
-import { executeQuery, getModelsData } from '../utils/DataStructure';
 import { ToolDefinition } from '@langchain/core/language_models/base';
+import { authenticate, getCards, getSchema, getCard, createCard, executeQuery } from '../utils/MetabaseAPI';
 
 interface InsightState extends BaseState {
-  relevantSources: string[];
-  queries: string[];
+  sessionToken: string;
+  schema: any[];
+  relevantCards: any[]; 
   responses: string[];
   finalResult: string;
-  needsMoreInsight: boolean;
-  sufficiencyChecks: number;
 }
 
-async function getModels(company_name: string): Promise<string[]> {
-  return await getModelsData(company_name);
-}
-
-function filterModels(models: string[], sources: string[]): string[] {
-  const parsedModels = models.map(model => JSON.parse(model));
-  const filteredModels = parsedModels.filter(model => {
-    return sources.includes(model.name);
-  });
-  return filteredModels.map(model => JSON.stringify(model));
+async function fetchSchema(state: InsightState, database: number): Promise<InsightState> {
+  const sessionToken = await authenticate();
+  const schema = await getSchema(sessionToken, database);
+  return {
+    ...state,
+    sessionToken,
+    schema,
+  };
 }
 
 // Node function to recover sources
-async function identifyRelevantSources(state: InsightState, company_name: string): Promise<InsightState> {
+async function identifyRelevantSources(state: InsightState, dbId: number): Promise<InsightState> {
 
-  const cubeModels = await getModels(company_name);
+  const cards = await getCards(state.sessionToken, dbId);
 
-  const getSources: ToolDefinition = {
+  const getRelevantCards: ToolDefinition = {
     type: "function",
     function: {
-      name: "getSources",
-      description: "Identify relevant data sources for a given request",
+      name: "getRelevantCards",
+      description: "Identify relevant cards for a given request",
       parameters: {
         type: "object",
         properties: {
-          sources: {
-            type: "array",
-            items: { type: "string" },
-            description: "Array with the names of the cubes"
-          },
-          isPossible: {
-            type: "string",
-            enum: ["true", "maybe", "false"],
-            description: '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable'
-          }
-        },
-        required: ["isPossible"]
-      }
-    }
-  };
-
-  const model = createStructuredResponseAgent(getFasterModel(), [getSources]);
-
-
-  const message = await model.invoke([
-    new HumanMessage(`You are tasked with identifying relevant data cube for a given request. Your goal is to analyze the provided model descriptions and examples,
-        and determine which data cubes could be useful in addressing the request.
-
-        First, review the following cube descriptions to know the dimensions and measures available:
-        ${cubeModels.join('\n')}
-        Now, consider the following request:
-        ${state.task}
-        
-        Keep in mind that multiple data cubes may be relevant to a single request.
-        If a data cube seems even slightly relevant to the request, include it in your list.
-        `),
-  ]);
-
-  const args = message.lc_kwargs.tool_calls[0].args;
-
-  const sources = args.sources;
-  const isPossible = args.isPossible;
-  Logger.log('\nisPossible', isPossible);
-  Logger.log('\nsources', sources);
-
-  const updatedState = {
-    ...state,
-    relevantSources: sources,
-  };
-
-  if (isPossible === 'false') {
-    updatedState.finalResult = "It wasn't possible to resolve the query with the available data.";
-    return updatedState;
-  }
-
-  return updatedState;
-}
-
-async function generateExploratoryQuery(state: InsightState, company_name: string): Promise<InsightState> {
-  const getQueries: ToolDefinition = {
-    type: "function",
-    function: {
-      name: "getQueries",
-      description: "Generate exploratory Cube queries to gather insights",
-      parameters: {
-        type: "object",
-        properties: {
-          queries: {
+          relevantCards: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                dimensions: { type: "array", items: { type: "string" } },
-                measures: { type: "array", items: { type: "string" } },
-                filters: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      member: { type: "string" },
-                      operator: { type: "string" },
-                      values: { type: "array", items: { type: "string" } }
-                    },
-                    required: ["member", "operator", "values"]
-                  }
-                },
-                segments: { type: "array", items: { type: "string" } },
-                  order: {
-                    type: "object",
-                      additionalProperties: {
-                        type: "string",
-                      enum: ["asc", "desc"]
-                  }
-                },
-                timeDimensions: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      dimension: { type: "string" },
-                      granularity: { type: "string", enum: ["day", "week", "month", "year"] },
-                      dateRange: {
-                        type: "array",
-                        items: { type: "string", format: "date" }
-                      }
-                    },
-                    required: ["dimension"],
-                    oneOf: [
-                      { required: ["granularity"] },
-                      { required: ["dateRange"] }
-                    ],
-                    additionalProperties: false
-                  }
-                },
-                limit: { type: "integer", maximum: 500 },
+                id: { type: "number" }
               },
-              required: ["dimensions", "measures", "limit"]
+              required: ["id"]
             },
-            description: "An array of up to 3 Cube queries to explore the data"
+            description: "Array with the IDs of the relevant cards"
           }
         },
-        required: ["queries"]
+        required: ["relevantCards"]
       }
     }
   };
 
-  const model = createStructuredResponseAgent(getStrongestModel(), [getQueries]);
-
-  const cubeModels = await getModels(company_name);
-  const filteredCubeModels = filterModels(cubeModels, state.relevantSources);
-
-  const existingQueries = state.queries.join('\n');
-  const existingResponses = state.responses.join('\n');
+  const model = createStructuredResponseAgent(getFasterModel(), [getRelevantCards]);
 
   const message = await model.invoke([
-    new HumanMessage(`Generate up to 5 exploratory Cube queries for the following task:
-    ${state.task}
-    
-    Only use these cubes: ${filteredCubeModels}
-    
-    Create efficient queries that will help gather insights. Each query should return at most 500 examples.
-    Focus on queries that will provide meaningful data for analysis.
-    You can make queries with only dimensions and no measures if you need to.
-    Segments and filters are additive, so try not to apply opposite segments or filters (IE: don't use both high pressure and low pressure segments).
-    
-    Existing queries:
-    ${existingQueries}
-    
-    Existing responses:
-    ${existingResponses}
-    
-    Based on the existing queries and responses, create up to 3 new queries that will provide additional insights to better answer the task.`),
-  ]);
-
-  const args = message.lc_kwargs.tool_calls[0].args;
-
-  const newQueries = args.queries;
-  Logger.log('New exploratory queries:', newQueries);
-
-  return {
-    ...state,
-    queries: [...state.queries, ...newQueries.map((query: any) => JSON.stringify(query))],
-  };
-}
-
-async function executeExploratoryQuery(state: InsightState, company_name: string, functions: Function[]): Promise<InsightState> {
-  const existingQueriesCount = state.queries.length;
-  const existingResponsesCount = state.responses.length;
-  const newQueriesCount = existingQueriesCount - existingResponsesCount;
+    new HumanMessage(`
+      Your task is to identify 3 or 4 relevant cards that could help resolve a given request. 
+      To do this, you need to analyze the names, descriptions, and dataset queries of the available cards.
   
-  if (newQueriesCount <= 0) {
-    return state; // No new queries to execute
-  }
-
-  const newQueries = state.queries.slice(-newQueriesCount);
-  const exploratoryResults = await Promise.all(
-    newQueries.map(async (queryString) => {
-      const query = JSON.parse(queryString);
-      return await executeQuery(query, company_name);
-    })
-  );
-
-    // Call functions[0]('tool', queries) with the new queries
-    const toolQueries = newQueries.map((query: any, index: number) => ({
-      function_name: 'generateExploratoryQuery',
-      arguments: {
-        query: query,
-        queryIndex: state.queries.length + index,
-        data: exploratoryResults[index]
-      },
-    }));
-    functions[0]('tool', toolQueries);
-
-  return {
-    ...state,
-    responses: [...state.responses, ...exploratoryResults],
-  };
-}
-
-async function checkResponseSufficiency(state: InsightState): Promise<InsightState> {
-  const checkSufficiency: ToolDefinition = {
-    type: "function",
-    function: {
-      name: "checkSufficiency",
-      description: "Check if the current responses are sufficient to answer the task",
-      parameters: {
-        type: "object",
-        properties: {
-          isEnough: {
-            type: "boolean",
-            description: "Whether the current responses are sufficient to answer the task"
-          },
-          explanation: {
-            type: "string",
-            description: "Explanation of why the responses are or are not sufficient"
-          }
-        },
-        required: ["isEnough", "explanation"]
-      }
-    }
-  };
-
-  const model = createStructuredResponseAgent(getFasterModel(), [checkSufficiency]);
-
-
-  const message = await model.invoke([
-    new HumanMessage(`Check if the following responses are sufficient to answer the task:
-    Task: ${state.task}
-
-    Queries:
-    ${state.queries.join('\n')}
-
-    Responses:
-    ${state.responses.join('\n')}
-
-    Determine if we have enough information to extract meaningful insights or if another query would help answer the task better.
-
-    If 2 or more responses are empty, assume that there is no data for that query which would help answer the task, which is a sufficient response.
-    If only 1 response is empty assume that the query was incorrect and try to generate a new one.
+      The available cards are: ${JSON.stringify(cards)}
+      The schema related to the dataset queries is: ${JSON.stringify(state.schema)}
+  
+      The request you need to consider is: ${state.task}
+  
+      Please analyze the dataset queries and schema to determine how the data is retrieved by each card and assess if it is relevant to the request.
     `),
   ]);
 
   const args = message.lc_kwargs.tool_calls[0].args;
 
-  const isEnough = args.isEnough;
-  const explanation = args.explanation;
+  const relevantCardsIds = args.relevantCards;
 
-  Logger.log('Response sufficiency check:', { isEnough, explanation });
+  const relevantCards = relevantCardsIds.map((relevantCard: { id: number; }) => {
+    const card = cards[relevantCard.id];
+    return card ? { id: relevantCard.id, ...card } : null;
+  }).filter((card: any) => card !== null);
 
-  const updatedState = {
-    ...state,
-    needsMoreInsight: !isEnough,
-    sufficiencyChecks: state.sufficiencyChecks + 1,
-  };
-  // If sufficiency checks exceed 3 times, set the finalResult
-  if (updatedState.sufficiencyChecks > 3) {
-    updatedState.finalResult = explanation;
-    updatedState.needsMoreInsight = false; // Ensure that it goes to END
+  Logger.log('\rrelevantCards', relevantCards);
+
+  if (relevantCards.length > 0) {
+    return {
+      ...state,
+      relevantCards: relevantCards,
+    };
+  } else {
+    Logger.log("No relevant cards found to create the insights")
+    return {
+      ...state,
+      finalResult: "No relevant cards found to create the insights", // This will be solved in V2 creating another node to create new cards.
+    };
   }
-  return updatedState;
-}
+  }
+
+  
 
 
-async function analyzeResults(state: InsightState, functions: Function[], company_name: string): Promise<InsightState> {
-  const getInsights: ToolDefinition = {
+async function addFilters(state: InsightState, databaseId: number): Promise<InsightState> {
+  const analyzeFilters: ToolDefinition = {
     type: "function",
     function: {
-      name: "getInsights",
-      description: "Extract insights from exploratory query results",
+      name: "analyzeFilters",
+      description: "Analyze relevant cards to determine if they need filters and suggest modifications",
       parameters: {
         type: "object",
         properties: {
-          insights: {
+          cardModifications: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                title: {
-                  type: "string",
-                  description: "Title for the insight"
-                },
-                description: {
-                  type: "string",
-                  description: "Detailed description of the insight"
-                },
-                relevantQuery: {
-                  type: "integer",
-                  description: "Index of the most relevant query for this insight"
-                }
+                id: { type: "number" },
+                needsFilter: { type: "boolean" },
+                modifiedDatasetQuery: { type: "object" },
+                newTitle: { type: "string" },
+                newDescription: { type: "string" }
               },
-              required: ["title", "description", "relevantQuery"]
+              required: ["id", "needsFilter"]
             },
-            description: "Array of insights extracted from all query results"
+            description: "Array with the relevatn cards modified if needed"
           }
         },
-        required: ["insights"]
+        required: ["cardModifications"]
       }
     }
   };
 
-  const model = createStructuredResponseAgent(getFasterModel(), [getInsights]);
-
-  const cubeModels = await getModels(company_name);
-
-  let filteredCubeModels = filterModels(cubeModels, state.relevantSources);
+  const model = createStructuredResponseAgent(anthropicSonnet(), [analyzeFilters]);
 
   const message = await model.invoke([
-    new HumanMessage(`Analyze the following exploratory query results and extract relevant insights:
-    Task: ${state.task}
+    new HumanMessage(`
+      You need to analyze the relevant cards to determine if they require filters to better meet the user's needs.
+      The user's request is: ${state.task}
+      
+      Based on this request, analyze each relevant card to determine if it needs additional filters. 
+      If filters are needed, suggest modifications to the dataset query, a new title, and a new description.
 
-    Used cubes:
-    ${filteredCubeModels.join('\n')}
+      The relevant cards are: ${JSON.stringify(state.relevantCards)}
+      The schema related to the dataset queries is: ${JSON.stringify(state.schema)}
+  
+      Please analyze each card and suggest appropriate modifications if filters are necessary. 
+      Ensure that the modifications align with the user's request, and provide a new title and description that reflect the changes made to the card.
 
-    Queries:
-    ${state.queries.join('\n')}
+      If no modifications are needed just return the id of the card and the value needsFilter = false
 
-    Responses:
-    ${state.responses.join('\n')}
+      Try to use only basic filters.
+      This is an example of dataset_query using filters:
 
-    Provide a list of 3-5 key insights based on all the data. Each insight should have a title, a detaileddescription, and the index of the most relevant query.
-    Do not mention directly measures or dimensions, you can only mention segments and filters to explain how they work in detail. IE: Anomalies of high pressure are identified by calculating values where the presion value exceeds the average by more than two standard deviations, highlighting outliers or anomalies. 
-    Always include in your insights based on the responses to explain the insight, even if they are empty, mention specific values ranges or calculations to understand the data.
-    You can be certains about how the data is extracted from the cube file
-    You can assume there are no issues with data retrieval, it's available and the query is correct.
+      {
+        "database": ${databaseId},
+        "type": "query",
+        "query": {
+          "source-table": 142,
+          "aggregation": [
+            [
+              "sum",
+              [
+                "field",
+                2024,
+                {
+                  "base-type": "type/Decimal"
+                }
+              ]
+            ]
+          ],
+          "breakout": [
+            [
+              "field",
+              2097,
+              {
+                "base-type": "type/Text",
+                "join-alias": "Location - CubeJoinField"
+              }
+            ],
+            [
+              "field",
+              2027,
+              {
+                "base-type": "type/DateTime",
+                "temporal-unit": "month"
+              }
+            ]
+          ],
+          "joins": [
+            {
+              "fields": "all",
+              "strategy": "left-join",
+              "alias": "Location - CubeJoinField",
+              "condition": [
+                "=",
+                [
+                  "field",
+                  2038,
+                  {
+                    "base-type": "type/Text"
+                  }
+                ],
+                [
+                  "field",
+                  2099,
+                  {
+                    "base-type": "type/Text",
+                    "join-alias": "Location - CubeJoinField"
+                  }
+                ]
+              ],
+              "source-table": 148
+            }
+          ],
+          "order-by": [
+            [
+              "asc",
+              [
+                "aggregation",
+                0
+              ]
+            ]
+          ],
+          "filter": [
+            "and",
+            [
+              "not-empty",
+              [
+                "field",
+                2097,
+                {
+                  "base-type": "type/Text",
+                  "join-alias": "Location - CubeJoinField"
+                }
+              ]
+            ],
+            [
+              "time-interval",
+              [
+                "field",
+                2027,
+                {
+                  "base-type": "type/DateTime"
+                }
+              ],
+              -12,
+              "month"
+            ]
+          ]
+        }
+      }
     `),
   ]);
+  
 
   const args = message.lc_kwargs.tool_calls[0].args;
 
-  const insights = args.insights;
+  const cardModifications = args.cardModifications;
+  Logger.log('\rCard Modifications', cardModifications);
 
-  Logger.log('Extracted insights:', insights);
+  const updatedCards = [];
 
-  let results = insights.map((insight: any, index: number) => ({
-    function_name: 'getInsights',
-    arguments: {
-      query: insight.relevantQuery,
-      title: insight.title,
-      insight: insight.description,
-    },
-  }));
+  for (const modifiedCard of cardModifications) {
+    if (modifiedCard.needsFilter) {
+      const cardDetails = await getCard(state.sessionToken, modifiedCard.id);
 
-  functions[0]('tool', results);
+      const newCard = await createCard(state.sessionToken, {
+        ...cardDetails,
+        name: modifiedCard.newTitle,
+        description: modifiedCard.newDescription,
+        dataset_query: modifiedCard.modifiedDatasetQuery,
+      });
 
+      Logger.log("Card created:", newCard)
 
-  const summarizeInsights: ToolDefinition = {
-    type: "function",
-    function: {
-      name: "summarizeInsights",
-      description: "Summarize the insights",
-      parameters: {
-        type: "object",
-        properties: {
-          summary: {
-            type: "string",
-            description: "Summary of the insights"
-          }
-        },
-        required: ["summary"]
-      }
+      updatedCards.push(newCard);
+    } else {
+      updatedCards.push(modifiedCard.id);
     }
-  };
-  const finalModel = createStructuredResponseAgent(getFasterModel(), [summarizeInsights]);
-  const finalMessage = await finalModel.invoke([
-    new HumanMessage(`Create a detailed message explaining the following insights:  
-      ${insights.map((insight: any) => insight.description).join('\n')}`),
-  ]);
-
-  const finalArgs = finalMessage.lc_kwargs.tool_calls[0].args;
-  const summary = finalArgs.summary;
-
-  const getSummary = [
-    {
-      function_name: 'getSummary',
-      arguments: {
-        summary:  summary
-      },
-    }
-  ];
-
-  functions[0]('tool', getSummary);
-
+  }
 
   return {
     ...state,
-    finalResult: "Insights generated from the data"
+    relevantCards: updatedCards,
+  };
+}
+
+async function getResults(state: InsightState, functions: Function[]): Promise<InsightState> {
+  const insights = [];
+   const generateInsight: ToolDefinition = {
+    type: "function",
+    function: {
+      name: "generateInsight",
+      description: "Generate an insight explanation based on the query result",
+      parameters: {
+        type: "object",
+        properties: {
+          cardId: { type: "number" },
+          insightExplanation: { type: "string" }
+        },
+        required: ["cardId", "insightExplanation"]
+      }
+    }
+  };
+  Logger.log("Relevant cards", state.relevantCards)
+  for (const card of state.relevantCards) {
+    const queryResult = await executeQuery(state.sessionToken, card);
+
+    if (queryResult.error) {
+      Logger.warn(`Error executing query for card ${card}: ${queryResult.error}`);
+      continue;
+    }
+
+    const model = createStructuredResponseAgent(getFasterModel(), [generateInsight]);
+
+    let resultString = JSON.stringify(queryResult);
+    if (resultString.length > 5000) {
+      resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
+    }
+
+    const message = await model.invoke([
+      new HumanMessage(`
+        You have just executed a query for the card with ID ${card}. 
+        The user's request was: ${state.task}
+
+        The query result is: ${resultString}
+
+        Based on this result, provide a concise explanation of the insight this data provides. 
+        Your explanation should be informative and relevant to the user's request.
+      `),
+    ]);
+
+    const args = message.lc_kwargs.tool_calls[0].args;
+
+    insights.push({
+      cardId: card,
+      insightExplanation: args.insightExplanation,
+    });
+  }
+
+  const getInsights = [
+    {
+      function_name: 'getInsights',
+      arguments: {
+        insights: insights
+      }
+    },
+  ];
+  functions[0]('tool', getInsights);
+ 
+  return {
+    ...state,
+    finalResult: JSON.stringify(insights),
   };
 }
 
 
 export class InsightGraph extends AbstractGraph<InsightState> {
-  private company_name: string;
+  private databaseId: number;
   private functions: Function[];
 
-  constructor(company_name: string, functions: Function[]) {
+  constructor(databaseId: number, functions: Function[]) {
     const graphState: StateGraphArgs<InsightState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      sessionToken: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
+      schema: {
+        value: (x: any[], y?: any[]) => (y ? y : x),
+        default: () => [],
+      },
       finalResult: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      relevantSources: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      queries: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
+      relevantCards: {
+        value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
       responses: {
         value: (x: string[], y?: string[]) => (y ? y : x),
         default: () => [],
-      },
-      needsMoreInsight: {
-        value: (x: boolean, y?: boolean) => (y !== undefined ? y : x),
-        default: () => true,
-      },
-      sufficiencyChecks: {  // New state channel for sufficiency check count
-        value: (x: number, y?: number) => (y !== undefined ? y : x),
-        default: () => 0,
-      },
+      }
     };
     super(graphState);
     this.functions = functions;
-    this.company_name = company_name;
+    this.databaseId = databaseId;
   }
 
   getGraph(): CompiledStateGraph<InsightState> {
     const subGraphBuilder = new StateGraph<InsightState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('identify_sources', async state => await identifyRelevantSources(state, this.company_name))
-      .addNode('generate_query', async state => await generateExploratoryQuery(state, this.company_name))
-      .addNode('execute_query', async state => await executeExploratoryQuery(state, this.company_name, this.functions))
-      .addNode('check_sufficiency', async state => await checkResponseSufficiency(state))
-      .addNode('analyze_results', async state => await analyzeResults(state, this.functions, this.company_name))
-      .addEdge(START, 'identify_sources')
-      .addEdge('identify_sources', 'generate_query')
-      .addEdge('generate_query', 'execute_query')
-      .addEdge('execute_query', 'check_sufficiency')
-      .addConditionalEdges('check_sufficiency', state => {
-        if (state.needsMoreInsight === true ) { 
-          return 'generate_query';
-        } else if (state.sufficiencyChecks > 3) {  // Check if sufficiency checks are more than 3
-          return END;
+      .addNode('fetchSchema', async state => await fetchSchema(state, this.databaseId))
+      .addNode('identify_sources', async state => await identifyRelevantSources(state, this.databaseId))
+      .addNode('add_filters', async state => await addFilters(state, this.databaseId))
+      .addNode('get_results', async state => await getResults(state, this.functions))
+      .addEdge(START, 'fetchSchema')
+      .addEdge('fetchSchema', 'identify_sources')
+      .addConditionalEdges('identify_sources', (state) => {
+        if (state.relevantCards.length > 0) {
+          return 'add_filters';
         } else {
-          return 'analyze_results';
+          return END;
         }
       })
-      .addEdge('analyze_results', END);
+      .addEdge('add_filters', 'get_results')
+      .addEdge('get_results', END);
 
     return subGraphBuilder.compile();
   }
