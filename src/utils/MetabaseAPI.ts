@@ -205,6 +205,7 @@ export async function fetchFieldDetails(sessionToken: string, fieldId: number): 
     });
     
     return {
+      fieldName: fieldDetailsResponse.data.display_name,
       details: fieldDetailsResponse.data.fingerprint ? JSON.stringify(fieldDetailsResponse.data.fingerprint ) : null,
       values: fieldValuesResponse.data.values
     };
