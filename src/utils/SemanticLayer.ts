@@ -47,6 +47,61 @@ export async function getCubes(company_name: string, cubeName?: string): Promise
   }
 }
 
+const extractBlock = (content: string, blockName: string) => {
+  const startPattern = new RegExp(`${blockName}:\\s*{`, 'g');
+  const startIndex = content.search(startPattern);
+  if (startIndex === -1) {
+    throw new Error(`Block ${blockName} not found in content.`);
+  }
+
+  let braceCount = 0;
+  let i = startIndex;
+  let blockEndIndex = -1;
+
+  // Start parsing from the opening brace of the block
+  for (; i < content.length; i++) {
+    if (content[i] === '{') {
+      braceCount++;
+    } else if (content[i] === '}') {
+      braceCount--;
+      if (braceCount === 0) {
+        blockEndIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (blockEndIndex === -1) {
+    throw new Error(`Closing brace not found for block ${blockName}.`);
+  }
+
+  const blockContent = content.slice(startIndex, blockEndIndex + 1);
+  return {
+    blockContent,
+    blockStartIndex: startIndex,
+    blockEndIndex: blockEndIndex + 1
+  };
+};
+
+const insertField = (content: string, blockName: string, newFieldString: string) => {
+  const { blockContent, blockStartIndex, blockEndIndex } = extractBlock(content, blockName);
+  
+  const trimmedBlockContent = blockContent.trim();
+  const lastChar = trimmedBlockContent.charAt(trimmedBlockContent.length - 2); // Check second last character (before '}')
+
+  // Ensure the previous field ends correctly with '},'
+  const formattedContent = (lastChar !== ',' && lastChar !== ' ') 
+    ? trimmedBlockContent.slice(0, -1) + ',' + trimmedBlockContent.slice(-1)
+    : trimmedBlockContent;
+
+  // Insert the new field immediately after the opening brace
+  const newBlockContent = formattedContent.replace(/\{\s*/, '{\n    ' + newFieldString + ',\n    ');
+
+  // Replace the old block with the new block in the content
+  return content.slice(0, blockStartIndex) + newBlockContent + content.slice(blockEndIndex);
+};
+
+
 export async function updateSemanticLayer(newFields: any[], company_name: string): Promise<{ success: boolean, errors: string[], newPayload: string }> {
   try {
     const cubeFiles = await getCubes(company_name);
@@ -65,42 +120,22 @@ export async function updateSemanticLayer(newFields: any[], company_name: string
 });`;
       }
 
-      // Extract JSON part
-      const cubeJsonStart = cubeFiles[fileName].indexOf('{');
-      const cubeJsonEnd = cubeFiles[fileName].lastIndexOf('}');
-      let cubeJsonString = cubeFiles[fileName].substring(cubeJsonStart, cubeJsonEnd + 1);
+      let cubeContent = cubeFiles[fileName];
+      const blockName = type === 'measure' ? 'measures' : type === 'dimension' ? 'dimensions' : 'segments';
+      const newFieldString = `${fieldName}: {
+        type: '${fieldType}',
+        sql: \`${sql}\`,
+        title: '${title}',
+        description: '${description}'
+      }`;
 
-      // Make the JSON valid
-      cubeJsonString = cubeJsonString
-        .replace(/(\w+):/g, '"$1":') // Quote the keys
-        .replace(/'([^']+)'/g, '"$1"') // Convert single quotes to double quotes
-        .replace(/`([^`]+)`/g, '"$1"') // Convert backticks to double quotes
-        .replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
-
-      const cubeJson = JSON.parse(cubeJsonString);
-
-      // Insert new field
-      if (!cubeJson[type + 's']) {
-        cubeJson[type + 's'] = {};
+      try {
+        cubeContent = insertField(cubeContent, blockName, newFieldString);
+      } catch (error) {
+        Logger.error("Error inserting new field")
       }
-      cubeJson[type + 's'][fieldName] = {
-        type: fieldType,
-        sql:  sql,
-        title: title,
-        description: description
-      };
 
-      // Manually construct the updated cube content
-      const updatedCube = `
-cube(\`${cubeName}\`, {
-  sql: \`${cubeJson.sql}\`,
-  ${cubeJson.joins ? `joins: ${formatFields(cubeJson.joins, true)},` : ''}
-  measures: ${formatFields(cubeJson.measures)},
-  dimensions: ${formatFields(cubeJson.dimensions)}
-});
-      `;
-
-      cubeFiles[fileName] = updatedCube;
+      cubeFiles[fileName] = cubeContent;
     });
 
     const payload = {
@@ -146,28 +181,6 @@ cube(\`${cubeName}\`, {
   }
 }
 
-function formatFields(fields: any, isJoin: boolean = false): string {
-  return `{
-    ${Object.keys(fields).map(key => {
-      const field = fields[key];
-      const formattedField = Object.keys(field).reduce((acc, prop) => {
-        if (field[prop] !== undefined) {
-          acc.push(`${prop}: ${typeof field[prop] === 'string' ? `\`${field[prop]}\`` : field[prop]}`);
-        }
-        return acc;
-      }, [] as string[]);
-      if (isJoin) {
-        return `${key}: {
-          relationship: \`${field.relationship}\`,
-          sql: \`${field.sql}\`
-        }`;
-      }
-      return `${key}: {
-        ${formattedField.join(',\n')}
-      }`;
-    }).join(',\n')}
-  }`;
-}
 
 async function restoreOriginalCubes(originalCubeFiles: Record<string, string>, company_name: string): Promise<void> {
   const payload = {
@@ -177,8 +190,6 @@ async function restoreOriginalCubes(originalCubeFiles: Record<string, string>, c
       }
     }
   };
-
-  Logger.log('restore payload', payload);
 
   const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/company/edit-cube-files/${company_name}`, {
     method: 'PUT',
@@ -193,7 +204,7 @@ async function restoreOriginalCubes(originalCubeFiles: Record<string, string>, c
   }
 
   const responseData = await response.json();
-  console.log('Original semantic layer restored successfully:', responseData);
+  Logger.log('Original semantic layer restored successfully:', responseData);
 }
 
 export async function testValue(task: string, calculationMethod: string): Promise<string> {

@@ -129,6 +129,7 @@ export async function getExampleCards(sessionToken: string, cardIds: number[]): 
  */
 export async function createCard(sessionToken: string, cardData: any): Promise<number | { error: string; status: number }> {
   //Logger.log('Creating card with data:', cardData);
+  cardData.visualization_settings = {}; // TODO
   try {
   const response = await axios.post(`${METABASE_URL}/card`, cardData, {
     headers: {
@@ -331,4 +332,35 @@ function formatExampleCards(exampleCards: any[]): string {
   });
 
   return formattedString.trim();
+}
+
+/**
+ * Sync the schema of a specific database in Metabase.
+ * @param sessionToken The session token obtained from authentication.
+ * @param databaseId The ID of the database to sync.
+ */
+export async function syncDatabaseSchema(sessionToken: string, databaseId: number): Promise<string | { error: string; status: number }> {
+  try {
+    const response = await axios.post(
+      `${METABASE_URL}/database/${databaseId}/sync_schema`,
+      {},
+      {
+        headers: {
+          'X-Metabase-Session': sessionToken,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    Logger.log(`Schema for database ${databaseId} successfully synced.`);
+    return `Schema for database ${databaseId} successfully synced.`;
+
+  } catch (error: any) {
+    Logger.error('Error syncing database schema:', error);
+    if (error.response) {
+      return { error: error.response.data || 'Unknown error occurred', status: error.response.status };
+    } else {
+      return { error: 'An unexpected error occurred', status: 500 };
+    }
+  }
 }

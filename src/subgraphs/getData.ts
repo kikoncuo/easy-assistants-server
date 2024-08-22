@@ -2,6 +2,7 @@ import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { fetchSchema, getFieldDetails, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
+import { checkUpdateSemanticLayer, handleEditCubeGraph } from './nodes/semanticLayerLogic';
 
 interface DataRecoveryState extends BaseState {
   task: string;
@@ -15,13 +16,16 @@ interface DataRecoveryState extends BaseState {
   queryResult: any;
   fieldDetails: Record<number, any>; 
   stopExecution: boolean;
+  needsSemanticUpdate: boolean;
+  semanticTask: string; 
+  isPossible: string;
 }
-
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
-  private databaseId: number;
+  private database: number;
+  private companyName: string;
 
-  constructor(databaseId: number, functions: Function[]) {
+  constructor(database: number, functions: Function[], companyName: string) {
     const graphState: StateGraphArgs<DataRecoveryState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -67,20 +71,43 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: boolean, y?: boolean) => (y ? y : x),
         default: () => false,
       },
+      needsSemanticUpdate: {
+        value: (x: boolean, y?: boolean) => (y ? y : x),
+        default: () => false,
+      },
+      semanticTask: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
+      isPossible: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
     };
     super(graphState);
     this.functions = functions;
-    this.databaseId = databaseId;
+    this.database = database;
+    this.companyName = companyName;
   }
 
   private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { sessionToken, schema } = await fetchSchema(this.databaseId);
+    const { sessionToken, schema } = await fetchSchema(this.database);
     return { ...state, sessionToken, schema };
   }
 
+  private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const {needsSemanticUpdate, semanticTask} = await checkUpdateSemanticLayer(state.task, this.companyName);
+    return { ...state, needsSemanticUpdate, semanticTask };
+  }
+
+  private async handleEditCubeGraph(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const { schema } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
+    return { ...state, schema };
+  }
+
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const fieldDetails = await getFieldDetails(state.task, state.sessionToken, state.schema);
-    return { ...state, fieldDetails };
+    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema);
+    return { ...state, fieldDetails, isPossible };
   }
 
   private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
@@ -93,7 +120,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage
       }
     }
-    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.databaseId, state.feedbackMessage, state.metabaseQuery);
+    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.database, state.feedbackMessage, state.metabaseQuery);
 
     if ('error' in result) {
       return {
@@ -116,7 +143,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery);
     
     if ('error' in result) {
-      const stopExecution = result.error.includes("There is no JOIN between the sources");
+      const stopExecution = result.error.includes("Can't find join path");
       
       return {
         ...state,
@@ -160,12 +187,28 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     subGraphBuilder
       .addNode('fetch_schema', this.fetchSchemaNode.bind(this))
       .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
+      .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
+      .addNode('edit_cube_graph', this.handleEditCubeGraph.bind(this))
       .addNode('create_card', this.createCardNode.bind(this))
       .addNode('execute_query', this.executeQueryNode.bind(this))
       .addNode('getReasoning', this.getReasoningNode.bind(this))
       .addEdge(START, 'fetch_schema')
       .addEdge('fetch_schema', 'evaluate_fields')
-      .addEdge('evaluate_fields', 'create_card')
+      .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
+        if (state.isPossible === 'yes') {
+          return 'create_card';
+        } else {
+          return 'check_update_semantic_layer';
+        }
+      })
+      .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
+        if (state.needsSemanticUpdate) {
+          return 'edit_cube_graph';
+        } else {
+          return 'create_card';
+        }
+      })
+      .addEdge('edit_cube_graph', 'create_card')
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
           return END;
