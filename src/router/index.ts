@@ -82,12 +82,12 @@ export class Router {
     });
     WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
   }
-  
+
   private async handleAddDocuments(data: any) {
     try {
       Logger.log('Adding documents');
-      const { pageContents, metadata } = data;
-      const result = await addDocuments(pageContents, metadata);
+      const { pageContents, metadata, docId } = data;
+      const result = await addDocuments(pageContents, metadata, docId);
       WebSocketService.outputHandler('addDocuments', 'Documents added successfully', this.ws);
     } catch (error) {
       Logger.error('Error adding documents:', error);

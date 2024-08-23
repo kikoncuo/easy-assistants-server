@@ -359,7 +359,7 @@ async function createMetabaseCard(
   };
 
   const filter = { databaseID: database };
-  const similaritySearchWithScoreResults = await similaritySearch(state.task, 1, filter);
+  const similaritySearchWithScoreResults = await similaritySearch(state.task, 3, filter);
 
   let ids = [];
 
