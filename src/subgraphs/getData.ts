@@ -3,8 +3,28 @@ import { createStructuredResponseAgent, anthropicSonnet, getFasterModel } from '
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
+import { fallbackCardExamples } from '../utils/CardExamples';
 import { ToolDefinition } from '@langchain/core/language_models/base';
-import { authenticate, createCard, deleteCard, executeQuery, fetchFieldDetails, getSchema } from '../utils/MetabaseAPI';
+import { authenticate, createCard, deleteCard, executeQuery, fetchFieldDetails, getSchema, getExampleCards } from '../utils/MetabaseAPI';
+import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import { createClient } from "@supabase/supabase-js";
+import type { Document } from "@langchain/core/documents";
+
+const embeddings = new OpenAIEmbeddings({
+  model: "text-embedding-3-small",
+});
+
+const supabaseClient = createClient(
+  process.env.SUPABASE_URL as string,
+  process.env.SUPABASE_PRIVATE_KEY as string
+);
+
+const vectorStore = new SupabaseVectorStore(embeddings, {
+  client: supabaseClient,
+  tableName: "documents",
+  queryName: "match_documents",
+});
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
@@ -355,7 +375,27 @@ async function createMetabaseCard(
       }
     }
   };
+
+  const filter = { databaseID: database };
+
+  Logger.log('Finding similar cards for:', state.task);
+
+  const similaritySearchWithScoreResults = await vectorStore.similaritySearchWithScore(state.task, 1, filter);
+
+  let ids = [];
+
+  for (const [doc, score] of similaritySearchWithScoreResults) {
+    Logger.log(
+      `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
+        doc.metadata
+      )}]`
+    );
+    ids.push(doc.metadata.id);
+  }
   
+  const exampleRelatedCards = await getExampleCards(state.sessionToken, ids);
+
+  console.log('exampleRelatedCards', exampleRelatedCards);
   
   const model = createStructuredResponseAgent(anthropicSonnet(), [generateMetabaseQuery]); // Only model flexible enough to generate the query
 
@@ -390,116 +430,9 @@ async function createMetabaseCard(
     Try to leverage the "CubeJoinField" fields that all tables have to as source tables 
            
     Here are some examples of a natural language query and its corresponding JSON representation (which used other tables you may not be able to use):
+
+    ${state.feedbackMessage ? fallbackCardExamples : exampleRelatedCards}
   
-    **Example 1:**
-
-    **Natural Language Query:**
-    Show me a bar chart of the top 20 items by number of orders for the last month.
-
-    **JSON Representation:**
-    {
-    "name": "Top 20 Items by Orders (Last Month)",
-    "display": "bar",
-    "dataset_query": {
-      "database": ${database},
-      "type": "query",
-      "query": {
-        "filter": [
-          "not-empty",
-          [
-            "field",
-            "Product - CubeJoinField__itemName",
-            {
-              "base-type": "type/Text"
-            }
-          ]
-        ],
-        "source-query": {
-          "source-table": 136,
-          "joins": [
-            {
-              "strategy": "left-join",
-              "alias": "Product - CubeJoinField",
-              "condition": [
-                "=",
-                [
-                  "field",
-                  1937,
-                  {
-                    "base-type": "type/Text"
-                  }
-                ],
-                [
-                  "field",
-                  1973,
-                  {
-                    "base-type": "type/Text",
-                    "join-alias": "Product - CubeJoinField"
-                  }
-                ]
-              ],
-              "source-table": 139
-            }
-          ],
-          "aggregation": [
-            [
-              "sum",
-              [
-                "field",
-                1944,
-                {
-                  "base-type": "type/BigInteger"
-                }
-              ]
-            ]
-          ],
-          "breakout": [
-            [
-              "field",
-              1969,
-              {
-                "base-type": "type/Text",
-                "join-alias": "Product - CubeJoinField"
-              }
-            ]
-          ],
-          "limit": 20,
-          "order-by": [
-            [
-              "desc",
-              [
-                "aggregation",
-                0
-              ]
-            ]
-          ],
-          "filter": [
-            "time-interval",
-            [
-              "field",
-              1940,
-              {
-                "base-type": "type/DateTime"
-              }
-            ],
-            -1,
-            "month"
-          ]
-        }
-      }
-    },
-    "visualization_settings": {
-      "graph.show_values": true,
-      "graph.x_axis.title_text": "Item name",
-      "graph.y_axis.title_text": "Number of orders",
-      "graph.dimensions": [
-        "itemName"
-      ],
-      "graph.metrics": [
-        "sum"
-      ]
-    }
-  }
     `)
   ]);
   
@@ -537,6 +470,7 @@ async function createMetabaseCard(
 
 async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecoveryState> {
   let cardId = state.cardId;
+  const query = JSON.parse(state.metabaseQuery);
   const queryResult = await executeQuery(state.sessionToken, state.cardId);
   let feedbackMessage = queryResult.error ?? "";
   if (("error" in queryResult)) {
@@ -558,6 +492,21 @@ async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecov
     errorResult = "Is not possible to create a card with the requested info because the relevant sources don't have a proper JOIN. Please define the schema and create the JOINS in order to get this data.";
   }
 
+  Logger.log('Creating document:');
+
+  const document: Document = {
+    pageContent: query.description,
+    metadata: { id:cardId, databaseID: query.dataset_query.database},
+  };
+/*
+  Logger.log('Adding document to vector store:', [document], { ids: [cardId] });
+  
+  const test = await vectorStore.addDocuments([document], { ids: [cardId] });
+
+  Logger.log('Added document to vector store:', test);
+
+  Logger.log('CHANGE THIS ONCE WE HAVE THE FRONT STORE THEM');
+*/
   return {
     ...state,
     feedbackMessage: feedbackMessage,
@@ -569,7 +518,7 @@ async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecov
 }
 
 async function getReasoning(state: DataRecoveryState, functions: Function[]): Promise<DataRecoveryState> {
-  const getReasoning: ToolDefinition = {
+  const getReasoning: ToolDefinition = {  
     type: "function",
     function: {
       name: "getReasoning",
