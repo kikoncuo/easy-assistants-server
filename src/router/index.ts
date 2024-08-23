@@ -3,6 +3,7 @@ import { GraphApplication } from '../services/GraphApplication';
 import { WebSocketService } from '../services/WebSocketService';
 //import { SemanticLayerGraph } from '../subgraphs/createSemanticLayer'; // Enable this when fixed
 import { EditCubeGraph } from '../subgraphs/editCubes';
+import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
 
 export class Router {
@@ -25,6 +26,12 @@ export class Router {
         break;*/
       case 'editSemanticLayer':
         await this.handleEditSemanticLayer(data);
+        break;
+      case 'addDocuments':
+        await this.handleAddDocuments(data);
+        break;
+      case 'deleteDocuments':
+        await this.handleDeleteDocuments(data);
         break;
       case 'toolResponse':
         // this is handled by the graph application itself
@@ -74,5 +81,29 @@ export class Router {
       task: data.task,
     });
     WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
+  }
+  
+  private async handleAddDocuments(data: any) {
+    try {
+      Logger.log('Adding documents');
+      const { pageContents, metadata } = data;
+      const result = await addDocuments(pageContents, metadata);
+      WebSocketService.outputHandler('addDocuments', 'Documents added successfully', this.ws);
+    } catch (error) {
+      Logger.error('Error adding documents:', error);
+      WebSocketService.outputHandler('addDocuments', 'Error adding documents', this.ws);
+    }
+  }
+
+  private async handleDeleteDocuments(data: any) {
+    try {
+      Logger.log('Deleting documents');
+      const { ids } = data;
+      await deleteDocuments(ids);
+      WebSocketService.outputHandler('deleteDocuments', 'Documents deleted successfully', this.ws);
+    } catch (error) {
+      Logger.error('Error deleting documents:', error);
+      WebSocketService.outputHandler('deleteDocuments', 'Error deleting documents', this.ws);
+    }
   }
 }
