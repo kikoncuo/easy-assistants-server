@@ -34,7 +34,7 @@ function stringifyMessages(messages: Message[]): string[][] {
 
 // nodes
 
-export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
+export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function, systemPrompt: string) {
   async function plan(state: TaskState): Promise<TaskState> {
     try {
       const task = state.task;
