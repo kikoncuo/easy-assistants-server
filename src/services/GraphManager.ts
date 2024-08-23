@@ -4,6 +4,7 @@ import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode, getSubGraphAgentNode } from './WorkflowHandler';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import dotenv from 'dotenv';
+import { systemPrompt } from '../models/Prompts';
 //import { SupabaseSaver } from '../checkpoint/supabase'; TODO: enable this when we have supabase memory storage redes
 dotenv.config();
 
@@ -11,7 +12,6 @@ const { MEMORY_STORAGE_SUPABASE_URL, MEMORY_STORAGE_SUPABASE_KEY} = process.env;
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<TaskState>;
-  agents: { [key: string]: { agent: BaseChatModel, agentPrompt: string, toolFunction: Function } };
   agentSubgraphs: { [key: string]: { agentSubGraph: any } };
   solveNode: (state: TaskState) => Promise<Partial<TaskState>>;
   directResponseNode: (state: TaskState) => Promise<Partial<TaskState>>;
@@ -19,13 +19,12 @@ export class GraphManager {
 
   constructor(
     planModel: BaseChatModel,
-    agents: { [key: string]: { agent: BaseChatModel, agentPrompt: string, toolFunction: Function } },
+    systemPrompt: string,
     agentSubgraphs: { [key: string]: { agentSubGraph: any} },
     solveModel: BaseChatModel,
     outputHandler: Function,
   ) {
-    this.planNode = getPlanNode(planModel, outputHandler);
-    this.agents = agents;
+    this.planNode = getPlanNode(planModel, outputHandler, systemPrompt);
     this.agentSubgraphs = agentSubgraphs;
     this.solveNode = getSolveNode(solveModel, outputHandler);
     this.directResponseNode = getDirectResponseNode(outputHandler);
@@ -74,25 +73,12 @@ export class GraphManager {
     .addEdge('solve', END)
     .addEdge('direct', END);
 
-    for (const [name, { agent, agentPrompt, toolFunction}] of Object.entries(this.agents)) {
-      const agentNode = getAgentNode(agent, agentPrompt, toolFunction);  
-      workflow.addNode(name, agentNode);
-      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
-    }
-
     for (const [name, { agentSubGraph }] of Object.entries(this.agentSubgraphs)) {
       const agentNode = getSubGraphAgentNode(agentSubGraph);  
       workflow.addNode(name, agentNode);
       workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
-    /* Memory is disabled for now
-    if(!MEMORY_STORAGE_SUPABASE_URL || !MEMORY_STORAGE_SUPABASE_KEY) {
-      throw new Error
-    }
     
-    const memory = new SupabaseSaver(MEMORY_STORAGE_SUPABASE_URL,MEMORY_STORAGE_SUPABASE_KEY);
-    // const memory = new MemorySaver();
-    */
     const memory = new MemorySaver();
     return workflow.compile( { checkpointer: memory });
   }

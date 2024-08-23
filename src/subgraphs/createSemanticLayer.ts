@@ -1,3 +1,4 @@
+/*// TODO: This can't be used until we update it to use tools, needs to be fully rewritten
 // This is called in the server.ts file instead of a regular subgraph
 import { AbstractGraph, BaseState } from './baseGraph';
 import { createStructuredResponseAgent, anthropicSonnet } from '../models/Models';
@@ -197,7 +198,7 @@ async function generateCubeJsFiles(state: SemanticLayerState): Promise<SemanticL
 
       While generating the Cube.js schema files, use the cube name as the file name, maintaining its original letter case and adding a .js extension.
     
-      Crucial: Establish ALL relevant joins between cubes. For each table:
+      Crucial: Establish ALL relevant joins between cubes. For each table:Can you create a graph showing me my top 5 products?
       1. Identify potential foreign keys (columns that might reference other tables).
       2. Create joins to all related tables using these keys.
       3. Include both one-to-many and many-to-many relationships where applicable.
@@ -324,4 +325,4 @@ export class SemanticLayerGraph extends AbstractGraph<SemanticLayerState> {
 
     return subGraphBuilder.compile();
   }
-}
+}*/

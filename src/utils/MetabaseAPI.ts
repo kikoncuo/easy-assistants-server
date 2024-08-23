@@ -1,6 +1,8 @@
 import axios from 'axios';
 import Logger from '../utils/Logger';
 import dotenv from 'dotenv';
+import { fallbackCardExamples } from './CardExamples';
+
 dotenv.config();
 
 const METABASE_URL = process.env.METABASE_URL;  
@@ -87,6 +89,52 @@ export async function getCard(sessionToken: string, cardId: number): Promise<any
   }
 }
 
+/**
+ * Fetch example cards for a given list of card IDs.
+ * @param sessionToken The session token obtained from authentication.
+ * @param cardIds The list of card IDs for which example cards are being fetched.
+ */
+export async function getExampleCards(sessionToken: string, cardIds: number[]): Promise<any> {
+  const cardPayloads = [];
+  let stringResponse = "";
+
+  for (const cardId of cardIds) {
+    try {
+      const card = await getCard(sessionToken, cardId);
+
+      if ('error' in card) {
+        console.error(`Error fetching card ${cardId}:`, card.error);
+        continue;
+      }
+
+      const cardPayload = {
+        visualization_settings: card.visualization_settings || {},
+        parameters: card.parameters || null,
+        description: card.description || null,
+        collection_position: card.collection_position || null,
+        result_metadata: card.result_metadata || null,
+        collection_id: card.collection_id || null,
+        name: card.name,
+        type: card.type || null,
+        cache_ttl: card.cache_ttl || null,
+        dataset_query: card.dataset_query || {},
+        parameter_mappings: card.parameter_mappings || null,
+        display: card.display || 'table'
+      };
+
+      cardPayloads.push(cardPayload);
+
+      stringResponse = formatExampleCards(cardPayloads);
+
+    } catch (error) {
+      console.error(`Error getting example cards ${cardId}, we will use the fallback card. Error: ${error}`);
+      stringResponse = fallbackCardExamples;
+    }
+  }
+
+  return stringResponse;
+}
+
 
 /**
  * Create a new card (question) in Metabase.
@@ -94,9 +142,6 @@ export async function getCard(sessionToken: string, cardId: number): Promise<any
  * @param schema The schema information obtained from the getSchema function.
  */
 export async function createCard(sessionToken: string, cardData: any): Promise<number | { error: string; status: number }> {
-
-  Logger.log('\n\ncardData', cardData); 
-  cardData.visualization_settings = {};
 
   try {
   const response = await axios.post(`${METABASE_URL}/card`, cardData, {
@@ -241,3 +286,17 @@ export const getCards = async (sessionToken: string, dbId: number): Promise<any>
     throw error;
   }
 };
+
+function formatExampleCards(exampleCards: any[]): string {
+  let formattedString = '';
+
+  exampleCards.forEach((card, index) => {
+    formattedString += `**Example ${index + 1}:**\n\n`;
+    formattedString += `**Natural Language Query:**\n`;
+    formattedString += `${card.description || 'No description available'}\n\n`;
+    formattedString += `**JSON Representation:**\n`;
+    formattedString += `${JSON.stringify(card, null, 2)}\n\n`;
+  });
+
+  return formattedString.trim();
+}

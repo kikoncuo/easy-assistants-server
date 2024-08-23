@@ -1,177 +1,27 @@
 import { WebSocketServer } from 'ws';
-import { GraphApplication } from './services/GraphApplication';
-import { WebSocketService } from './services/WebSocketService';
-import { SemanticLayerGraph } from './subgraphs/createSemanticLayer';
-import fs from 'fs';
-import https from 'https';
 import http from 'http';
-import dotenv from 'dotenv';
 import Logger from './utils/Logger';
-import { saveCsvTable } from './services/DirectFlowHandler';
-import { externalAgents } from './utils/ExternalAgents';
-import { EditCubeGraph } from './subgraphs/editCubes';
+import { checkEnvironmentVariables } from './utils/EnvCheck';
+import { Router } from './router';
 
-dotenv.config();
+checkEnvironmentVariables();
 
-const {
-  OPENAI_API_KEY,
-  TAVILY_API_KEY,
-  LANGCHAIN_API_KEY,
-  LANGCHAIN_PROJECT,
-  LANGCHAIN_TRACING_V2,
-  GROQ_API_KEY,
-  ANTHROPIC_API_KEY,
-  MEMORY_STORAGE_SUPABASE_URL,
-  MEMORY_STORAGE_SUPABASE_KEY,
-  METABASE_URL,
-  METABASE_USERNAME,
-  METABASE_PASSWORD,
-  CUBE_API_SERVER_URL,
-} = process.env;
-
-const missingApiKeys: string[] = [];
-
-if (!OPENAI_API_KEY) {
-  missingApiKeys.push('OPENAI_API_KEY');
-}
-
-if (!GROQ_API_KEY) {
-  missingApiKeys.push('GROQ_API_KEY');
-}
-
-if (!ANTHROPIC_API_KEY) {
-  missingApiKeys.push('ANTHROPIC_API_KEY');
-}
-
-if (!METABASE_URL) {
-  missingApiKeys.push('METABASE_URL');
-}
-
-if (!METABASE_USERNAME) {
-  missingApiKeys.push('METABASE_USERNAME');
-}
-
-if (!METABASE_PASSWORD) {
-  missingApiKeys.push('METABASE_PASSWORD');
-}
-
-if (missingApiKeys.length === 6) {
-  throw new Error(
-    'All API keys (OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, METABASE_URL, METABASE_USERNAME, METABASE_PASSWORD) are missing. Please provide at least one API key.',
-  );
-} else if (missingApiKeys.length > 0) {
-  Logger.warn(`Warning: The following API keys are missing: ${missingApiKeys.join(', ')}`);
-}
-
-if (!LANGCHAIN_API_KEY) {
-  Logger.warn('Warning: LANGCHAIN_API_KEY is not set. Activity logging will be disabled.');
-}
-
-if (!MEMORY_STORAGE_SUPABASE_URL) {
-  Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_URL is not set. Activity logging will be disabled.');
-}
-
-if (!MEMORY_STORAGE_SUPABASE_KEY) {
-  Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_KEY is not set. Activity logging will be disabled.');
-}
-
-if (!CUBE_API_SERVER_URL) {
-  Logger.warn('Warning: CUBE_API_SERVER_URL is not set. Activity logging will be disabled.');
-}
-
-const isProd = process.env.BUN_ENV === 'production';
-
-if (!isProd) {
-  Logger.log('Development mode');
-}
-
-const port = isProd ? 443 : 8090;
+const port = 8090;
 
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
-if (isProd) {
-  const options = {
-    cert: fs.readFileSync('/etc/letsencrypt/live/chat.omniloy.com/fullchain.pem'),
-    key: fs.readFileSync('/etc/letsencrypt/live/chat.omniloy.com/privkey.pem'),
-  };
-
-  const httpsServer = https.createServer(options, (req, res) => {
-    res.writeHead(426, { 'Content-Type': 'text/plain' });
-    res.end('Upgrade required');
-  });
-
-  httpsServer.on('upgrade', (req, socket, head) => {
-    wss.handleUpgrade(req, socket, head, ws => {
-      wss.emit('connection', ws, req);
-    });
-  });
-
-  httpsServer.listen(port, () => {
-    Logger.log(`WSS server is running on port ${port}`);
-  });
-} else {
-  server.listen(port, () => {
-    Logger.log(`WS server is running on port ${port}`);
-  });
-}
+server.listen(port, () => {
+  Logger.log(`WS server is running on port ${port}`);
+});
 
 wss.on('connection', ws => {
   Logger.log('Client connected');
 
-  let graphApp = {} as any;
-  // = new GraphApplication( // TODO: Delete this once we've migrated to always calling configure afrter connection
-  //   (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
-  //   (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
-  //     WebSocketService.queryUser(type, functions, ws),
-  //   [""],
-  // );
-
-  if (graphApp.error) {
-    Logger.error(graphApp);
-  }
+  const router = new Router(ws);
 
   ws.on('message', async (message: string) => {
-    const data = JSON.parse(message);
-    if (data.type === 'query') {
-      Logger.log('Processing task:', data.task);
-      await graphApp.processTask(data.task, data.thread_id, ws);
-    } else if (data.type === 'csvLoader') {
-      Logger.log('Processing task:', data.task);
-      const { agent, agentPrompt } = externalAgents.csvLoader;
-      await saveCsvTable(
-        agent,
-        agentPrompt,
-        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
-          WebSocketService.queryUser(type, functions, ws),
-        data.task,
-      );
-    } else if (data.type === 'configure') {
-      Logger.log('Configuring new graph application');
-      graphApp = new GraphApplication(
-        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
-        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
-          WebSocketService.queryUser(type, functions, ws),
-        data.configData,
-      );
-    } else if (data.type === 'createSemanticLayer') {
-      Logger.log('Creating semantic layer');
-      // TODO create a interactive function to get response from the user
-      const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, data.company_name); // TODO: Pass in the functions here to interact with the user, not sure how to do this
-      const result = await semanticLayerGraph
-        .getGraph()
-        .invoke({ task: "Create a semantic layer for the company's data" });
-      WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
-    } else if (data.type === 'editSemanticLayer') {
-      Logger.log('Started process for editing semantic layer');
-      const editCubeGraph = new EditCubeGraph(data.company_name, [
-        (type: string, message: string) => WebSocketService.outputHandler(type, message, ws),
-      ]);
-      const result = await editCubeGraph.getGraph().invoke({
-        task: data.task,
-      });
-      WebSocketService.outputHandler('semanticLayer', result.finalResult, ws);
-    }
+    await router.handleMessage(message);
   });
 
   ws.on('close', () => {

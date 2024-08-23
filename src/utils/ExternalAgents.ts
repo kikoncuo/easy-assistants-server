@@ -1,4 +1,4 @@
-import { anthropicSonnet, createAgent } from "../models/Models";
+/*import { anthropicSonnet, createAgent } from "../models/Models";
 import { createTableStructure } from "../models/Tools";
 
 export const externalAgents = {
@@ -10,3 +10,4 @@ export const externalAgents = {
         Always respond using the tool`,
     }
   };
+  */ //NOT USED ANYMORE
