@@ -6,25 +6,7 @@ import Logger from '../utils/Logger';
 import { fallbackCardExamples } from '../utils/CardExamples';
 import { ToolDefinition } from '@langchain/core/language_models/base';
 import { authenticate, createCard, deleteCard, executeQuery, fetchFieldDetails, getSchema, getExampleCards } from '../utils/MetabaseAPI';
-import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { createClient } from "@supabase/supabase-js";
-import type { Document } from "@langchain/core/documents";
-
-const embeddings = new OpenAIEmbeddings({
-  model: "text-embedding-3-small",
-});
-
-const supabaseClient = createClient(
-  process.env.SUPABASE_URL as string,
-  process.env.SUPABASE_PRIVATE_KEY as string
-);
-
-const vectorStore = new SupabaseVectorStore(embeddings, {
-  client: supabaseClient,
-  tableName: "documents",
-  queryName: "match_documents",
-});
+import { similaritySearch, addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 
 // Define a specific state type
 interface DataRecoveryState extends BaseState {
@@ -377,10 +359,7 @@ async function createMetabaseCard(
   };
 
   const filter = { databaseID: database };
-
-  Logger.log('Finding similar cards for:', state.task);
-
-  const similaritySearchWithScoreResults = await vectorStore.similaritySearchWithScore(state.task, 1, filter);
+  const similaritySearchWithScoreResults = await similaritySearch(state.task, 1, filter);
 
   let ids = [];
 
@@ -494,19 +473,6 @@ async function executeMetabaseQuery(state: DataRecoveryState): Promise<DataRecov
 
   Logger.log('Creating document:');
 
-  const document: Document = {
-    pageContent: query.description,
-    metadata: { id:cardId, databaseID: query.dataset_query.database},
-  };
-/*
-  Logger.log('Adding document to vector store:', [document], { ids: [cardId] });
-  
-  const test = await vectorStore.addDocuments([document], { ids: [cardId] });
-
-  Logger.log('Added document to vector store:', test);
-
-  Logger.log('CHANGE THIS ONCE WE HAVE THE FRONT STORE THEM');
-*/
   return {
     ...state,
     feedbackMessage: feedbackMessage,
