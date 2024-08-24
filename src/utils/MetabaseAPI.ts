@@ -128,7 +128,6 @@ export async function getExampleCards(sessionToken: string, cardIds: number[]): 
 
     } catch (error) {
       console.error(`Error getting example cards ${cardId}, we will use the fallback card. Error: ${error}`);
-      stringResponse = fallbackCardExamples;
     }
   }
 
@@ -286,6 +285,57 @@ export const getCards = async (sessionToken: string, dbId: number): Promise<any>
     throw error;
   }
 };
+
+export async function createDashboard(
+  sessionToken: string,
+  dashboardData: any,
+  dashboardContent: any
+): Promise<number | { error: string; status: number }> {
+  try {
+    // Step 1: Create the dashboard
+    const createResponse = await axios.post(
+      `${METABASE_URL}/dashboard`,
+      dashboardData,
+      {
+        headers: {
+          'X-Metabase-Session': sessionToken,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const dashboardId = createResponse.data.id;
+
+    // Step 2: Populate the dashboard
+    const updateResponse = await axios.put(
+      `${METABASE_URL}/dashboard/${dashboardId}`,
+      {
+        ...dashboardContent,
+        id: dashboardId,
+      },
+      {
+        headers: {
+          'X-Metabase-Session': sessionToken,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    Logger.log('Dashboard created and populated successfully');
+    return dashboardId;
+
+  } catch (error: any) {
+    Logger.error('Error creating dashboard:', error);
+    if (error.response) {
+      return { 
+        error: error.response.data || 'Unknown error occurred', 
+        status: error.response.status 
+      };
+    } else {
+      return { error: 'An unexpected error occurred', status: 500 };
+    }
+  }
+}
 
 function formatExampleCards(exampleCards: any[]): string {
   let formattedString = '';
