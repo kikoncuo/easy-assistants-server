@@ -1,566 +1,459 @@
-/** @format */
-
 import { ToolDefinition } from '@langchain/core/language_models/base';
-/* TODO: Double check if we can delete this because we are using structurized output
-const planningTool: ToolDefinition = { 
+
+// Tool Definitions
+export const IdentifySourcesTool: ToolDefinition = {
   type: "function",
   function: {
-    name: "createPlan",
-    description: "Creates an array of steps, where each step is an object containing a step ID, description, tool name, and an array of tool parameters",
+    name: "identifySources",
+    description: "Identify relevant sources in the schema for creating a dashboard.",
     parameters: {
       type: "object",
       properties: {
-        steps: {
+        relevantSources: {
           type: "array",
-          description: "An array of step objects",
+          description: "An array of relevant source tables and their fields.",
           items: {
             type: "object",
             properties: {
-              stepId: {
-                type: "string",
-                pattern: "^#E\\d+$",
-                description: "The step ID in the format #ENumber (e.g., #E1, #E2)",
-              },
-              description: {
-                type: "string",
-                description: "A description of the step",
-              },
-              toolName: {
-                type: "string",
-                description: "The name of the tool to be used in the step",
-              },
-              toolParameters: {
+              tableName: { type: "string" },
+              fields: { 
                 type: "array",
-                description: "An array of tool parameters, which can include step results",
-                items: {
-                  type: "string",
+                items: { type: "string" }
+              }
+            },
+            required: ["tableName", "fields"]
+          }
+        },
+      },
+      required: ["relevantSources"]
+    }
+  }
+};
+
+export const IdentifyFieldsTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "identifyFields",
+    description: "Identify fields in the schema that require additional details for the query.",
+    parameters: {
+      type: "object",
+      properties: {
+        fieldIds: {
+          type: "array",
+          description: "An array of IDs of the fields that require additional details.",
+          items: {
+            type: "integer",
+            description: "The ID of a field."
+          }
+        },
+      },
+      required: ["fieldIds"]
+    }
+  }
+};
+
+export const GetReasoningTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getReasoning",
+    description: "Explains the reasoning behind how the card was created",
+    parameters: {
+      type: "object",
+      properties: {
+        reasoning: {
+          type: "string",
+          description: "Reasoning behind how the card was created"
+        },
+        sources: {
+          type: "object",
+          description: "An object containing the tables and fields used to create the card",
+          properties: {
+            tables: {
+              type: "array",
+              description: "Array of objects representing tables and their corresponding fields",
+              items: {
+                type: "object",
+                properties: {
+                  tableName: {
+                    type: "string",
+                    description: "Name of the table"
+                  },
+                  fields: {
+                    type: "array",
+                    description: "Fields used in this table",
+                    items: {
+                      type: "string",
+                      description: "Name of the field"
+                    }
+                  }
                 },
-              },
-            },
-            required: ["stepId", "description", "toolName", "toolParameters"],
+                required: ["tableName", "fields"]
+              }
+            }
           },
-        },
+          required: ["tables"]
+        }
       },
-      required: ["steps"],
-    },
-  },
-};*/
-
-const calculatorTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'calculate',
-    description: 'Perform basic arithmetic operations on two numbers, including powers and roots',
-    parameters: {
-      type: 'object',
-      properties: {
-        a: {
-          type: 'number',
-          description: 'The first operand',
-        },
-        b: {
-          type: 'number',
-          description: 'The second operand (For roots, this is the degree of the root)',
-        },
-        operator: {
-          type: 'string',
-          enum: ['add', 'subtract', 'multiply', 'divide', 'power', 'root'],
-          description:
-            "The arithmetic operation to perform. For 'power', 'a' is raised to the power of 'b'. For 'root', it calculates the 'b'th root of 'a'.",
-        },
-      },
-      required: ['a', 'b', 'operator'],
-    },
-  },
+      required: ["reasoning", "sources"]
+    }
+  }
 };
 
-const sqlQuery: ToolDefinition = {
-  type: 'function',
+export const AnalyzeFiltersTool: ToolDefinition = {
+  type: "function",
   function: {
-    name: 'sqlQuery',
-    description:
-      "Creates a given SQL query with specified parameters and returns the result set.The table's columns definition is provided.",
+    name: "analyzeFilters",
+    description: "Analyze relevant cards to determine if they need filters and suggest modifications",
     parameters: {
-      type: 'object',
+      type: "object",
       properties: {
-        sql: {
-          type: 'string',
-          description:
-            'The SQL query string to be executed. Can include parameters. Never use HAVING statement, but WHERE.',
-        },
-        chart: {
-          type: 'boolean',
-          description:
-            'Indicate if based on the generated query, a chart would be helpful to understand better the data.',
-        },
-      },
-      required: ['sql', 'chart'],
-    },
-  },
-};
-
-const segmentTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'addSegment',
-    description: 'Creates a given SQL query with specified parameters and returns the result set',
-    parameters: {
-      type: 'object',
-      properties: {
-        name: {
-          type: 'string',
-          description: 'Name of the segment',
-        },
-        created_by: {
-          type: 'string',
-          description: 'Name of the user that executed the query',
-        },
-        last_edited: {
-          type: 'string',
-          description: 'Actual date of the function execution in format YYYY-MM-DD',
-        },
-        condition: {
-          type: 'array',
+        cardModifications: {
+          type: "array",
           items: {
-            type: 'string',
-            enum: ['age', 'amount', 'gender', 'category', 'product'],
-          },
-        },
-        table_name: {
-          type: 'string',
-          description: 'Table name that was used to insert data from the createSQLquery function.',
-        },
-      },
-      required: ['name', 'created_by', 'last_edited', 'condition', 'table_name'],
-    },
-  },
-};
-
-const emailTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createEmail',
-    description: 'Creates an email for a campaign based on the template_name, the subject and message',
-    parameters: {
-      type: 'object',
-      properties: {
-        template_name: {
-          type: 'string',
-          description: 'Name of the email template',
-        },
-        subject: {
-          type: 'string',
-          description: 'Subject of the email',
-        },
-        message: {
-          type: 'string',
-          description: 'Body of the email to be sent',
-        },
-      },
-      required: ['template_name', 'subject', 'message'],
-    },
-  },
-};
-const eventTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createEvent',
-    description: 'Creates an event trigger for a campaign based on specified type and value',
-    parameters: {
-      type: 'object',
-      properties: {
-        eventType: {
-          type: 'string',
-          enum: [
-            'Date',
-            'Login',
-            'WebsiteView',
-            'SubscribeNewsletter',
-            'NewsletterClick',
-            'ProductReturn',
-            'ProductBasket',
-            'Purchase',
-            'SocialFollow',
-            'SocialComment',
-            'SocialPostHashtag',
-            'SocialSharePost',
-            'SocialLikePicture',
-          ],
-          description: 'Event type details',
-        },
-        eventValue: {
-          type: 'string',
-          description: 'The specific event',
-        },
-      },
-      required: ['eventType', 'eventValue'],
-    },
-  },
-};
-const filterTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createFilter',
-    description: 'Sets filter criteria for a marketing campaign',
-    parameters: {
-      type: 'object',
-      properties: {
-        criteria: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['age', 'amount', 'gender', 'category', 'product'],
-          },
-        },
-        value: {
-          type: 'array',
-          items: {
-            type: 'string',
-          },
-          description:
-            'An array containing the value of the criteria that are going to be applied to the campaign. For comparison types, use these ones <x, >x, =, =<, =>, <x> as needed.',
-        },
-      },
-      required: ['criteria', 'value'],
-    },
-  },
-};
-const rewardTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createReward',
-    description:
-      'Creates a reward for a marketing campaign, allowing for various reward types including coupons for fixed amounts or percentages, products, or points.',
-    parameters: {
-      type: 'object',
-      properties: {
-        rewardType: {
-          type: 'string',
-          enum: ['coupon', 'product', 'points'],
-          description: 'Type of reward (coupon, product, or points)',
-        },
-        details: {
-          type: 'array',
-          items: {
-            type: 'object',
+            type: "object",
             properties: {
-              type: {
-                type: 'string',
-                enum: ['fixedAmount', 'percentage', 'productID', 'points'],
-                description:
-                  'Specifies the reward detail type: fixed amount, percentage for coupons; product ID for products; or a points value.',
-              },
-              value: {
-                type: 'string',
-                description:
-                  'The value associated with the reward detail, such as the coupon value, product ID, or points amount.',
-              },
+              id: { type: "number" },
+              needsFilter: { type: "boolean" },
+              modifiedDatasetQuery: { type: "object" },
+              newTitle: { type: "string" },
+              newDescription: { type: "string" }
             },
-            required: ['type', 'value'],
+            required: ["id", "needsFilter"]
           },
-          description: 'An array containing the details of the reward, accommodating various types and values.',
-        },
-        validity: {
-          type: 'object',
-          properties: {
-            start: {
-              type: 'string',
-              format: 'date',
-              description: "Start date of the reward's validity",
-            },
-            end: {
-              type: 'string',
-              format: 'date',
-              description: "End date of the reward's validity",
-            },
-          },
-          required: ['start', 'end'],
-        },
+          description: "Array with the relevant cards modified if needed"
+        }
       },
-      required: ['rewardType', 'details', 'validity'],
-    },
-  },
+      required: ["cardModifications"]
+    }
+  }
 };
 
-const createTableStructure: ToolDefinition = {
-  type: 'function',
+export const GenerateInsightTool: ToolDefinition = {
+  type: "function",
   function: {
-    name: 'createTableStructure',
-    description:
-      "Generates a PostgreSQL CREATE TABLE statement from a JSON array representing CSV data. The tool infers and returns the data types for each column, based on the json provided. The result will be returned in this format for the headers: column_name type (int, text, etc), column_name2 type (int, text, etc), and the table name as a string. Don't respond until you have the type of the column following the column name.",
+    name: "generateInsight",
+    description: "Generate an insight explanation based on the query result",
     parameters: {
-      type: 'object',
+      type: "object",
       properties: {
-        columns: {
-          type: 'array',
-          description:
-            `The columns for the table, representing the column headers. The data types are to be shouwn after each column name.  If any column name has whitespaces, replace them with underscores. The column name must not have capital letters. For example if the name is 'Column ID', the columns name should be 'column_id'. If the column name corresponds to a restricted or reserved word on SQL, add a underscore at the end of the column name (for example, 'Order' should be 'order_'). `,
+        cardId: { type: "number" },
+        insightExplanation: { type: "string" }
+      },
+      required: ["cardId", "insightExplanation"]
+    }
+  }
+};
+
+export const GenerateMetabaseQueryTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generateMetabaseQuery",
+    description: "Generate a Metabase query based on a natural language task and provided schema",
+    parameters: {
+      type: "object",
+      properties: {
+        description: {
+          type: "string",
+          description: "A detailed description of the query's purpose.",
+          minLength: 1
+        },
+        result_metadata: {
+          type: "array",
+          description: "Metadata about the results, including column descriptions, semantic types, and fingerprints.",
           items: {
-            type: 'string',
-          },
+            type: "object",
+            properties: {
+              description: { type: ["string", "null"] },
+              semantic_type: { type: ["string", "null"] },
+              converted_timezone: {
+                type: "string",
+                description: "Converted timezone for the field, IE: America/New_York, Europe/Amsterdam, etc.",
+                pattern: "(?:Z|(?:[+-]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,6})?)?))"
+              },
+              unit: { type: ["string", "null"] },
+              name: { type: "string" },
+              field_ref: { type: ["array", "null"]},
+              id: { type: ["integer", "null"], minimum: 1 },
+              display_name: { type: "string" },
+              fingerprint: {
+                type: ["object", "null"],
+                properties: {
+                  global: {
+                    type: "object",
+                    properties: {
+                      "distinct-count": { type: "integer" },
+                      "nil%": { type: ["number", "null"] }
+                    }
+                  },
+                  type: {
+                    type: "object",
+                    properties: {
+                      "type/Number": {
+                        type: "object",
+                        properties: {
+                          min: { type: ["number", "null"] },
+                          max: { type: ["number", "null"] },
+                          avg: { type: ["number", "null"] },
+                          q1: { type: ["number", "null"] },
+                          q3: { type: ["number", "null"] },
+                          sd: { type: ["number", "null"] }
+                        }
+                      },
+                      "type/Text": {
+                        type: "object",
+                        properties: {
+                          "percent-json": { type: ["number", "null"] },
+                          "percent-url": { type: ["number", "null"] },
+                          "percent-email": { type: ["number", "null"] },
+                          "percent-state": { type: ["number", "null"] },
+                          "average-length": { type: ["number", "null"] }
+                        }
+                      },
+                      "type/DateTime": {
+                        type: "object",
+                        properties: {
+                          earliest: { type: ["string", "null"] },
+                          latest: { type: ["string", "null"] }
+                        }
+                      }
+                    }
+                  },
+                }
+              },
+              base_type: {
+                type: "string",
+                enum: ["type/Text", "type/Number", "type/Boolean", "type/DateTime", "type/URL", "type/Category"]
+              }
+            }
+          }
         },
-        tableName: {
-          type: 'string',
-          description: 'The name of the table to be created, without schema prefix.',
+        collection_id: {
+          type: "integer",
+          description: "The ID of the collection where the card will be stored, for now pick 2 as is the default library folder", // TODO: Keep track of this in case we use multiple folders
+          minimum: 1
         },
-      },
-      required: ['columns', 'tableName'],
-    },
-  },
-};
-
-const pageHtmlTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'updateHtml',
-    description: "Given an html code, returns a different element's organization.",
-    parameters: {
-      type: 'object',
-      properties: {
-        html: {
-          type: 'string',
-          description: 'The updated html code returned.',
+        name: {
+          type: "string",
+          description: "The name of the query or card.",
+          minLength: 1
         },
-      },
-      required: ['html'],
-    },
-  },
-};
-
-const organizeItemTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'organizeItems',
-    description: 'An array of items, organize them as the user ask.',
-    parameters: {
-      type: 'object',
-      properties: {
-        cards: {
-          type: 'array',
-          description: 'The organized array of elements.',
-          items: { type: 'string' },
+        type: {
+          type: "string",
+          description: "The type of the card, either 'question', 'metric', or 'model'.",
+          enum: ["question", "metric", "model"]
         },
-      },
-      required: ['cards'],
-    },
-  },
-};
-
-const createChart: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createChart',
-    description: 'Generates a chart based on provided labels, data, and chart type',
-    parameters: {
-      type: 'object',
-      properties: {
-        labels: {
-          type: 'array',
-          description: 'The labels for the chart, usually representing the X-axis or categories',
-          items: { type: 'string' },
-        },
-        data: {
-          type: 'array',
-          description: 'The data points for the chart, corresponding to the labels',
-          items: { type: 'number' },
-        },
-        chartType: {
-          type: 'string',
-          enum: ['bar', 'doughnut', 'line'],
-          description: "The type of chart to generate",
-        },
-        explanation: {
+        dataset_query: {
           type: "object",
+          description: "The actual query to be executed, in structured JSON format.",
           properties: {
-            chartTitle: {
-              type: "string",
-              description: "The title for the chart.",
-            },
-            chartLabel: {
-              type: "string",
-              description: "The label for the chart.",
-            },
-            title: {
-              type: "string",
-              description: "The title for the explanation.",
-            },
-            description: {
-              type: "string",
-              descrption: "Explanation of why that SQL was generated.",
-            },
+            database: { type: "integer", description: "The ID of the database to query." },
+            type: { type: "string", enum: ["query"], description: "The type of the query." },
+            query: { type: "object", description: "The query structure, including filters, aggregations, etc. Remember to use the CubeJoinField fields that all tables have to as source tables and identify the fields by their IDs" }
           },
+          required: ["database", "type", "query"]
         },
-      },
-      required: ['labels', 'data', 'chartType', "explanation"],
-    },
-  },
-};
-
-const createDatapoint: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createDatapoint',
-    description: 'Generates an object based on provided input data',
-    parameters: {
-      type: 'object',
-      properties: {
-        title: {
-          type: 'string',
-          description: 'The title for the card',
-        },
-        data: {
-          type: 'string',
-          description: 'The data points for the card',
-        },
-        percentage: {
-          type: 'string',
-          description: 'The percentage value, if exists.',
-        },
-      },
-      required: ['title', 'data', 'percentage'],
-    },
-  },
-};
-
-const cardTool: ToolDefinition = {
-  type: 'function',
-  function: {
-    name: 'createCardSQLquery',
-    description:
-      "Creates a given SQL query with specified parameters and returns the result set.The table's columns definition is provided.",
-    parameters: {
-      type: 'object',
-      properties: {
-        sql: {
-          type: 'string',
-          description:
-            'The SQL query string to be executed. Can include parameters. Never use HAVING statement, but WHERE.',
-        },
-      },
-      required: ['sql'],
-    },
-  },
-};
-
-const getTables: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "getTables",
-    description:
-      "Given a list of table names, identify those with a possible relation to user's request.",
-    parameters: {
-      type: "object",
-      properties: {
-        tables: {
+        parameter_mappings: {
           type: "array",
-          description: "The list of selected tables.",
-          items: { type: 'string' },
+          description: "Mappings for parameters used in the query.",
+          items: {
+            type: "object",
+            properties: {
+              parameter_id: { type: "string", minLength: 1 },
+              target: { type: ["string", "object"] },
+              card_id: { type: "integer", minimum: 1 }
+            }
+          }
         },
-        explanation: {
+        display: {
+          type: "string",
+          description: "The display mode of the query, typically a visualization type.",
+          minLength: 1
+        },
+        visualization_settings: {
           type: "object",
+          description: "Settings for how the results will be visualized, in a chart or table.",
           properties: {
-            title: {
-              type: "string",
-              description: "The title for the explanation.",
+            graph: {
+              type: "object",
+              properties: {
+                dimensions: { type: "array", items: { type: "string" } },
+                metrics: { type: "array", items: { type: "string" } },
+                x_axis: {
+                  type: "object",
+                  properties: {
+                    title_text: { type: "string" }
+                  }
+                },
+                y_axis: {
+                  type: "object",
+                  properties: {
+                    title_text: { type: "string" }
+                  }
+                },
+                series_settings: {
+                  type: "object",
+                  additionalProperties: {
+                    type: "object",
+                    properties: {
+                      display: { type: "string", enum: ["line", "bar", "area"] },
+                      color: { type: "string" }
+                    }
+                  }
+                }
+              }
             },
-            description: {
-              type: "string",
-              descrption: "Explanation of why those tables were selected",
+            table: {
+              type: "object",
+              properties: {
+                pivot: { type: "boolean" },
+                column_formatting: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      color: { type: "string" },
+                      columns: { type: "array", items: { type: "string" } },
+                      highlight_row: { type: "boolean" },
+                      operator: { type: "string" },
+                      value: { type: "number" }
+                    }
+                  }
+                }
+              }
             },
-          },
+            pie: {
+              type: "object",
+              properties: {
+                colors: {
+                  type: "object",
+                  additionalProperties: { type: "string" }
+                }
+              }
+            },
+            pivot_table: {
+              type: "object",
+              properties: {
+                column_split: {
+                  type: "object",
+                  properties: {
+                    columns: { type: "array", items: { type: "string" } },
+                    rows: { type: "array", items: { type: "string" } },
+                    values: { type: "array", items: { type: "string" } }
+                  }
+                },
+                column_widths: {
+                  type: "object",
+                  properties: {
+                    leftHeaderWidths: { type: "array", items: { type: "number" } },
+                    totalLeftHeaderWidths: { type: "number" },
+                    valueHeaderWidths: { type: "object" }
+                  }
+                }
+              }
+            }
+          }
         },
-      },
-      required: ["tables", "explanation"],
-    },
-  },
-};
-
-
-
-const getData: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "getData",
-    description:
-      "Create an SQL query based on the user's request.",
-    parameters: {
-      type: "object",
-      properties: {
-        sqlQuery: {
-          type: "string",
-          description:
-            `The unique SQL query with all the columns from all the different tables. All column names and tables names, even when using renames, should be in between double commas (I.E.: select name from users, should be select "name" from "users").`,
-        },
-        sqlTitle: {
-          type: "string",
-          description:
-            "Title that will have the table created with that SQL query.",
-        },
-        sqlDescription: {
-          type: "string",
-          description:
-            "A simple description giving more context of the sqlTitle text.",
-        },
-        headers: {
+        parameters: {
           type: "array",
-          description: "The list of headers for the sqlQuery statement.",
-          items: { type: 'string' },
-        },
-        explanation: {
-          type: "object",
-          properties: {
-            title: {
-              type: "string",
-              description: "The title for the explanation.",
+          description: "Parameters that can be passed into the query for dynamic filtering.",
+          items: {
+            type: "object",
+            properties: {
+              slug: { type: "string" },
+              default: { type: ["string", "number", "boolean", "null"] },
+              name: { type: "string" },
+              type: {
+                type: "string",
+                description: "The type of parameter, such as 'string', 'number', 'date', etc.",
+                minLength: 1
+              },
+              temporal_units: {
+                type: "array",
+                items: { type: "string", enum: ["quarter", "day", "hour", "week", "second", "month", "year"] }
+              },
+              sectionId: { type: "string", minLength: 1 },
+              values_source_type: {
+                type: "string",
+                enum: ["static-list", "card", "null"]
+              },
+              id: { type: "string", minLength: 1 },
+              values_source_config: {
+                type: "object",
+                properties: {
+                  values: { type: ["array", "null"], items: { type: ["string", "number", "boolean"] } },
+                  card_id: { type: ["integer", "null"], minimum: 1 },
+                  value_field: {
+                    type: ["array", "null"],
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: ["string", "integer"] },
+                        options: { type: "object" }
+                      }
+                    }
+                  },
+                  label_field: {
+                    type: ["array", "null"],
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: ["string", "integer"] },
+                        options: { type: "object" }
+                      }
+                    }
+                  }
+                }
+              }
             },
-            description: {
-              type: "string",
-              descrption: "Explanation of why that SQL was generated.",
-            },
-          },
-        },
+            required: ["id", "type"]
+          }
+        }
       },
-      required: ["sqlQuery", "sqlDescription", "headers", "explanation"],
-    },
-  },
+      required: ["name", "dataset_query", "display", "type", "visualization_settings"]
+    }
+  }
 };
 
-const askHuman: ToolDefinition = {
+export const GenerateCardDescriptionsTool: ToolDefinition = {
   type: "function",
   function: {
-    name: "askHuman",
-    description:
-      "Ask the human a question or request more info",
+    name: "generateCardDescriptions",
+    description: "Generate descriptions for insightful cards to be included in the dashboard.",
     parameters: {
       type: "object",
       properties: {
-        question: {
-          type: "string",
-          description:
-            "The question the AI should ask the user when additional information is needed. This property contains the query or request for clarification directed to the user.",
+        cardDescriptions: {
+          type: "array",
+          description: "An array of card descriptions.",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              queryType: { 
+                type: "string",
+                enum: ["table", "bar", "line", "pie", "scatter", "area", "funnel", "map"]
+              },
+              relevantSources: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    tableName: { type: "string" },
+                    fields: { 
+                      type: "array",
+                      items: { type: "string" }
+                    }
+                  },
+                  required: ["tableName", "fields"]
+                }
+              }
+            },
+            required: ["title", "description", "queryType", "relevantSources"]
+          }
         },
       },
-      required: ["question"],
-    },
-  },
-}
-
-
-export {
-  calculatorTool,
-  emailTool,
-  eventTool,
-  filterTool,
-  rewardTool,
-  createTableStructure,
-  createChart,
-  createDatapoint,
-  cardTool,
-  sqlQuery,
-  segmentTool,
-  pageHtmlTool,
-  organizeItemTool,
-  getTables,
-  getData,
-  askHuman
+      required: ["cardDescriptions"]
+    }
+  }
 };
