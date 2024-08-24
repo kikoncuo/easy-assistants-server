@@ -22,6 +22,12 @@ export async function similaritySearch(query: string, k: number = 1, filter: any
   return await vectorStore.similaritySearchWithScore(query, k, filter);
 }
 
+/*
+* Add documents to the vector store.
+* @param pageContents: An array of strings representing the content of each page. For cards this would be the description or title if there is no description.
+* @param metadata: An array of metadata objects representing the metadata of each page. For cards this would be the card ID, and database ID.
+* @param pageId: An array of page IDs. For cards this would be the card ID.
+*/
 export async function addDocuments(pageContents: string[], metadata: Record<string, any>[], pageId: number[]) {
   if (pageContents.length !== metadata.length || pageContents.length !== pageId.length) {
     throw new Error("The number of page contents must match the number of metadata objects and pageId objects.");
