@@ -269,7 +269,7 @@ export const GenerateMetabaseQueryTool: ToolDefinition = {
           description: "The display mode of the query, typically a visualization type.",
           minLength: 1
         },
-        visualization_settings: {
+        visualization_settings: { // TODO: Enable this when we have a better definition with better examples
           type: "object",
           description: "Settings for how the results will be visualized, in a chart or table.",
           properties: {
@@ -454,6 +454,79 @@ export const GenerateCardDescriptionsTool: ToolDefinition = {
         },
       },
       required: ["cardDescriptions"]
+    }
+  }
+};
+
+export const GenerateDashboardLayoutTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generate_dashboard_layout",
+    description: "Generates a dashboard layout based on the given cards and task",
+    parameters: {
+      type: "object",
+      properties: {
+        dashboardLayout: {
+          type: "object",
+          description: "The dashboard layout configuration",
+          properties: {
+            description: { type: "string" },
+            name: { type: "string" },
+            dashcards: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "number" },
+                  card_id: { type: "number" },
+                  row: { type: "number" },
+                  col: { type: "number" },
+                  size_x: { type: "number" },
+                  size_y: { type: "number" },
+                  parameter_mappings: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        parameter_id: { type: "string" },
+                        target: { type: ["object", "null"] }
+                      }
+                    }
+                  }
+                },
+                required: ["id", "card_id", "row", "col", "size_x", "size_y", "parameter_mappings"]
+              },
+            },
+            tabs: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "number" },
+                  name: { type: "string" },
+                },
+                required: ["id", "name"]
+              },
+            },
+            parameters: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  type: { type: "string" },
+                  name: { type: "string" },
+                  slug: { type: "string" },
+                  default: { type: ["string", "number", "boolean", "null"] },
+                },
+                required: ["id", "type", "name", "slug"]
+              },
+            },
+          },
+          required: ["description", "name", "dashcards", "tabs", "parameters"],
+        },
+      },
+      required: ["dashboardLayout"],
     }
   }
 };
