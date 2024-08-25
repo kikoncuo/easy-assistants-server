@@ -96,16 +96,5 @@ export const fallbackCardExamples = (databaseID: number) => `
         }
       }
     },
-    "visualization_settings": {
-      "graph.show_values": true,
-      "graph.x_axis.title_text": "Item name",
-      "graph.y_axis.title_text": "Number of orders",
-      "graph.dimensions": [
-        "itemName"
-      ],
-      "graph.metrics": [
-        "sum"
-      ]
-    }
   }
 `;

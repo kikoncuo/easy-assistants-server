@@ -58,7 +58,7 @@ export async function getSchema(sessionToken: string, databaseId: number): Promi
     }
   });
 
-  Logger.log('Combined tables and fields:', filteredTables);
+  //Logger.log('Combined tables and fields:', filteredTables);
 
   return filteredTables;
 }
@@ -141,7 +141,7 @@ export async function getExampleCards(sessionToken: string, cardIds: number[]): 
  * @param schema The schema information obtained from the getSchema function.
  */
 export async function createCard(sessionToken: string, cardData: any): Promise<number | { error: string; status: number }> {
-
+  //Logger.log('Creating card with data:', cardData);
   try {
   const response = await axios.post(`${METABASE_URL}/card`, cardData, {
     headers: {
@@ -286,12 +286,15 @@ export const getCards = async (sessionToken: string, dbId: number): Promise<any>
   }
 };
 
+// In src/utils/MetabaseAPI.ts
+
 export async function createDashboard(
   sessionToken: string,
   dashboardData: any,
   dashboardContent: any
 ): Promise<number | { error: string; status: number }> {
   try {
+    Logger.log('Creating dashboard with data:', dashboardData);
     // Step 1: Create the dashboard
     const createResponse = await axios.post(
       `${METABASE_URL}/dashboard`,
@@ -306,13 +309,13 @@ export async function createDashboard(
 
     const dashboardId = createResponse.data.id;
 
-    // Step 2: Populate the dashboard
+    Logger.log('Dashboard created with ID:', dashboardId);
+    Logger.log('Populating dashboard with content:', dashboardContent);
+
+    // Step 2: Populate the dashboard with content
     const updateResponse = await axios.put(
       `${METABASE_URL}/dashboard/${dashboardId}`,
-      {
-        ...dashboardContent,
-        id: dashboardId,
-      },
+      dashboardContent,
       {
         headers: {
           'X-Metabase-Session': sessionToken,
@@ -322,6 +325,7 @@ export async function createDashboard(
     );
 
     Logger.log('Dashboard created and populated successfully');
+    Logger.log('Update response:', updateResponse.data);
     return dashboardId;
 
   } catch (error: any) {

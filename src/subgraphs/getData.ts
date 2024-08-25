@@ -1,12 +1,12 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { fetchSchema, evaluateFieldRequirements, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardNodes';
+import { fetchSchema, getFieldDetails, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
 
-// Define a specific state type
 interface DataRecoveryState extends BaseState {
+  task: string;
   metabaseQuery: any;
-  feedbackMessage: string | null;
+  feedbackMessage: string;
   finalResult: string;
   queryAttempts: number;
   sessionToken: string;
@@ -19,9 +19,9 @@ interface DataRecoveryState extends BaseState {
 
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
-  private database: number;
+  private databaseId: number;
 
-  constructor(database: number, functions: Function[]) {
+  constructor(databaseId: number, functions: Function[]) {
     const graphState: StateGraphArgs<DataRecoveryState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -32,8 +32,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         default: () => null,
       },
       feedbackMessage: {
-        value: (x: string | null, y?: string | null) => (y ? y : x),
-        default: () => null,
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
       },
       finalResult: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -65,27 +65,108 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       },
       stopExecution: {  
         value: (x: boolean, y?: boolean) => (y ? y : x),
-        default: () => (false),
+        default: () => false,
       },
     };
     super(graphState);
     this.functions = functions;
-    this.database = database;
+    this.databaseId = databaseId;
+  }
+
+  private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const { sessionToken, schema } = await fetchSchema(this.databaseId);
+    return { ...state, sessionToken, schema };
+  }
+
+  private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const fieldDetails = await getFieldDetails(state.task, state.sessionToken, state.schema);
+    return { ...state, fieldDetails };
+  }
+
+  private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const queryAttempts =  (state.queryAttempts || 0) + 1;
+    if (queryAttempts > 3) {
+      Logger.log("Unable to generate a suitable query after 3 attempts.")
+      return {
+        ...state,
+        queryAttempts, 
+        finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage
+      }
+    }
+    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.databaseId, state.feedbackMessage, state.metabaseQuery);
+
+    if ('error' in result) {
+      return {
+        ...state,
+        feedbackMessage: result.error,
+        metabaseQuery: result.metabaseQuery,
+        queryAttempts: state.queryAttempts + 1,
+      };
+    } else {
+      return {
+        ...state,
+        cardId: result.cardId,
+        metabaseQuery: result.metabaseQuery,
+        queryAttempts: state.queryAttempts + 1,
+      };
+    }
+  }
+
+  private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery);
+    
+    if ('error' in result) {
+      const stopExecution = result.error.includes("There is no JOIN between the sources");
+      
+      return {
+        ...state,
+        feedbackMessage: result.error,
+        metabaseQuery: result.metabaseQuery,
+        stopExecution: stopExecution
+      };
+    } else {
+      return {
+        ...state,
+        queryResult: result.queryResult,
+      };
+    }
+  }
+
+  private async getReasoningNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const result = await getReasoning( state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
+
+    const getDatasetQuery = [
+      {
+        function_name: 'getDatasetQuery',
+        arguments: {
+          cardId: state.cardId,
+          reasoning: result.reasoning,
+          sources: result.sources
+        }
+      },
+    ];
+
+    this.functions[0]('tool', getDatasetQuery);
+
+    return {
+      ...state,
+      finalResult: result.finalResult,
+    };
   }
 
   getGraph(): CompiledStateGraph<DataRecoveryState> {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('fetch_schema', async (state: DataRecoveryState) => await fetchSchema(state, this.database))
-      .addNode('evaluate_fields', async (state: DataRecoveryState) => await evaluateFieldRequirements(state))
-      .addNode('create_card', async (state: DataRecoveryState) => await createMetabaseCard(state, this.database))
-      .addNode('execute_query', async (state: DataRecoveryState) => await executeMetabaseQuery(state))
-      .addNode('getReasoning', async (state: DataRecoveryState) => await getReasoning(state, this.functions))
+      .addNode('fetch_schema', this.fetchSchemaNode.bind(this))
+      .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
+      .addNode('create_card', this.createCardNode.bind(this))
+      .addNode('execute_query', this.executeQueryNode.bind(this))
+      .addNode('getReasoning', this.getReasoningNode.bind(this))
       .addEdge(START, 'fetch_schema')
       .addEdge('fetch_schema', 'evaluate_fields')
       .addEdge('evaluate_fields', 'create_card')
-      .addConditionalEdges('create_card', (state: { queryAttempts: number; cardId: any; }) => {
+      .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
           return END;
         } else if (!state.cardId) {
@@ -94,7 +175,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'execute_query';
         }
       })
-      .addConditionalEdges('execute_query', (state: { queryAttempts: number; queryResult: any; stopExecution: boolean; }) => {
+      .addConditionalEdges('execute_query', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3 || state.stopExecution) {
           return END;
         } else if (state.queryResult && !("error" in state.queryResult)) {
@@ -103,7 +184,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'create_card';
         }
       })
-      .addEdge('getReasoning', END)
+      .addEdge('getReasoning', END);
+
     return subGraphBuilder.compile();
   }
 }
