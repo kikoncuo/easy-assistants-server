@@ -38,7 +38,7 @@ class Logger {
   }
   static error(...messages: any[]) {
     const formattedMessages = this.formatMessages(messages);
-    const truncatedMessages = formattedMessages.map(msg => this.truncateMessage(msg, 1500));
+    const truncatedMessages = formattedMessages.map(msg => this.truncateMessage(msg, 150000));
     truncatedMessages.forEach((msg, index) => {
       if (msg.truncated) {
         console.warn(`[${this.getTimeStamp()}] [WARN] Message truncated: original length ${formattedMessages[index].length}`);

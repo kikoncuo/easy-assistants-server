@@ -1,4 +1,4 @@
-export const fallbackCardExamples = `
+export const fallbackCardExamples = (databaseID: number) => `
 **Example 1:**
 
     **Natural Language Query:**
@@ -9,7 +9,7 @@ export const fallbackCardExamples = `
     "name": "Top 20 Items by Orders (Last Month)",
     "display": "bar",
     "dataset_query": {
-      "database": YourDBIDProvidedInPrompt,
+      "database": ${databaseID},
       "type": "query",
       "query": {
         "filter": [
@@ -96,16 +96,5 @@ export const fallbackCardExamples = `
         }
       }
     },
-    "visualization_settings": {
-      "graph.show_values": true,
-      "graph.x_axis.title_text": "Item name",
-      "graph.y_axis.title_text": "Number of orders",
-      "graph.dimensions": [
-        "itemName"
-      ],
-      "graph.metrics": [
-        "sum"
-      ]
-    }
   }
 `;

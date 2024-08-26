@@ -4,26 +4,38 @@ import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import dotenv from 'dotenv';
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { InsightGraph } from '../subgraphs/getInsights';
+import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 dotenv.config();
 
 type SubgraphConfig = {
-  name: 'dataAgent' | 'getInsights';
+  name: string;
   Graph: new (databaseId: number, clientAgentFunctions: Function[]) => any;
-  systemPrompt: string;
 };
 
 type AppConfig = {
-  [key: string]: SubgraphConfig[];
+  [key: string]: {
+    subgraphs: SubgraphConfig[];
+    systemPrompt: string;
+  };
 };
 
 export class GraphApplication {
-  private graphManager!: GraphManager; //  (!) tells TypeScript that it will be definitely assigned before it's used.
+  private graphManager!: GraphManager;
   error: any;
 
   private static readonly APP_CONFIGS: AppConfig = {
-    default: [{ name: 'dataAgent', Graph: DataRecoveryGraph, systemPrompt: dataSystemPrompt }],
-    insights: [{ name: 'getInsights', Graph: InsightGraph, systemPrompt: insightsSystemPrompt }],
+    default: {
+      subgraphs: [
+        { name: 'dataAgent', Graph: DataRecoveryGraph },
+        { name: 'createDashboard', Graph: CreateDashboardGraph }
+      ],
+      systemPrompt: dataSystemPrompt
+    },
+    insights: {
+      subgraphs: [{ name: 'getInsights', Graph: InsightGraph }],
+      systemPrompt: insightsSystemPrompt
+    },
     // Add more app types here as needed
   };
 
@@ -60,21 +72,19 @@ export class GraphApplication {
   }
 
   private createSubgraphsAndSystemPrompt(): { subgraphs: any; systemPrompt: string } {
-    const configs = GraphApplication.APP_CONFIGS[this.appType];
+    const config = GraphApplication.APP_CONFIGS[this.appType];
     const subgraphs: { [key: string]: any } = {};
-    let systemPrompt = '';
 
-    configs.forEach((config) => {
-      subgraphs[config.name] = {
-        agentSubGraph: new config.Graph(
+    config.subgraphs.forEach((subgraphConfig) => {
+      subgraphs[subgraphConfig.name] = {
+        agentSubGraph: new subgraphConfig.Graph(
           +this.clientData[0],
           [this.clientAgentFunction]
         ),
       };
-      systemPrompt = config.systemPrompt;
     });
 
-    return { subgraphs, systemPrompt };
+    return { subgraphs, systemPrompt: config.systemPrompt };
   }
 
   async processTask(task: string, thread_id: string, ws: WebSocket): Promise<void> {
