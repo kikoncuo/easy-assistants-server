@@ -15,6 +15,11 @@ export function checkEnvironmentVariables() {
     METABASE_USERNAME,
     METABASE_PASSWORD,
     CUBE_API_SERVER_URL,
+    PG_HOST,
+    PG_PORT,
+    PG_USER,
+    PG_PASSWORD,
+    PG_DATABASE
   } = process.env;
 
   const missingApiKeys: string[] = [];
@@ -48,5 +53,25 @@ export function checkEnvironmentVariables() {
 
   if (!CUBE_API_SERVER_URL) {
     Logger.warn('Warning: CUBE_API_SERVER_URL is not set. Activity logging will be disabled.');
+  }
+
+  if (!PG_HOST) {
+    Logger.warn('Warning: PG_HOST is not set. Activity logging will be disabled.');
+  }
+
+  if (!PG_PORT) {
+    Logger.warn('Warning: PG_PORT is not set. Activity logging will be disabled.');
+  }
+
+  if (!PG_USER) {
+    Logger.warn('Warning: PG_USER is not set. Activity logging will be disabled.');
+  }
+
+  if (!PG_PASSWORD) {
+    Logger.warn('Warning: PG_PASSWORD is not set. Activity logging will be disabled.');
+  }
+
+  if (!PG_DATABASE) {
+    Logger.warn('Warning: PG_DATABASE is not set. Activity logging will be disabled.');
   }
 }
