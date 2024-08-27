@@ -5,7 +5,6 @@ import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectRespons
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import dotenv from 'dotenv';
 import { PostgresSaver } from '../checkpoint/postgres';
-// TODO: enable this when we have supabase memory storage redes
 dotenv.config();
 
 const {
