@@ -15,6 +15,11 @@ export function checkEnvironmentVariables() {
     METABASE_USERNAME,
     METABASE_PASSWORD,
     CUBE_API_SERVER_URL,
+    PG_HOST,
+    PG_PORT,
+    PG_USER,
+    PG_PASSWORD,
+    PG_DATABASE
   } = process.env;
 
   const missingApiKeys: string[] = [];
@@ -35,18 +40,38 @@ export function checkEnvironmentVariables() {
   }
 
   if (!LANGCHAIN_API_KEY) {
-    Logger.warn('Warning: LANGCHAIN_API_KEY is not set. Activity logging will be disabled.');
+    Logger.warn('Warning: The LANGCHAIN_API_KEY environment variable is not set. LangChain API activity logging will be disabled.');
   }
 
   if (!MEMORY_STORAGE_SUPABASE_URL) {
-    Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_URL is not set. Activity logging will be disabled.');
+      Logger.warn('Warning: The MEMORY_STORAGE_SUPABASE_URL environment variable is not set. Memory storage via Supabase will be disabled.');
   }
 
   if (!MEMORY_STORAGE_SUPABASE_KEY) {
-    Logger.warn('Warning: MEMORY_STORAGE_SUPABASE_KEY is not set. Activity logging will be disabled.');
+      Logger.warn('Warning: The MEMORY_STORAGE_SUPABASE_KEY environment variable is not set. Memory storage via Supabase will be disabled.');
   }
 
   if (!CUBE_API_SERVER_URL) {
-    Logger.warn('Warning: CUBE_API_SERVER_URL is not set. Activity logging will be disabled.');
+      Logger.warn('Warning: The CUBE_API_SERVER_URL environment variable is not set. Cube.js API server integration will be disabled.');
+  }
+
+  if (!PG_HOST) {
+      Logger.warn('Warning: The PG_HOST environment variable is not set. PostgreSQL database connection will be disabled.');
+  }
+
+  if (!PG_PORT) {
+      Logger.warn('Warning: The PG_PORT environment variable is not set. PostgreSQL database connection will be disabled.');
+  }
+
+  if (!PG_USER) {
+      Logger.warn('Warning: The PG_USER environment variable is not set. PostgreSQL database connection will be disabled.');
+  }
+
+  if (!PG_PASSWORD) {
+      Logger.warn('Warning: The PG_PASSWORD environment variable is not set. PostgreSQL database connection will be disabled.');
+  }
+
+  if (!PG_DATABASE) {
+      Logger.warn('Warning: The PG_DATABASE environment variable is not set. PostgreSQL database connection will be disabled.');
   }
 }

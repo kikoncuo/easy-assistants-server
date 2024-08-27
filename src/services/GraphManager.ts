@@ -84,10 +84,6 @@ export class GraphManager {
       workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
 
-    if(!PG_HOST || !PG_PORT || !PG_USER || !PG_PASSWORD || !PG_DATABASE) {
-      throw new Error
-    }
-
     const poolConfig = {
       host: PG_HOST,
       port: Number(PG_PORT),
