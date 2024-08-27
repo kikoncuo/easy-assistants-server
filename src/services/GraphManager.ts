@@ -4,14 +4,11 @@ import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode, getSubGraphAgentNode } from './WorkflowHandler';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import dotenv from 'dotenv';
-import { systemPrompt } from '../models/Prompts';
-import { SupabaseSaver } from '../checkpoint/supabase'; 
 import { PostgresSaver } from '../checkpoint/postgres';
 // TODO: enable this when we have supabase memory storage redes
 dotenv.config();
 
-const { MEMORY_STORAGE_SUPABASE_URL,
-   MEMORY_STORAGE_SUPABASE_KEY,
+const {
    PG_HOST,
    PG_PORT,
    PG_USER,
@@ -87,12 +84,6 @@ export class GraphManager {
       workflow.addNode(name, agentNode);
       workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
     }
-    
-    // if(!MEMORY_STORAGE_SUPABASE_URL || !MEMORY_STORAGE_SUPABASE_KEY) {
-    //   throw new Error
-    // }
-    
-    // const memory = new SupabaseSaver(MEMORY_STORAGE_SUPABASE_URL,MEMORY_STORAGE_SUPABASE_KEY);
 
     if(!PG_HOST || !PG_PORT || !PG_USER || !PG_PASSWORD || !PG_DATABASE) {
       throw new Error
@@ -107,8 +98,7 @@ export class GraphManager {
     };
     
     const postgresSaver = new PostgresSaver(poolConfig);
-    
-    // const memory = new MemorySaver();
+
     return workflow.compile( { checkpointer: postgresSaver });
   }
 
