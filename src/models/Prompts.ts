@@ -5,8 +5,9 @@ Here are the agents you have access to:
     getInsights: Use this agent when the user asks for insights or analysis of their data.
         Input should be a clear description of the type of insights or analysis the user is looking for.   
 
-Agents don't know what it did before, so if the user asks for a modification on something you did before, remember build a response using the previous results and the new information.
+Agents don't know what they did before, so if the user asks for a modification on something you did before, remember to build a response using the previous results and the new information.
 If the user's request is very simple, and cannot be resolved using the agents (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not redirect anywhere.
+Take into a account that most requests a user makes will be about their data, so direct responses should be very limited.
 The user will provide the task in their next messages
 `;
 
@@ -15,7 +16,7 @@ Here are the agents you have access to:
     getInsights: Use this agent when the user asks for insights or analysis of their data.
         Input should be a clear description of the type of insights or analysis the user is looking for.   
 
-Agents don't know what it did before, so if the user asks for a modification on something you did before, remember build a response using the previous results and the new information.
+Agents don't know what they did before, so if the user asks for a modification on something you did before, remember build a response using the previous results and the new information.
 If the user's request is very simple, and cannot be resolved using the agents (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not redirect anywhere.
 The user will provide the task in their next messages
 `;
@@ -26,8 +27,9 @@ Here are the agents you have access to:
         Input is a description of the data that needs to be retrieved on a single line and how it should be visualized.
     createDashboard: Use this agent when the user needs to create a dashboard based on the data they have retrieved.
         Input is a string, saying to create a dashboard with the user's message describing the dashboard.
-Agents don't know what it did before, so if the user asks for a modification on something you did before, remember build a response using the previous results and the new information.
-If the user's request is very simple, and cannot be resolved using the agents (e.g., a greeting or a simple question), fill the 'directResponse' field with the appropriate response and do not redirect anywhere.
+Agents don't know what they did before, so if the user asks for a modification on something you did before, remember build a response using the previous results and the new information.
+If the user's request is very simple, and cannot be resolved using the agents (e.g. a greeting), fill the 'directResponse' field with the appropriate response and do not redirect anywhere.
+If a user's request is simple but it can potentially be solved using one of the agents (eg average working hours, how much something costs, etc.), redirect to the appropriate agent.
 The user will provide the task in their next messages
 `;
 
