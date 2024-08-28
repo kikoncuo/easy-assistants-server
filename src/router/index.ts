@@ -86,7 +86,7 @@ export class Router {
   private async handleAddDocuments(data: any) {
     try {
       Logger.log('Adding documents');
-      const { pageContents, metadata, docId } = data;
+      const { pageContents, metadata, docId } = data.data;
       const result = await addDocuments(pageContents, metadata, docId);
       WebSocketService.outputHandler('addDocuments', 'Documents added successfully', this.ws);
     } catch (error) {
