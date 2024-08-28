@@ -98,7 +98,7 @@ export class Router {
   private async handleDeleteDocuments(data: any) {
     try {
       Logger.log('Deleting documents');
-      const { ids } = data;
+      const { ids } = data.data;
       await deleteDocuments(ids);
       WebSocketService.outputHandler('deleteDocuments', 'Documents deleted successfully', this.ws);
     } catch (error) {
