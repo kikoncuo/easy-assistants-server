@@ -27,40 +27,27 @@ export async function authenticate(): Promise<string> {
  * @param databaseId The ID of the database for which the schema is being requested.
  */
 export async function getSchema(sessionToken: string, databaseId: number): Promise<any> {
-  const responseTables = await axios.get(`${METABASE_URL}/table`, {
+  const databaseMetadata = await axios.get(`${METABASE_URL}/database/${databaseId}/metadata`, {
     headers: {
       'X-Metabase-Session': sessionToken,
     },
-  });
-
-  const filteredTables = responseTables.data
-    .filter((item: any) => item.db_id === databaseId)
-    .map((item: any) => ({
-      display_name: item.display_name,
-      id: item.id,
-      fields: [], // Initialize the fields array
-    }));
-
-  const responseFields = await axios.get(`${METABASE_URL}/database/${databaseId}/fields`, {
-    headers: {
-      'X-Metabase-Session': sessionToken,
-    },
-  });
-
-  // Iterate over the fields and assign them to the corresponding table
-  responseFields.data.forEach((field: any) => {
-    const table = filteredTables.find((table: any) => table.display_name === field.table_name);
-
-    if (table) {
-      // Remove the schema field to save tokens
-      const { schema, ...fieldWithoutSchema } = field;
-      table.fields.push(fieldWithoutSchema);
+    params: {
+      "remove_inactive": true
     }
   });
 
-  //Logger.log('Combined tables and fields:', filteredTables);
+  const tables = databaseMetadata.data.tables
+    .map((table: any) => ({
+      display_name: table.display_name,
+      id: table.id,
+      fields: table.fields.map((field: any) => ({
+        id: field.id,
+        fieldName: field.display_name,
+        details: field.fingerprint ? JSON.stringify(field.fingerprint ) : null
+      }))
+    }));
 
-  return filteredTables;
+  return tables;
 }
 
 /**
@@ -231,30 +218,21 @@ export async function deleteCard(sessionToken: string, cardId: number): Promise<
 }
 
 /**
- * Fetch details of a field
+ * Fetch values of a field
  * @param sessionToken The session token obtained from authentication.
  * @param fieldId The ID of the field.
  */
-export async function fetchFieldDetails(sessionToken: string, fieldId: number): Promise<any> {
+export async function fetchFieldValues(sessionToken: string, fieldId: number): Promise<any> {
   try {
-    const fieldDetailsResponse = await axios.get(`${METABASE_URL}/field/${fieldId}`, {
-      headers: {
-        'X-Metabase-Session': sessionToken,
-      },
-    });
     const fieldValuesResponse = await axios.get(`${METABASE_URL}/field/${fieldId}/values`, {
       headers: {
         'X-Metabase-Session': sessionToken,
       },
     });
     
-    return {
-      fieldName: fieldDetailsResponse.data.display_name,
-      details: fieldDetailsResponse.data.fingerprint ? JSON.stringify(fieldDetailsResponse.data.fingerprint ) : null,
-      values: fieldValuesResponse.data.values
-    };
+    return fieldValuesResponse.data.values.flat(1);
   } catch (error: any) {
-    Logger.error('Error fetching field details:', error);
+    Logger.error('Error fetching field values:', error);
     return null;
   }
 }

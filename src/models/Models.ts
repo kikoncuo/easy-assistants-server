@@ -12,7 +12,7 @@ import { StructuredToolInterface } from '@langchain/core/tools';
 
 const redirectSchema = z
   .object({
-    description: z.string().min(1).max(1000).optional().describe('A concise yet detaileddescription of what the agent should do'),
+    description: z.string().min(1).max(1000).optional().describe('A concise yet detailed description of what the agent should do'),
     agentName: z
       .string()
       .min(1)

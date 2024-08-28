@@ -97,4 +97,159 @@ export const fallbackCardExamples = (databaseID: number) => `
       }
     },
   }
+
+
+
+**Example 2:**
+
+    **Natural Language Query:**
+    Show me a line graph of the total sales by product
+
+    **JSON Representation:**
+    {
+    "name": "Total Sales by Product",
+    "display": "line",
+    "dataset_query": {
+      "database":9,
+      "type":"query",
+      "query":{
+        "source-table":142,
+        "aggregation":[
+          ["sum",
+            [
+              "field",
+              2270,
+              {"base-type":"type/Decimal"}
+            ]
+          ]
+        ],
+        "breakout":[
+          [
+            "field",
+            2090,
+            {"base-type":"type/Text","join-alias":"Product"}
+          ]
+        ],
+        "joins":[{
+          "fields":"all",
+          "alias":"Product",
+          "condition":[
+            "=",
+            [
+              "field",
+              2038,
+              null
+            ],
+            [
+              "field",
+              2092,
+              {"join-alias":"Product"}
+            ]
+          ],
+          "source-table":147
+          }
+        ],
+        "filter":
+          [
+            "not-empty",
+            [
+              "field",
+              2027,
+              {"base-type":"type/DateTime"}
+            ]
+          ]
+        }
+      }
+  }
+
+
+
+**Example 3:**
+
+    **Natural Language Query:**
+    Make a bar chart showing the average cost of wasted products by day of the week
+
+    **JSON Representation:**
+    {
+    "name": "Average Cost of Wastage by Day of the Week",
+    "display": "bar",
+    "dataset_query": {
+      "database":9,
+      "type":"query",
+      "query":{
+        "aggregation":
+          [
+            [
+              "avg",
+              [
+                "field",
+                2334,
+                {"base-type":"type/Decimal"}
+              ]
+            ]
+          ],
+        "breakout":
+          [
+            [
+              "field",
+              2090,
+              {"base-type":"type/Text","join-alias":"Product - CubeJoinField"}
+            ],
+            [
+              "field",
+              2305,
+              {"base-type":"type/Text"}
+            ]
+          ],
+        "joins":
+          [
+            {
+              "alias":"Product - CubeJoinField",
+              "strategy":"left-join",
+              "condition":[
+                "=",
+                [
+                  "field",
+                  2054,
+                  {"base-type":"type/Text"}
+                ],
+                [
+                  "field",
+                  2092,
+                  {"base-type":"type/Text","join-alias":"Product - CubeJoinField"}
+                ]
+              ],
+              "source-table":147
+            },
+            {
+              "alias":"Location - CubeJoinField",
+              "fields":"all",
+              "strategy":"left-join",
+              "condition":[
+                "=",
+                [
+                  "field",
+                  2054,
+                  {"base-type":"type/Text"}
+                ],
+                [
+                  "field",
+                  2099,
+                  {"base-type":"type/Text","join-alias":"Location - CubeJoinField"}
+                ]
+              ],
+              "source-table":148
+              }
+            ],
+          "source-table":145,
+          "filter":[
+            "not-empty",
+            [
+              "field",
+              2305,
+              {"base-type":"type/Text"}
+            ]
+          ]
+        }
+      }
 `;
