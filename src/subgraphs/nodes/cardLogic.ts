@@ -1,4 +1,4 @@
-import { authenticate, createCard, executeQuery, fetchFieldDetails, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
+import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent } from '../../models/Models';
@@ -25,11 +25,14 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
   const requiredFieldIds: number[] = message.lc_kwargs.tool_calls[0].args.fieldIds;
 
   const fieldDetails: Record<number, any> = {};
+  const fields = schema.map((i: any) => i.fields).flat(1);
 
   for (const fieldId of requiredFieldIds) {
-    const details = await fetchFieldDetails(sessionToken, fieldId);
+    const details = fields.find((field: any) => field.id === fieldId);
+
     if (details) {
-      const limitedValues = details.values.slice(0, 20);
+      const values = await fetchFieldValues(sessionToken, fieldId);
+      const limitedValues = values.slice(0, 20);
       if (limitedValues) {
         fieldDetails[fieldId] = {
           ...details,
