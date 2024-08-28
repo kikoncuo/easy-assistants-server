@@ -530,3 +530,28 @@ export const GenerateDashboardLayoutTool: ToolDefinition = {
     }
   }
 };
+
+export const GetRelevantCardsTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getRelevantCards",
+    description: "Identify relevant cards for a given request",
+    parameters: {
+      type: "object",
+      properties: {
+        relevantCards: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "number" }
+            },
+            required: ["id"]
+          },
+          description: "Array with the IDs of the relevant cards"
+        }
+      },
+      required: ["relevantCards"]
+    }
+  }
+};
