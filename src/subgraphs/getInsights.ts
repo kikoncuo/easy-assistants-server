@@ -29,7 +29,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
-      finalResult: {
+      finalResult: {  
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -64,7 +64,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
       Logger.log("No relevant cards found to create the insights")
       return {
         ...state,
-        finalResult: "No relevant cards found to create the insights",
+        finalResult: "No relevant cards found to create the insights"
       };
     }
   }
@@ -91,7 +91,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
    
     return {
       ...state,
-      finalResult: JSON.stringify(insights),
+      finalResult: JSON.stringify(insights)
     };
   }
 
