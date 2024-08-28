@@ -131,6 +131,9 @@ export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a
         `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result)}`,
       );
 
+      if (state.directResponse) {
+        state.directResponse = null;
+      }
 
       return { result: result, agentName: ""};
     } catch (error) {
