@@ -94,7 +94,8 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
   
     ${feedbackMessage ? `Previous attempt has generated the following query ${metabaseQuery}, and resulted in an error: ${feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
 
-    Try to leverage the "CubeJoinField" fields that all tables have to as source tables 
+    Try to leverage the "CubeJoinField" fields that all tables have to join source tables.
+    When available, try to use names instead of IDs for visualizations, even if a new join is necessary to get an item's name.
            
     Here are some examples of a natural language query and its corresponding JSON representation (which used other tables you may not be able to use):
 

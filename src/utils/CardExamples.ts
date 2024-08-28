@@ -97,4 +97,68 @@ export const fallbackCardExamples = (databaseID: number) => `
       }
     },
   }
+
+
+
+**Example 2:**
+
+    **Natural Language Query:**
+    Show me a line graph of the total sales by product
+
+    **JSON Representation:**
+    {
+    "name": "Total Sales by Product",
+    "display": "line",
+    "dataset_query": {
+      "database":9,
+      "type":"query",
+      "query":{
+        "source-table":142,
+        "aggregation":[
+          ["sum",
+            [
+              "field",
+              2270,
+              {"base-type":"type/Decimal"}
+            ]
+          ]
+        ],
+        "breakout":[
+          [
+            "field",
+            2090,
+            {"base-type":"type/Text","join-alias":"Product"}
+          ]
+        ],
+        "joins":[{
+          "fields":"all",
+          "alias":"Product",
+          "condition":[
+            "=",
+            [
+              "field",
+              2038,
+              null
+            ],
+            [
+              "field",
+              2092,
+              {"join-alias":"Product"}
+            ]
+          ],
+          "source-table":147
+          }
+        ],
+        "filter":
+          [
+            "not-empty",
+            [
+              "field",
+              2027,
+              {"base-type":"type/DateTime"}
+            ]
+          ]
+        }
+      }
+  }
 `;
