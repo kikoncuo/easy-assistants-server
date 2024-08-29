@@ -164,7 +164,7 @@ export function getDirectResponseNode(outputHandler: Function) {
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) { 
   async function solve(state: TaskState): Promise<Partial<TaskState>> {
     Logger.log('Invoking solver model', state.result);
-    const finalResult = await solverModel.invoke(['human', 'My user is seeing this content, give a super concise summary or relevant comment on it which will be relevant to the user without mentioning specific tecnologies like SQL or CubeJS, but try to explain the problem if there is one:' + state.result]);
+    const finalResult = await solverModel.invoke(['human', 'My user is seeing this content, give a super concise summary or relevant comment which will be directly read by the user without mentioning specific tecnologies like SQL or CubeJS. If there is an error try to explain it. IE: If it\'s an error with join cubes x and y, explain that the sources X and Y need to be joined in the OmniAI layer\nContent:' + state.result]);
     outputHandler('result', finalResult.content);
       Logger.log('Final response:', finalResult.content)
       

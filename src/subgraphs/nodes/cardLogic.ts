@@ -1,8 +1,8 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
-import { getFasterModel, anthropicSonnet, createStructuredResponseAgent } from '../../models/Models';
 import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool} from '../../models/Tools';
+import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
 
@@ -10,19 +10,34 @@ import { fallbackCardExamples } from '../../utils/CardExamples';
 export async function fetchSchema(database: number): Promise<{ sessionToken: string, schema: any }> {
   const sessionToken = await authenticate();
   const schema = await getSchema(sessionToken, database);
+  //Logger.log({schema}); //For development
   return { sessionToken, schema };
 
 }
 
 
-export async function getFieldDetails(task: string, sessionToken: string, schema: any): Promise<Record<number, any>> {
-  const model = createStructuredResponseAgent(getFasterModel(), [IdentifyFieldsTool]);
+export async function getFieldDetails(task: string, sessionToken: string, schema: any): Promise<{fieldDetails: Record<number, any>, isPossible: string}> {
+  const model = createStructuredResponseAgent(getStrongestModel(), [IdentifyFieldsTool]);
 
   const message = await model.invoke([
-    new HumanMessage(`Given the task: "${task}", identify which fields in the schema might need additional information such as distinct values or fingerprints to successfully complete the query.
-    The schema is as follows: ${JSON.stringify(schema, null, 2)}`)
+    new HumanMessage(`Given the task: "${task}"
+      And the following schema: ${JSON.stringify(schema, null, 2)}
+
+      1 - Identify if the query can be resolved without creating any new columns in my semantic layer
+        Use the following criteria for determining difficulty:
+        - "yes" if the calculation required is straightforward.
+        - "maybe" if you are unsure if a new value should be created
+        - "no" if it is not possible to calculate the necessary values with the current schema.
+
+      2 - Identify which fields in the schema might need additional information such as distinct values or fingerprints to successfully create a Metabase query wihtout using costum columns or SQL.
+          IE: 
+          If the user request the current inventory levels and you only have the number of items purchased and the number of items sold you should create a new semantic layer value.
+      `)
   ]);
+
   const requiredFieldIds: number[] = message.lc_kwargs.tool_calls[0].args.fieldIds;
+  const isPossible: string = message.lc_kwargs.tool_calls[0].args.isPossible;
+  Logger.log("Is possible:", isPossible)
 
   const fieldDetails: Record<number, any> = {};
   const fields = schema.map((i: any) => i.fields).flat(1);
@@ -42,7 +57,7 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
     }
   }
 
-  return fieldDetails;
+  return {fieldDetails, isPossible};
 };
 
 export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number, feedbackMessage?: string, metabaseQuery?: any):
@@ -143,7 +158,8 @@ export async function executeMetabaseQuery(sessionToken: string, cardId: number,
     if (errorMessage.includes("Can't detect Cube query")) {
       errorMessage = "The SQL created from your query is not supported by cubejs, please try to create the query in a different way";
     } else if (errorMessage.includes("Can't find join path")) {
-      errorMessage = "There is no JOIN between the sources. Please revise your query.";
+      // errorMessage = "There is no JOIN between the sources. Please revise your query.";
+      // TODO: Improve error message
     }
 
     Logger.error(errorMessage);

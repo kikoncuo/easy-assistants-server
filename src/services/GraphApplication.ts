@@ -10,7 +10,7 @@ dotenv.config();
 
 type SubgraphConfig = {
   name: string;
-  Graph: new (databaseId: number, clientAgentFunctions: Function[]) => any;
+  Graph: new (databaseId: number, clientAgentFunctions: Function[], companyName: string) => any;
 };
 
 type AppConfig = {
@@ -79,7 +79,8 @@ export class GraphApplication {
       subgraphs[subgraphConfig.name] = {
         agentSubGraph: new subgraphConfig.Graph(
           +this.clientData[0],
-          [this.clientAgentFunction]
+          [this.clientAgentFunction],
+          this.clientData[1]
         ),
       };
     });

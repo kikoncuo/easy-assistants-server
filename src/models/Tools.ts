@@ -34,7 +34,7 @@ export const IdentifyFieldsTool: ToolDefinition = {
   type: "function",
   function: {
     name: "identifyFields",
-    description: "Identify fields in the schema that require additional details for the query.",
+    description: "Identify fields in the schema that require additional details for the query and determine the difficulty of calculating the necessary values with the current fields.",
     parameters: {
       type: "object",
       properties: {
@@ -46,8 +46,16 @@ export const IdentifyFieldsTool: ToolDefinition = {
             description: "The ID of a field."
           }
         },
+        isPossible: {
+          type: "string",
+          description: `A string indicating the difficulty of calculating the necessary values with the current fields in the schema. It can be:
+                        - "yes" if the calculation is straightforward.
+                        - "maybe" if the calculation is possible but may complicate the query.
+                        - "no" if it is not possible.`,
+          enum: ["yes", "maybe", "no"]
+        },
       },
-      required: ["fieldIds"]
+      required: ["fieldIds", "isPossible"]
     }
   }
 };
@@ -269,7 +277,7 @@ export const GenerateMetabaseQueryTool: ToolDefinition = {
           description: "The display mode of the query, typically a visualization type.",
           minLength: 1
         },
-        visualization_settings: { // TODO: Enable this when we have a better definition with better examples
+        visualization_settings: {
           type: "object",
           description: "Settings for how the results will be visualized, in a chart or table.",
           properties: {
@@ -552,6 +560,28 @@ export const GetRelevantCardsTool: ToolDefinition = {
         }
       },
       required: ["relevantCards"]
+    }
+  }
+};
+
+export const GetSourcesTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSources",
+    description: "Identify if a new measure or dimension is necessary on a model of the semantic layer",
+    parameters: {
+      type: "object",
+      properties: {
+        needsSemanticUpdate: {
+          type: "boolean",
+          description: "Whether a semantic layer update is needed for the task."
+        },
+        semanticTask: {
+          type: "string",
+          description: "Specific measure or dimension to create on a model of the semantic layer if needed."
+        }
+      },
+      required: ["needsSemanticUpdate"]
     }
   }
 };
