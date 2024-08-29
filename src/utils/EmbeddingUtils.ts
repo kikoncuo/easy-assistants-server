@@ -43,5 +43,20 @@ export async function addDocuments(pageContents: string[], metadata: Record<stri
 }
 
 export async function deleteDocuments(ids: string[]) {
-  return await vectorStore.delete({ ids });
+  const { data: documentsToDelete, error } = await supabaseClient
+    .from('documents')
+    .select('*')
+    .in('metadata->>id', ids);
+
+  if (error) {
+    throw new Error(`Error fetching documents: ${error.message}`);
+  }
+
+  if (documentsToDelete.length === 0) {
+    return;
+  }
+
+  const filteredIds = documentsToDelete.map(doc => doc.id);
+
+  return await vectorStore.delete({ ids: filteredIds });
 }
