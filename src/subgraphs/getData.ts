@@ -39,7 +39,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      finalResult: {
+      finalResult: {  
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -177,7 +177,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     return {
       ...state,
-      finalResult: result.finalResult,
+      finalResult:  result.finalResult,
     };
   }
 

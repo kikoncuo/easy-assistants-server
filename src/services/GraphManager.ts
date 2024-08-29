@@ -49,6 +49,10 @@ export class GraphManager {
         value: (x?: string, y?: string) => y ?? x ?? "",
         default: () => "",
       },
+      cardId: {
+        value: (x?: number, y?: number) => y ?? x ?? 0,
+        default: () => 0,
+      },
       result: {
         value: (x?: string, y?: string) => y ?? x ?? "",
         default: () => "",

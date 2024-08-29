@@ -4,6 +4,7 @@ export class TaskState {
   task: string;
   agentName: string;
   agentDescription: string;
+  cardId: number;
   result: string;
   directResponse: string | null;
   messages: Message[];
@@ -13,6 +14,7 @@ export class TaskState {
     agentName: string,
     agentParameters: string[],
     agentDescription: string,
+    cardId: number,
     result: string,
     directResponse: string,
     messages: Message[],
@@ -20,6 +22,7 @@ export class TaskState {
     this.task = task;
     this.agentName = agentName;
     this.agentDescription = agentDescription;
+    this.cardId = cardId
     this.result = result;
     this.directResponse = directResponse;
     this.messages = messages;

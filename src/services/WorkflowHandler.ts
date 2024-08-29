@@ -126,16 +126,16 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
 export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a StateGraph with subtype state of the subgraph
   async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
-      const result = ((await graph.getGraph().invoke({task:state.agentDescription.toString()})) as any).finalResult;   
+      const result = ((await graph.getGraph().invoke({task:state.agentDescription.toString()})) as any)  
       Logger.log(
-        `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result)}`,
+        `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result.finalResult)}`,
       );
 
       if (state.directResponse) {
         state.directResponse = null;
       }
 
-      return { result: result, agentName: ""};
+      return { result: result.finalResult, agentName: "", cardId: result.cardId};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
       return { result: 'Error in agent execution, please try again or contact support.' + error, agentName: ""};
