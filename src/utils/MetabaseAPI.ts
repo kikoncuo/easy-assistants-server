@@ -42,6 +42,7 @@ export async function getSchema(sessionToken: string, databaseId: number): Promi
       id: table.id,
       fields: table.fields.map((field: any) => ({
         id: field.id,
+        name: field.name,
         fieldName: field.display_name,
         details: field.fingerprint ? JSON.stringify(field.fingerprint ) : null
       }))
