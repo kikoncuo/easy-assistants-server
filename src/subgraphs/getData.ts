@@ -39,7 +39,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      finalResult: {
+      finalResult: {  
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -91,7 +91,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { sessionToken, schema } = await fetchSchema(this.database);
+    const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
     return { ...state, sessionToken, schema };
   }
 
@@ -106,7 +106,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema);
+    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
     return { ...state, fieldDetails, isPossible };
   }
 
@@ -140,7 +140,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery);
+    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
     
     if ('error' in result) {
       const stopExecution = result.error.includes("Can't find join path");

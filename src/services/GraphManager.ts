@@ -3,17 +3,8 @@ import { Message, TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode, getSubGraphAgentNode } from './WorkflowHandler';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import dotenv from 'dotenv';
 import { PostgresSaver } from '../checkpoint/postgres';
-dotenv.config();
-
-const {
-   PG_HOST,
-   PG_PORT,
-   PG_USER,
-   PG_PASSWORD,
-   PG_DATABASE
-  } = process.env;
+import { ConfigurationManager } from '../utils/ConfigurationManager';
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<TaskState>;
@@ -23,20 +14,23 @@ export class GraphManager {
   graph: Graph<any, any>;
 
   constructor(
+    companyName: string,
     planModel: BaseChatModel,
     systemPrompt: string,
-    agentSubgraphs: { [key: string]: { agentSubGraph: any} },
+    agentSubgraphs: { [key: string]: { agentSubGraph: any } },
     solveModel: BaseChatModel,
     outputHandler: Function,
   ) {
+    const clientConfig = ConfigurationManager.getConfig(companyName);
+
     this.planNode = getPlanNode(planModel, outputHandler, systemPrompt);
     this.agentSubgraphs = agentSubgraphs;
     this.solveNode = getSolveNode(solveModel, outputHandler);
     this.directResponseNode = getDirectResponseNode(outputHandler);
-    this.graph = this._constructGraph();
+    this.graph = this._constructGraph(clientConfig);
   }
 
-  _constructGraph(): Graph<any, any> {
+  _constructGraph(clientConfig: any): Graph<any, any> {
     const planExecuteState: StateGraphArgs<TaskState>["channels"] = {
       task: {
         value: (left?: string, right?: string) => right ?? left ?? "",
@@ -48,6 +42,10 @@ export class GraphManager {
       agentDescription: {
         value: (x?: string, y?: string) => y ?? x ?? "",
         default: () => "",
+      },
+      cardId: {
+        value: (x?: number, y?: number) => y ?? x ?? 0,
+        default: () => 0,
       },
       result: {
         value: (x?: string, y?: string) => y ?? x ?? "",
@@ -81,20 +79,20 @@ export class GraphManager {
     for (const [name, { agentSubGraph }] of Object.entries(this.agentSubgraphs)) {
       const agentNode = getSubGraphAgentNode(agentSubGraph);  
       workflow.addNode(name, agentNode);
-      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
+      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is debido a un bug de langraph
     }
 
     const poolConfig = {
-      host: PG_HOST,
-      port: Number(PG_PORT),
-      user: PG_USER,
-      password: PG_PASSWORD,
-      database: PG_DATABASE,
+      host: clientConfig.PG_HOST,
+      port: Number(clientConfig.PG_PORT),
+      user: clientConfig.PG_USER,
+      password: clientConfig.PG_PASSWORD,
+      database: clientConfig.PG_DATABASE,
     };
     
     const postgresSaver = new PostgresSaver(poolConfig);
 
-    return workflow.compile( { checkpointer: postgresSaver });
+    return workflow.compile({ checkpointer: postgresSaver });
   }
 
   getApp(): any {

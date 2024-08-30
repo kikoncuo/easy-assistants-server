@@ -14,8 +14,9 @@ interface InsightState extends BaseState {
 export class InsightGraph extends AbstractGraph<InsightState> {
   private databaseId: number;
   private functions: Function[];
+  private companyName: string;
 
-  constructor(databaseId: number, functions: Function[]) {
+  constructor(databaseId: number, functions: Function[], companyName: string) {
     const graphState: StateGraphArgs<InsightState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -29,7 +30,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
-      finalResult: {
+      finalResult: {  
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -45,15 +46,16 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     super(graphState);
     this.functions = functions;
     this.databaseId = databaseId;
+    this.companyName = companyName;
   }
 
   private async fetchSchemaNode(state: InsightState): Promise<InsightState> {
-    const { sessionToken, schema } = await fetchSchema(this.databaseId);
+    const { sessionToken, schema } = await fetchSchema(this.companyName, this.databaseId);
     return { ...state, sessionToken, schema };
   }
 
   private async identifyRelevantSourcesNode(state: InsightState): Promise<InsightState> {
-    const relevantCards = await identifyRelevantSources(state.task, state.sessionToken, this.databaseId, state.schema);
+    const relevantCards = await identifyRelevantSources(state.task, state.sessionToken, this.databaseId, state.schema, this.companyName);
 
     if (relevantCards.length > 0) {
       return {
@@ -64,13 +66,13 @@ export class InsightGraph extends AbstractGraph<InsightState> {
       Logger.log("No relevant cards found to create the insights")
       return {
         ...state,
-        finalResult: "No relevant cards found to create the insights",
+        finalResult: "No relevant cards found to create the insights"
       };
     }
   }
 
   private async addFilterNode(state: InsightState): Promise<InsightState> {
-    const updatedCards = await addFilters(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards)
+    const updatedCards = await addFilters(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards, this.companyName)
     return {
       ...state,
       relevantCards: updatedCards,
@@ -78,7 +80,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
   }
 
   private async getResultsNode(state: InsightState): Promise<InsightState> {
-    const insights = await getResults(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards)
+    const insights = await getResults(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards, this.companyName)
     const getInsights = [
       {
         function_name: 'getInsights',
@@ -91,7 +93,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
    
     return {
       ...state,
-      finalResult: JSON.stringify(insights),
+      finalResult: JSON.stringify(insights)
     };
   }
 
