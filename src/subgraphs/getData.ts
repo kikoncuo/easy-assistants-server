@@ -177,7 +177,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     return {
       ...state,
-      finalResult: result.finalResult,
+      finalResult: state.queryAttempts > 1 ? result.finalResult + " Is this what you were looking for?" : result.finalResult,
     };
   }
 
