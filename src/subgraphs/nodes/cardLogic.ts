@@ -29,7 +29,7 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
         - "maybe" if you are unsure if a new value should be created
         - "no" if it is not possible to calculate the necessary values with the current schema.
 
-      2 - Identify which fields in the schema might need additional information such as distinct values or fingerprints to successfully create a Metabase query wihtout using costum columns or SQL.
+      2 - Identify which fields in the schema might need additional information such as distinct values or fingerprints to successfully create a Metabase query wihtout using custom columns or SQL.
           IE: 
           If the user request the current inventory levels and you only have the number of items purchased and the number of items sold you should create a new semantic layer value.
       `)
@@ -57,6 +57,7 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
     }
   }
 
+  console.log(fieldDetails);
   return {fieldDetails, isPossible};
 };
 
@@ -113,6 +114,8 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
 
     Try to leverage the "CubeJoinField" fields that all tables have to join source tables.
     When available, try to use names instead of IDs for visualizations, even if a new join is necessary to get an item's name.
+    For aggregations of type sum, use fields named starting with 'total' (eg totalAmount), if not available raise an error.
+    For aggregations of type average, use fields named starting with 'average' (eg averageAmount), if not available raise an error.
            
     Here are some examples of a natural language query and its corresponding JSON representation (which used other tables you may not be able to use):
 
