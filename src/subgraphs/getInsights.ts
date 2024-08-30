@@ -55,7 +55,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
   }
 
   private async identifyRelevantSourcesNode(state: InsightState): Promise<InsightState> {
-    const relevantCards = await identifyRelevantSources(state.task, state.sessionToken, this.databaseId, state.schema);
+    const relevantCards = await identifyRelevantSources(state.task, state.sessionToken, this.databaseId, state.schema, this.companyName);
 
     if (relevantCards.length > 0) {
       return {
@@ -72,7 +72,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
   }
 
   private async addFilterNode(state: InsightState): Promise<InsightState> {
-    const updatedCards = await addFilters(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards)
+    const updatedCards = await addFilters(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards, this.companyName)
     return {
       ...state,
       relevantCards: updatedCards,
@@ -80,7 +80,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
   }
 
   private async getResultsNode(state: InsightState): Promise<InsightState> {
-    const insights = await getResults(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards)
+    const insights = await getResults(state.task, state.sessionToken, this.databaseId, state.schema, state.relevantCards, this.companyName)
     const getInsights = [
       {
         function_name: 'getInsights',

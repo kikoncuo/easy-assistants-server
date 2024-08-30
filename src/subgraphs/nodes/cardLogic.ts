@@ -16,7 +16,7 @@ export async function fetchSchema(company_name: string, database: number): Promi
 }
 
 
-export async function getFieldDetails(task: string, sessionToken: string, schema: any): Promise<{fieldDetails: Record<number, any>, isPossible: string}> {
+export async function getFieldDetails(task: string, sessionToken: string, schema: any, companyName: string): Promise<{fieldDetails: Record<number, any>, isPossible: string}> {
   const model = createStructuredResponseAgent(getStrongestModel(), [IdentifyFieldsTool]);
 
   const message = await model.invoke([
@@ -46,7 +46,7 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
     const details = fields.find((field: any) => field.id === fieldId);
 
     if (details) {
-      const values = await fetchFieldValues(sessionToken, fieldId);
+      const values = await fetchFieldValues(companyName, sessionToken, fieldId);
       const limitedValues = values.slice(0, 20);
       if (limitedValues) {
         fieldDetails[fieldId] = {
@@ -61,12 +61,12 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
 };
 
 //TODO: Check this functionality
-export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number, feedbackMessage?: string, metabaseQuery?: any):
+export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
 Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQuery: string }> {
 
   const filter = { databaseID: databaseId };
   //TODO: Check this functionality
-  const similaritySearchWithScoreResults = await similaritySearch(task, 3, filter);
+  const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
   //Logger.log('Similarity search results', similaritySearchWithScoreResults);
 
   let ids = [];
@@ -86,7 +86,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
     Logger.log('No related cards found using fallback cards');
     exampleRelatedCards = fallbackCardExamples(databaseId);
   } else {
-    exampleRelatedCards = await getExampleCards(sessionToken, ids);
+    exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
     //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
   }
 
@@ -123,7 +123,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
   
   const metabaseQueryResult = message.lc_kwargs.tool_calls[0].args;
 
-  const cardIdResponse = await createCard(sessionToken, metabaseQueryResult); 
+  const cardIdResponse = await createCard(companyName, sessionToken, metabaseQueryResult); 
 
   if (typeof cardIdResponse === 'object' && ('error' in cardIdResponse)) {
     let errorMessage = "";
@@ -147,13 +147,13 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
   }
 }
 
-export async function executeMetabaseQuery(sessionToken: string, cardId: number, metabaseQuery: any):
+export async function executeMetabaseQuery(sessionToken: string, cardId: number, metabaseQuery: any, companyName:string):
  Promise<{ queryResult: any } | { error: string; metabaseQuery: string}> {
-  const queryResult = await executeQuery(sessionToken, cardId);
+  const queryResult = await executeQuery(companyName, sessionToken, cardId);
 
   if ("error" in queryResult) {
     Logger.log("Error executing query. Deleting card...");
-    await deleteCard(sessionToken, cardId);
+    await deleteCard(companyName, sessionToken, cardId);
     
     let errorMessage = queryResult.error;
     
@@ -242,8 +242,8 @@ return {
 };
 }
 
-export async function identifyRelevantSources(task: string, sessionToken: string, databaseId: number, schema: any[]): Promise<any[]> {
-  const cards = await getCards(sessionToken, databaseId);
+export async function identifyRelevantSources(task: string, sessionToken: string, databaseId: number, schema: any[], companyName:string): Promise<any[]> {
+  const cards = await getCards(companyName, sessionToken, databaseId);
 
 
   const model = createStructuredResponseAgent(getFasterModel(), [GetRelevantCardsTool]);
@@ -276,7 +276,7 @@ export async function identifyRelevantSources(task: string, sessionToken: string
   return relevantCards;
 }
 
-export async function addFilters(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[]): Promise<any[]> {
+export async function addFilters(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[], companyName:string): Promise<any[]> {
   const model = createStructuredResponseAgent(anthropicSonnet(), [AnalyzeFiltersTool]);
 
   const message = await model.invoke([
@@ -409,9 +409,9 @@ export async function addFilters(task: string, sessionToken: string, databaseId:
 
   for (const modifiedCard of cardModifications) {
     if (modifiedCard.needsFilter) {
-      const cardDetails = await getCard(sessionToken, modifiedCard.id);
+      const cardDetails = await getCard(companyName, sessionToken, modifiedCard.id);
 
-      const newCard = await createCard(sessionToken, {
+      const newCard = await createCard(companyName, sessionToken, {
         ...cardDetails,
         name: modifiedCard.newTitle,
         description: modifiedCard.newDescription,
@@ -429,11 +429,11 @@ export async function addFilters(task: string, sessionToken: string, databaseId:
   return updatedCards
 }
 
-export async function getResults(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[]): Promise<any[]> {
+export async function getResults(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[], companyName:string): Promise<any[]> {
   const insights = [];
   Logger.log("Relevant cards", relevantCards)
   for (const card of relevantCards) {
-    const queryResult = await executeQuery(sessionToken, card);
+    const queryResult = await executeQuery(companyName, sessionToken, card);
 
     if (queryResult.error) {
       Logger.warn(`Error executing query for card ${card}: ${queryResult.error}`);

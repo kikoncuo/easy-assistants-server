@@ -106,7 +106,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema);
+    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
     return { ...state, fieldDetails, isPossible };
   }
 
@@ -140,7 +140,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery);
+    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
     
     if ('error' in result) {
       const stopExecution = result.error.includes("Can't find join path");
