@@ -50,7 +50,7 @@ export async function checkUpdateSemanticLayer(
     const result = await editCubeGraph.getGraph().invoke({
       task: semanticTask,
     });
-    const schema = await getSchema(sessionToken, databaseId);
+    const schema = await getSchema(company_name, sessionToken, databaseId);
     
     Logger.log(`Edit cube graph result: ${result.finalResult}`);
     //TODO: Inform frontend user that the result is OK.

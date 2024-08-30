@@ -1,12 +1,9 @@
 import { GraphManager } from './GraphManager';
 import { getFasterModel, createPlanner } from '../models/Models';
 import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
-import dotenv from 'dotenv';
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { InsightGraph } from '../subgraphs/getInsights';
 import { CreateDashboardGraph } from '../subgraphs/createDashboard';
-
-dotenv.config();
 
 type SubgraphConfig = {
   name: string;
@@ -43,7 +40,7 @@ export class GraphApplication {
     private readonly outputHandler: Function,
     private readonly clientAgentFunction: Function,
     private readonly clientData: string[],
-    private readonly appType: string
+    private readonly appType: string,
   ) {
     this.validateClientData();
     this.initializeGraphManager();
@@ -63,6 +60,7 @@ export class GraphApplication {
     const { subgraphs, systemPrompt } = this.createSubgraphsAndSystemPrompt();
 
     this.graphManager = new GraphManager(
+      this.clientData[1],
       planner,
       systemPrompt,
       subgraphs,

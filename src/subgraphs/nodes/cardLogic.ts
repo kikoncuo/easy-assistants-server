@@ -7,9 +7,9 @@ import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
 
 
-export async function fetchSchema(database: number): Promise<{ sessionToken: string, schema: any }> {
-  const sessionToken = await authenticate();
-  const schema = await getSchema(sessionToken, database);
+export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any }> {
+  const sessionToken = await authenticate(company_name);
+  const schema = await getSchema(company_name, sessionToken, database);
   //Logger.log({schema}); //For development
   return { sessionToken, schema };
 
@@ -60,10 +60,12 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
   return {fieldDetails, isPossible};
 };
 
+//TODO: Check this functionality
 export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number, feedbackMessage?: string, metabaseQuery?: any):
 Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQuery: string }> {
 
   const filter = { databaseID: databaseId };
+  //TODO: Check this functionality
   const similaritySearchWithScoreResults = await similaritySearch(task, 3, filter);
   //Logger.log('Similarity search results', similaritySearchWithScoreResults);
 

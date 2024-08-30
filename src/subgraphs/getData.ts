@@ -91,7 +91,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { sessionToken, schema } = await fetchSchema(this.database);
+    const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
     return { ...state, sessionToken, schema };
   }
 

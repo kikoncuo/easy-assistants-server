@@ -86,8 +86,8 @@ export class Router {
   private async handleAddDocuments(data: any) {
     try {
       Logger.log('Adding documents');
-      const { pageContents, metadata, docId } = data.data;
-      const result = await addDocuments(pageContents, metadata, docId);
+      const { company_name, pageContents, metadata, docId } = data.data;
+      const result = await addDocuments(company_name, pageContents, metadata, docId);
       WebSocketService.outputHandler('addDocuments', 'Documents added successfully', this.ws);
     } catch (error) {
       Logger.error('Error adding documents:', error);
@@ -98,8 +98,8 @@ export class Router {
   private async handleDeleteDocuments(data: any) {
     try {
       Logger.log('Deleting documents');
-      const { ids } = data.data;
-      await deleteDocuments(ids);
+      const { company_name, ids } = data.data;
+      await deleteDocuments(company_name, ids);
       WebSocketService.outputHandler('deleteDocuments', 'Documents deleted successfully', this.ws);
     } catch (error) {
       Logger.error('Error deleting documents:', error);
