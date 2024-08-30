@@ -14,8 +14,9 @@ interface InsightState extends BaseState {
 export class InsightGraph extends AbstractGraph<InsightState> {
   private databaseId: number;
   private functions: Function[];
+  private companyName: string;
 
-  constructor(databaseId: number, functions: Function[]) {
+  constructor(databaseId: number, functions: Function[], companyName: string) {
     const graphState: StateGraphArgs<InsightState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -45,10 +46,11 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     super(graphState);
     this.functions = functions;
     this.databaseId = databaseId;
+    this.companyName = companyName;
   }
 
   private async fetchSchemaNode(state: InsightState): Promise<InsightState> {
-    const { sessionToken, schema } = await fetchSchema(this.databaseId);
+    const { sessionToken, schema } = await fetchSchema(this.companyName, this.databaseId);
     return { ...state, sessionToken, schema };
   }
 

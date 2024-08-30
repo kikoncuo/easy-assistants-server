@@ -1,21 +1,17 @@
 import axios from 'axios';
 import Logger from '../utils/Logger';
-import dotenv from 'dotenv';
-import { fallbackCardExamples } from './CardExamples';
-
-dotenv.config();
-
-const METABASE_URL = process.env.METABASE_URL;  
-const METABASE_USERNAME = process.env.METABASE_USERNAME;  
-const METABASE_PASSWORD = process.env.METABASE_PASSWORD;  
+import { ConfigurationManager } from './ConfigurationManager';
 
 /**
  * Authenticate with Metabase and return a session token.
+ * @param companyName The name of the company to get the configuration for.
  */
-export async function authenticate(): Promise<string> {
-  const response = await axios.post(`${METABASE_URL}/session`, {
-    username: METABASE_USERNAME,
-    password: METABASE_PASSWORD,
+export async function authenticate(companyName: string): Promise<string> {
+  const config = ConfigurationManager.getConfig(companyName);
+
+  const response = await axios.post(`${config.METABASE_URL}/session`, {
+    username: config.METABASE_USERNAME,
+    password: config.METABASE_PASSWORD,
   });
 
   return response.data.id;  // Returns the session token
@@ -23,11 +19,14 @@ export async function authenticate(): Promise<string> {
 
 /**
  * Get the schema for a specific database.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param databaseId The ID of the database for which the schema is being requested.
  */
-export async function getSchema(sessionToken: string, databaseId: number): Promise<any> {
-  const databaseMetadata = await axios.get(`${METABASE_URL}/database/${databaseId}/metadata`, {
+export async function getSchema(companyName: string, sessionToken: string, databaseId: number): Promise<any> {
+  const config = ConfigurationManager.getConfig(companyName);
+
+  const databaseMetadata = await axios.get(`${config.METABASE_URL}/database/${databaseId}/metadata`, {
     headers: {
       'X-Metabase-Session': sessionToken,
     },
@@ -36,29 +35,29 @@ export async function getSchema(sessionToken: string, databaseId: number): Promi
     }
   });
 
-  const tables = databaseMetadata.data.tables
-    .map((table: any) => ({
-      display_name: table.display_name,
-      id: table.id,
-      fields: table.fields.map((field: any) => ({
-        id: field.id,
-        name: field.name,
-        fieldName: field.display_name,
-        details: field.fingerprint ? JSON.stringify(field.fingerprint ) : null
-      }))
-    }));
+  const tables = databaseMetadata.data.tables.map((table: any) => ({
+    display_name: table.display_name,
+    id: table.id,
+    fields: table.fields.map((field: any) => ({
+      id: field.id,
+      name: field.name,
+      fieldName: field.display_name,
+      details: field.fingerprint ? JSON.stringify(field.fingerprint) : null
+    }))
+  }));
 
   return tables;
 }
-
 /**
  * Get details of a specific card (question) by its ID.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param cardId The ID of the card to fetch.
  */
-export async function getCard(sessionToken: string, cardId: number): Promise<any | { error: string; status: number }> {
+export async function getCard(companyName: string, sessionToken: string, cardId: number): Promise<any | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
-    const response = await axios.get(`${METABASE_URL}/card/${cardId}`, {
+    const response = await axios.get(`${config.METABASE_URL}/card/${cardId}`, {
       headers: {
         'X-Metabase-Session': sessionToken,
         'Content-Type': 'application/json',
@@ -79,16 +78,17 @@ export async function getCard(sessionToken: string, cardId: number): Promise<any
 
 /**
  * Fetch example cards for a given list of card IDs.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param cardIds The list of card IDs for which example cards are being fetched.
  */
-export async function getExampleCards(sessionToken: string, cardIds: number[]): Promise<any> {
+export async function getExampleCards(companyName: string, sessionToken: string, cardIds: number[]): Promise<any> {
   const cardPayloads = [];
   let stringResponse = "";
 
   for (const cardId of cardIds) {
     try {
-      const card = await getCard(sessionToken, cardId);
+      const card = await getCard(companyName, sessionToken, cardId);
 
       if ('error' in card) {
         console.error(`Error fetching card ${cardId}:`, card.error);
@@ -125,14 +125,15 @@ export async function getExampleCards(sessionToken: string, cardIds: number[]): 
 
 /**
  * Create a new card (question) in Metabase.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param schema The schema information obtained from the getSchema function.
  */
-export async function createCard(sessionToken: string, cardData: any): Promise<number | { error: string; status: number }> {
-  //Logger.log('Creating card with data:', cardData);
+export async function createCard(companyName: string, sessionToken: string, cardData: any): Promise<number | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
   cardData.visualization_settings = {}; // TODO
   try {
-  const response = await axios.post(`${METABASE_URL}/card`, cardData, {
+  const response = await axios.post(`${config.METABASE_URL}/card`, cardData, {
     headers: {
       'X-Metabase-Session': sessionToken,
       'Content-Type': 'application/json',
@@ -155,13 +156,15 @@ export async function createCard(sessionToken: string, cardData: any): Promise<n
 
 /**
  * Execute a query for a specific card and return the results.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param cardId The ID of the card for which the query is being executed.
  */
-export async function executeQuery(sessionToken: string, cardId: number): Promise<any | { error: string; status: number }> {
+export async function executeQuery(companyName: string, sessionToken: string, cardId: number): Promise<any | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
     const response = await axios.post(
-      `${METABASE_URL}/card/${cardId}/query/json`,
+      `${config.METABASE_URL}/card/${cardId}/query/json`,
       {},
       {
         headers: {
@@ -194,12 +197,14 @@ export async function executeQuery(sessionToken: string, cardId: number): Promis
 
 /**
  * Hard delete a card by its ID.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param cardId The ID of the card to be deleted.
  */
-export async function deleteCard(sessionToken: string, cardId: number): Promise<string | { error: string; status: number }> {
+export async function deleteCard(companyName: string, sessionToken: string, cardId: number): Promise<string | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
-    await axios.delete(`${METABASE_URL}/card/${cardId}`, {
+    await axios.delete(`${config.METABASE_URL}/card/${cardId}`, {
       headers: {
         'X-Metabase-Session': sessionToken,
         'Content-Type': 'application/json',
@@ -221,12 +226,14 @@ export async function deleteCard(sessionToken: string, cardId: number): Promise<
 
 /**
  * Fetch values of a field
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param fieldId The ID of the field.
  */
-export async function fetchFieldValues(sessionToken: string, fieldId: number): Promise<any> {
+export async function fetchFieldValues(companyName: string, sessionToken: string, fieldId: number): Promise<any> {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
-    const fieldValuesResponse = await axios.get(`${METABASE_URL}/field/${fieldId}/values`, {
+    const fieldValuesResponse = await axios.get(`${config.METABASE_URL}/field/${fieldId}/values`, {
       headers: {
         'X-Metabase-Session': sessionToken,
       },
@@ -239,9 +246,10 @@ export async function fetchFieldValues(sessionToken: string, fieldId: number): P
   }
 }
 
-export const getCards = async (sessionToken: string, dbId: number): Promise<any> => {
+export const getCards = async (companyName: string, sessionToken: string, dbId: number): Promise<any> => {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
-    const response = await axios.get(`${METABASE_URL}/card/?f=database&model_id=${dbId}`, {
+    const response = await axios.get(`${config.METABASE_URL}/card/?f=database&model_id=${dbId}`, {
       headers: {
         'X-Metabase-Session': sessionToken,
       },
@@ -269,15 +277,17 @@ export const getCards = async (sessionToken: string, dbId: number): Promise<any>
 // In src/utils/MetabaseAPI.ts
 
 export async function createDashboard(
+  companyName: string,
   sessionToken: string,
   dashboardData: any,
   dashboardContent: any
 ): Promise<number | { error: string; status: number }> {
   try {
     Logger.log('Creating dashboard with data:', dashboardData);
+    const config = ConfigurationManager.getConfig(companyName);
     // Step 1: Create the dashboard
     const createResponse = await axios.post(
-      `${METABASE_URL}/dashboard`,
+      `${config.METABASE_URL}/dashboard`,
       dashboardData,
       {
         headers: {
@@ -294,7 +304,7 @@ export async function createDashboard(
 
     // Step 2: Populate the dashboard with content
     const updateResponse = await axios.put(
-      `${METABASE_URL}/dashboard/${dashboardId}`,
+      `${config.METABASE_URL}/dashboard/${dashboardId}`,
       dashboardContent,
       {
         headers: {
@@ -337,13 +347,15 @@ function formatExampleCards(exampleCards: any[]): string {
 
 /**
  * Sync the schema of a specific database in Metabase.
+ * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  * @param databaseId The ID of the database to sync.
  */
-export async function syncDatabaseSchema(sessionToken: string, databaseId: number): Promise<string | { error: string; status: number }> {
+export async function syncDatabaseSchema(companyName: string, sessionToken: string, databaseId: number): Promise<string | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
     const response = await axios.post(
-      `${METABASE_URL}/database/${databaseId}/sync_schema`,
+      `${config.METABASE_URL}/database/${databaseId}/sync_schema`,
       {},
       {
         headers: {

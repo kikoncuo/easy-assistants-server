@@ -3,15 +3,15 @@ import { addDocuments, deleteDocuments } from '../src/utils/EmbeddingUtils';
 import dotenv from 'dotenv';
 
 dotenv.config();
-
+const COMPANY_NAME = "company_name";
 const METABASE_DB_ID = 2;
 const START_CARD_ID = 1;
 const END_CARD_ID = 100;
 
 async function addCardsToVectorStore() {
   try {
-    const sessionToken = await authenticate();
-    const cards = await getCards(sessionToken, METABASE_DB_ID);
+    const sessionToken = await authenticate(COMPANY_NAME);
+    const cards = await getCards(COMPANY_NAME ,sessionToken, METABASE_DB_ID);
 
     const pageContents: string[] = [];
     const metadata: Record<string, any>[] = [];
@@ -26,7 +26,7 @@ async function addCardsToVectorStore() {
       }
     }
 
-    await addDocuments(pageContents, metadata, pageIds);
+    await addDocuments(COMPANY_NAME ,pageContents, metadata, pageIds);
     console.log(`Added ${pageContents.length} cards to the vector store.`);
   } catch (error) {
     console.error('Error adding cards to vector store:', error);

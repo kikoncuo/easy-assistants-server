@@ -390,13 +390,13 @@ async function updateAndTestSemanticLayer(state: EditCubeState, sessionToken: st
   functions[0]('tool', processInfo);
 
   if (schemaValid) {
-    await syncDatabaseSchema(sessionToken, databaseId);
+    await syncDatabaseSchema(companyName, sessionToken, databaseId);
 
     let fieldsSync = false;
     let attemptCount = 0;
     const maxAttempts = 10;
     while (!fieldsSync && attemptCount < maxAttempts) {
-      const schema = await getSchema(sessionToken, databaseId);
+      const schema = await getSchema(companyName, sessionToken, databaseId);
       fieldsSync = newFields.every((newField: { cubeName: any; fieldName: any; }) => {
         const matchingSchemaItem = schema.find(
           (schemaItem: { display_name: any; }) => schemaItem.display_name === newField.cubeName
@@ -425,7 +425,7 @@ async function updateAndTestSemanticLayer(state: EditCubeState, sessionToken: st
       }
     }
 
-    await syncDatabaseSchema(sessionToken, databaseId);
+    await syncDatabaseSchema(companyName, sessionToken, databaseId);
   }
 
   const finalResult = schemaValid
