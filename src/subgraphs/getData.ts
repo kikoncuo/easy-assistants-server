@@ -120,7 +120,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage
       }
     }
-    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.database, state.feedbackMessage, state.metabaseQuery);
+    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.database, this.companyName, state.feedbackMessage, state.metabaseQuery);
 
     if ('error' in result) {
       return {
