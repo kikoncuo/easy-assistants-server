@@ -578,10 +578,176 @@ export const GetSourcesTool: ToolDefinition = {
         },
         semanticTask: {
           type: "string",
-          description: "Specific measure or dimension to create on a model of the semantic layer if needed."
+          description: "Specific measure or dimension to create on the semantic layer if needed."
         }
       },
       required: ["needsSemanticUpdate"]
+    }
+  }
+};
+
+export const getCalculationSchemaTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getCalculation",
+    description: "Fetches possible calculation methods for each requested value based on the provided criteria, including explanations and formulas.",
+    parameters: {
+      type: "object",
+      properties: {
+        calculationOptions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                description: "The value to be calculated"
+              },
+              methods: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: {
+                      type: "string",
+                      description: "Name of the calculation method"
+                    },
+                    explanation: {
+                      type: "string",
+                      description: "Detailed explanation of how this method calculates the value"
+                    },
+                    formula: {
+                      type: "string",
+                      description: "Proposed formula or pseudo-code for the calculation"
+                    }
+                  },
+                  required: ["name", "explanation", "formula"]
+                },
+                description: "Array of possible calculation methods for this value"
+              }
+            },
+            required: ["value", "methods"]
+          },
+          description: "Array of calculation options for each requested value"
+        }
+      },
+      required: ["calculationOptions"]
+    }
+  }
+};
+
+
+export const UpdateCubeJSSchemaTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "updateLayer",
+    description: "Updates the semantic layer content by adding new fields to specified cubes.",
+    parameters: {
+      type: "object",
+      properties: {
+        newFields: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              cubeName: {
+                type: "string",
+                description: "Name of the cube where the new field will be added"
+              },
+              fieldName: {
+                type: "string",
+                description: "Name of the new field (should be in camelCase)"
+              },
+              type: {
+                type: "string",
+                enum: ["dimension", "measure"],
+                description: "Specifies if the new field is a Dimension or a Measure"
+              },
+              fieldType: {
+                type: "string",
+                description: "Specific type of the field. For measures, use aggregation functions. For dimensions, use appropriate data types."
+              },
+              sql: {
+                type: "string",
+                description: "SQL expression for calculating the new field"
+              },
+              title: {
+                type: "string",
+                description: "Human-readable title for the new field"
+              },
+              description: {
+                type: "string",
+                description: "Detailed description of the new field and its purpose"
+              }
+            },
+            required: ["cubeName", "fieldName", "type", "fieldType", "sql", "title", "description"],
+            if: {
+              properties: { type: { const: "measure" } }
+            },
+            then: {
+              properties: {
+                fieldType: { 
+                  enum: ["sum", "avg", "count", "countDistinct", "min", "max", "number"],
+                  description: "Aggregation function for measure fields"
+                }
+              }
+            },
+            else: {
+              properties: {
+                fieldType: {
+                  enum: ["string", "number", "time", "boolean"],
+                  description: "Data type for dimension fields"
+                }
+              }
+            }
+          },
+          description: "List of new fields to be added to the cubes"
+        }
+      },
+      required: ["newFields"]
+    }
+  },
+};
+
+export const InterpretUserResponseTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "interpretUserResponse",
+    description: "Interpret the user's response to proposed semantic layer changes",
+    parameters: {
+      type: "object",
+      properties: {
+        approval: {
+          type: "string",
+          enum: ["approved", "rejected", "modifications_requested"],
+          description: "The interpreted user decision"
+        },
+        requestedChanges: {
+          type: "string",
+          description: "Description of requested changes if modifications were requested"
+        }
+      },
+      required: ["approval"]
+    }
+  }
+};
+
+export const CheckFieldsTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "checkFields",
+    description: "Check the correctness of proposed semantic layer fields",
+    parameters: {
+      type: "object",
+      properties: {
+        error: {
+          type: "array",
+          items: {
+            type: "string"
+          },
+          description: "Array of error describing why the fields are not correct and explaining how it has to be corrected."
+        },
+      }
     }
   }
 };

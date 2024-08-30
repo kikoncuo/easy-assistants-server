@@ -45,7 +45,7 @@ export async function checkUpdateSemanticLayer(
   
   }
 
-  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{schema: any[]}> {
+  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{stopExecution: boolean, schema: any[]}> {
     const editCubeGraph = new EditCubeGraph(company_name, sessionToken, databaseId, functions);
     const result = await editCubeGraph.getGraph().invoke({
       task: semanticTask,
@@ -56,6 +56,7 @@ export async function checkUpdateSemanticLayer(
     //TODO: Inform frontend user that the result is OK.
     
     return {
+      stopExecution: result.stopExecution,
       schema
     };
   }
