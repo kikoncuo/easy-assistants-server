@@ -98,11 +98,6 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
         ...lastMessage.additionalData,
         functions, 
       };
-
-      // we gotta clear this
-      if (state.directResponse) {
-        state.directResponse = null;
-      }
       
       const updatedLastMessage = {
         ...lastMessage,
@@ -131,10 +126,6 @@ export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a
         `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result.finalResult)}`,
       );
 
-      if (state.directResponse) {
-        state.directResponse = null;
-      }
-
       return { result: result.finalResult, agentName: "", cardId: result.cardId};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
@@ -149,9 +140,8 @@ export function getDirectResponseNode(outputHandler: Function) {
     if (state.directResponse) {
       const directResponse = state.directResponse;
       outputHandler('directResponse', directResponse);
-      state.directResponse = null; 
       Logger.log('Direct response:', directResponse);
-      return { result: directResponse };
+      return { result: directResponse, directResponse: null };
     } else {
       Logger.warn('No direct response available in state.');
       return { result: 'No direct response available.' };
