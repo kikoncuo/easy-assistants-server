@@ -78,8 +78,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata
   ): Promise<RunnableConfig> {
     const query = `
-      INSERT INTO postcheckpoints (thread_id, checkpoint_id, parent_id, checkpoint, metadata, step, agent_name, agent_description, card_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO postcheckpoints (thread_id, checkpoint_id, parent_id, checkpoint, metadata, step, agent_name, agent_description, card_id, insights)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (thread_id, checkpoint_id) 
       DO UPDATE SET 
         parent_id = EXCLUDED.parent_id, 
@@ -88,7 +88,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
         step = EXCLUDED.step,
         agent_name = EXCLUDED.agent_name,
         agent_description = EXCLUDED.agent_description,
-        card_id = EXCLUDED.card_id
+        card_id = EXCLUDED.card_id,
+        insights = EXCLUDED.insights
     `;
     const values = [
       config.configurable?.thread_id,
@@ -99,7 +100,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
       metadata.step,
       checkpoint?.channel_values?.agentName || checkpoint?.channel_values?.dataAgent,
       checkpoint?.channel_values?.agentDescription,
-      checkpoint?.channel_values?.cardId
+      checkpoint?.channel_values?.cardId,
+      checkpoint?.channel_values?.solve && checkpoint?.versions_seen?.getInsights
+    ? checkpoint?.channel_values?.result
+    : []
     ];
   
     try {

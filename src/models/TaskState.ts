@@ -22,7 +22,7 @@ export class TaskState {
     this.task = task;
     this.agentName = agentName;
     this.agentDescription = agentDescription;
-    this.cardId = cardId
+    this.cardId = cardId;
     this.result = result;
     this.directResponse = directResponse;
     this.messages = messages;
