@@ -1,7 +1,7 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool} from '../../models/Tools';
+import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, EvaluateCardsTool} from '../../models/Tools';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
@@ -61,46 +61,58 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
   return {fieldDetails, isPossible};
 };
 
-//TODO: Check this functionality
-export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
-Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQuery: string }> {
-
+export async function getExampleRelatedCards(
+  companyName: string,
+  task: string,
+  databaseId: number,
+  sessionToken: string
+): Promise<string> {
   const filter = { databaseID: databaseId };
-  //TODO: Check this functionality
 
-  let exampleRelatedCards = "";
-  if (!feedbackMessage) {
-    const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
-    //Logger.log('Similarity search results', similaritySearchWithScoreResults);
+  // Perform similarity search
+  const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
 
-    let ids = [];
+  let ids: number[] = [];
 
-    for (const [doc, score] of similaritySearchWithScoreResults) {
-      Logger.log(
-        `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
-          doc.metadata
-        )}]`
-      );
-      ids.push(doc.metadata.id);
-    }
-
-    if (ids.length === 0) {
-      Logger.log('No related cards found using fallback cards');
-      exampleRelatedCards = fallbackCardExamples(databaseId);
-    } else {
-      exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
-      //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
-    }
-  } else {
-    exampleRelatedCards = fallbackCardExamples(databaseId);
+  for (const [doc, score] of similaritySearchWithScoreResults) {
+    Logger.log(
+      `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
+        doc.metadata
+      )}]`
+    );
+    ids.push(doc.metadata.id);
   }
 
-  
+  let exampleRelatedCards = "";
+
+  if (ids.length === 0) {
+    Logger.log('No related cards found using fallback cards');
+    exampleRelatedCards = fallbackCardExamples(databaseId);
+  } else {
+    exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
+    //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
+  }
+} else {
+  exampleRelatedCards = fallbackCardExamples(databaseId);
+
+  return exampleRelatedCards;
+}
+
+
+//TODO: Check this functionality
+export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number,  companyName:string, feedbackMessage?: string, metabaseQuery?: any, newCardDescription?:string):
+Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQuery: string }> {
+
+   // Get example related cards
+   const exampleRelatedCards = await getExampleRelatedCards(companyName, task, databaseId, sessionToken);
+
   const model = createStructuredResponseAgent(anthropicSonnet(), [GenerateMetabaseQueryTool]); // Only model flexible enough to generate the query
 
   const message = await model.invoke([ 
     new HumanMessage(`You are tasked with generating a Metabase query based on the following natural language task: 
     "${task}"
+
+    ${newCardDescription ? `Here are some important details about the new card: ${newCardDescription}` : ''}
 
     The query must be interpretable by a business analyst, you should strive to make them easy to interpret and good looking.
   
@@ -129,6 +141,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
   ]);
   
   const metabaseQueryResult = message.lc_kwargs.tool_calls[0].args;
+  Logger.log('metabaseQueryResult', metabaseQueryResult) 
 
   const cardIdResponse = await createCard(companyName, sessionToken, metabaseQueryResult); 
 
@@ -440,6 +453,76 @@ export async function getResults(task: string, sessionToken: string, databaseId:
   const insights = [];
   Logger.log("Relevant cards", relevantCards)
   for (const card of relevantCards) {
+    const model = createStructuredResponseAgent(getFasterModel(), [GenerateInsightTool]);
+
+    let resultString = JSON.stringify(card);
+    if (resultString.length > 5000) {
+      resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
+    }
+
+    const message = await model.invoke([
+      new HumanMessage(`
+        You have just executed a query for the card with ID ${card}. 
+        The user's request was: ${task}
+
+        The query result is: ${resultString}
+
+        Based on this result, provide a concise explanation of the insight this data provides. 
+        Your explanation should be informative and relevant to the user's request.
+      `),
+    ]);
+
+    const args = message.lc_kwargs.tool_calls[0].args;
+
+    insights.push({
+      cardId: card,
+      insightExplanation: args.insightExplanation,
+    });
+  }
+ 
+  return insights
+}
+
+export async function evaluateCards(
+  task: string,
+  sessionToken: string,
+  relevantCards: number[],
+  databaseId: number,
+  companyName: string
+): Promise<{ areCardsEnough: boolean, newCardDescription: string }> {
+  const model = createStructuredResponseAgent(getStrongestModel(), [EvaluateCardsTool]);
+
+  const message = await model.invoke([
+    new HumanMessage(`Given the task: "${task}"
+      And the following relevant cards: ${JSON.stringify(relevantCards, null, 2)}
+
+      1 - Determine if the existing cards are sufficient to answer the insight question:
+        Use the following criteria:
+        - "yes" if the existing cards, including any filters we may want directly provide the required information.
+        - "no" if a new card needs to be created to answer the question.
+
+      2 - If a new card is needed, provide a description of what the new card should look like.
+         Include details such as:
+         - The type of visualization
+         - The main metric to be displayed
+         - Any dimensions or groupings required
+         - Any filters that should be applied
+      `)
+  ]);
+
+  const areCardsEnough: boolean = message.lc_kwargs.tool_calls[0].args.areCardsEnough;
+  const newCardDescription: string = message.lc_kwargs.tool_calls[0].args.newCardDescription;
+
+  Logger.log("Are cards enough:", areCardsEnough);
+  Logger.log("New card description:", newCardDescription);
+
+  return { areCardsEnough, newCardDescription };
+}
+
+export async function getResultsForFilteredCards(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[], companyName:string, modifiedCards:number[]): Promise<any[]> {
+  const insights = [];
+  Logger.log("modifiedCards", modifiedCards)
+  for (const card of modifiedCards) {
     const queryResult = await executeQuery(companyName, sessionToken, card);
 
     if (queryResult.error) {
@@ -459,7 +542,7 @@ export async function getResults(task: string, sessionToken: string, databaseId:
         You have just executed a query for the card with ID ${card}. 
         The user's request was: ${task}
 
-        The query result is: ${resultString}
+        The query result is: ${queryResult}
 
         Based on this result, provide a concise explanation of the insight this data provides. 
         Your explanation should be informative and relevant to the user's request.

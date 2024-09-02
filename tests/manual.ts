@@ -14,7 +14,7 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: [2, "COMPANY_NAME"], appType: 'default' }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [2, "blank_street"], appType: 'insights' }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 
@@ -76,7 +76,7 @@ function connectToServer() {
         },
       );
       // Send the responses back to the server
-      ws?.send(JSON.stringify({ type: 'toolResponse', response: JSON.stringify(responses) }));
+      ws?.send(JSON.stringify({ type: 'toolResponse', response: JSON.stringify(responses), appType: 'insights' }));
     } else if (data.type === 'result') {
       // Server has sent a result
       Logger.log('Result:', data.message);
@@ -117,7 +117,7 @@ function promptUserInput() {
 
   if (ws) {
     Logger.time('planTimer'); // Start the timer
-    ws.send(JSON.stringify({ type: 'query', task: query, thread_id:  thread_id}));
+    ws.send(JSON.stringify({ type: 'query', task: query, thread_id:  thread_id, appType: 'insights' }));
   }
 }
 
