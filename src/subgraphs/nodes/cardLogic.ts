@@ -67,28 +67,32 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
 
   const filter = { databaseID: databaseId };
   //TODO: Check this functionality
-  const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
-  //Logger.log('Similarity search results', similaritySearchWithScoreResults);
 
-  let ids = [];
+  let exampleRelatedCards = "";
+  if (!feedbackMessage) {
+    const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
+    //Logger.log('Similarity search results', similaritySearchWithScoreResults);
 
-  for (const [doc, score] of similaritySearchWithScoreResults) {
-    Logger.log(
-      `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
-        doc.metadata
-      )}]`
-    );
-    ids.push(doc.metadata.id);
-  }
+    let ids = [];
 
-  let exampleRelatedCards = ""
+    for (const [doc, score] of similaritySearchWithScoreResults) {
+      Logger.log(
+        `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
+          doc.metadata
+        )}]`
+      );
+      ids.push(doc.metadata.id);
+    }
 
-  if (ids.length === 0) {
-    Logger.log('No related cards found using fallback cards');
-    exampleRelatedCards = fallbackCardExamples(databaseId);
+    if (ids.length === 0) {
+      Logger.log('No related cards found using fallback cards');
+      exampleRelatedCards = fallbackCardExamples(databaseId);
+    } else {
+      exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
+      //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
+    }
   } else {
-    exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
-    //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
+    exampleRelatedCards = fallbackCardExamples(databaseId);
   }
 
   
