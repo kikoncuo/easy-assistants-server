@@ -101,8 +101,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async handleEditCubeGraph(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { schema } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
-    return { ...state, schema };
+    const { stopExecution, schema } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
+    return { ...state, stopExecution, schema, finalResult: stopExecution ? "Semantic layer updated needed. Please, edit the cubes manually if required." : "" };
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
@@ -208,7 +208,13 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'create_card';
         }
       })
-      .addEdge('edit_cube_graph', 'create_card')
+      .addConditionalEdges('edit_cube_graph', (state: { stopExecution: boolean }) => {
+        if (state.stopExecution) {
+          return END;
+        } else {
+          return 'create_card';
+        }
+      })
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
           return END;

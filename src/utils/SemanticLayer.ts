@@ -95,7 +95,8 @@ const insertField = (content: string, blockName: string, newFieldString: string)
     : trimmedBlockContent;
 
   // Insert the new field immediately after the opening brace
-  const newBlockContent = formattedContent.replace(/\{\s*/, '{\n    ' + newFieldString + ',\n    ');
+  let newBlockContent = formattedContent.replace(/\{\s*/, '{\n    ' + newFieldString + ',\n    ');
+  newBlockContent = newBlockContent.replace(/,\s*}$/, '\n}');
 
   // Replace the old block with the new block in the content
   return content.slice(0, blockStartIndex) + newBlockContent + content.slice(blockEndIndex);
@@ -123,10 +124,10 @@ export async function updateSemanticLayer(newFields: any[], company_name: string
       let cubeContent = cubeFiles[fileName];
       const blockName = type === 'measure' ? 'measures' : type === 'dimension' ? 'dimensions' : 'segments';
       const newFieldString = `${fieldName}: {
-        type: '${fieldType}',
+        type: \`${fieldType}\`,
         sql: \`${sql}\`,
-        title: '${title}',
-        description: '${description}'
+        title: \`${title}\`,
+        description: \`${description}\`
       }`;
 
       try {
@@ -146,7 +147,7 @@ export async function updateSemanticLayer(newFields: any[], company_name: string
       }
     };
 
-    Logger.log('update payload', payload);
+    Logger.log('Update payload', payload);
 
     const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/company/edit-cube-files/${company_name}`, {
       method: 'PUT',
