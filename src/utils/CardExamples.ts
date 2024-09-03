@@ -110,7 +110,7 @@ export const fallbackCardExamples = (databaseID: number) => `
     "name": "Total Sales by Product",
     "display": "line",
     "dataset_query": {
-      "database":9,
+      "database":${databaseID},
       "type":"query",
       "query":{
         "source-table":142,
@@ -174,7 +174,7 @@ export const fallbackCardExamples = (databaseID: number) => `
     "name": "Average Cost of Wastage by Day of the Week",
     "display": "bar",
     "dataset_query": {
-      "database":9,
+      "database":${databaseID},
       "type":"query",
       "query":{
         "aggregation":

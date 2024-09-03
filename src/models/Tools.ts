@@ -585,3 +585,37 @@ export const GetSourcesTool: ToolDefinition = {
     }
   }
 };
+
+export const EvaluateCardsTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "evaluateCards",
+    description: "Evaluate if the existing cards are sufficient for the given task and describe a new card if needed.",
+    parameters: {
+      type: "object",
+      properties: {
+        areCardsEnough: {
+          type: "boolean",
+          description: "Indicates whether the existing cards are sufficient to answer the insight question."
+        },
+        newCardDescription: {
+          type: "string",
+          description: "A detailed description of the new card needed if the existing cards are not sufficient. Should be null if areCardsEnough is true.",
+        },
+        relevantCardIds: {
+          type: "array",
+          description: "An array of IDs of the existing cards that are relevant to the task.",
+          items: {
+            type: "integer",
+            description: "The ID of a relevant card."
+          }
+        },
+        reasonForDecision: {
+          type: "string",
+          description: "A brief explanation of why the existing cards are or are not sufficient."
+        }
+      },
+      required: ["areCardsEnough", "newCardDescription", "relevantCardIds", "reasonForDecision"]
+    }
+  }
+};
