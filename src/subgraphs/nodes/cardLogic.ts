@@ -68,6 +68,7 @@ export async function getExampleRelatedCards(
   sessionToken: string
 ): Promise<string> {
   const filter = { databaseID: databaseId };
+  let exampleRelatedCards = "";
 
   // Perform similarity search
   const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
@@ -83,7 +84,6 @@ export async function getExampleRelatedCards(
     ids.push(doc.metadata.id);
   }
 
-  let exampleRelatedCards = "";
 
   if (ids.length === 0) {
     Logger.log('No related cards found using fallback cards');
@@ -92,9 +92,6 @@ export async function getExampleRelatedCards(
     exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
     //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
   }
-} else {
-  exampleRelatedCards = fallbackCardExamples(databaseId);
-
   return exampleRelatedCards;
 }
 
