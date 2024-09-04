@@ -1,7 +1,7 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { GenerateCubeJSCubesTool } from '../models/Tools';
-import { anthropicSonnet, createStructuredResponseAgent } from '../models/Models';
+import { anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
 import { fetchSchema } from './nodes/cardLogic';
@@ -69,67 +69,69 @@ export class CreateCubeGraph extends AbstractGraph<CreateCubeState> {
 
   private async createCubesNode(state: CreateCubeState): Promise<CreateCubeState> {
     if (state.error) return state;
-
+  
     try {
-      const model = createStructuredResponseAgent(anthropicSonnet(), [GenerateCubeJSCubesTool]);
-
+      const model = createStructuredResponseAgent(getStrongestModel(), [GenerateCubeJSCubesTool]);
       const message = await model.invoke([
         new HumanMessage(`You are a data modeling expert. Your task is to create CubeJS cubes based on the following database schema:
-
+  
         ${JSON.stringify(state.schema, null, 2)}
-
+  
         Create a CubeJS cube for each table in the schema. Follow these guidelines:
         1. Use the table name as the cube name.
         2. Include all fields from the table as measures or dimensions.
         3. Create appropriate joins between cubes based on foreign key relationships.
         4. Use appropriate types for measures and dimensions (e.g., 'time' for date fields, 'number' for numeric fields).
         5. Include titles and descriptions to explain the purpose of each cube and its fields.
-
+  
         Return the cubes as an array of strings, where each string is the complete code for one cube.`)
       ]);
-
-      const cubes = message.content as any;
-     
-      // Convert the structured cube definitions to JavaScript strings
-      const cubeStrings = cubes.cubes.map((cube: any) => {
-        return `cube(\`${cube.name}\`, {
-    sql: \`${cube.sql}\`,
-    
-    measures: {
-      ${cube.measures.map((measure: any) => `
-      ${measure.name}: {
-        type: "${measure.type}",
-        sql: \`${measure.sql}\`,
-        description: "${measure.description || ''}"
-      }`).join(',')}
-    },
-    
-    dimensions: {
-      ${cube.dimensions.map((dimension: any) => `
-      ${dimension.name}: {
-        type: "${dimension.type}",
-        sql: \`${dimension.sql}\`,
-        description: "${dimension.description || ''}"
-      }`).join(',')}
-    },
-    
-    ${cube.joins ? `joins: {
-      ${cube.joins.map((join: any) => `
-      ${join.name}: {
-        relationship: "${join.relationship}",
-        sql: \`${join.sql}\`
-      }`).join(',')}
-    },` : ''}
-  });`;
-      });
-
+      const cubeStrings = message.lc_kwargs.tool_calls.map((toolCall: any) => {
+        if (toolCall.args && toolCall.args.cubes) {
+          const cubes = toolCall.args.cubes;
+          // Convert the structured cube definitions to JavaScript strings
+          return cubes.map((cube: any) => {
+            return `cube(\`${cube.name}\`, {
+              sql: \`${cube.sql}\`,
+              
+              measures: {
+                ${cube.measures.map((measure: any) => `
+                ${measure.name}: {
+                  type: "${measure.type}",
+                  sql: \`${measure.sql}\`,
+                  description: "${measure.description || ''}"
+                }`).join(',')}
+              },
+              
+              dimensions: {
+                ${cube.dimensions.map((dimension: any) => `
+                ${dimension.name}: {
+                  type: "${dimension.type}",
+                  sql: \`${dimension.sql}\`,
+                  description: "${dimension.description || ''}"
+                }`).join(',')}
+              },
+              
+              ${cube.joins ? `joins: {
+                ${cube.joins.map((join: any) => `
+                ${join.name}: {
+                  relationship: "${join.relationship}",
+                  sql: \`${join.sql}\`
+                }`).join(',')}
+              },` : ''}
+            });`;
+          }).join('\n');
+        }
+        return '';
+      }).filter((cubeString: string) => cubeString !== '').join('\n\n');
+  
       return { ...state, cubes: cubeStrings, error: null };
     } catch (error) {
       Logger.error('Error creating cubes:', error);
       return { ...state, error: 'Failed to create cubes. Please try again.' };
     }
   }
-
+  
   private async saveCubesNode(state: CreateCubeState): Promise<CreateCubeState> {
     if (state.error) return state;
 

@@ -117,9 +117,9 @@ export class Router {
       (type: string, message: any) => WebSocketService.outputHandler(type, message, this.ws),
     ]);
     const result = await createCubeGraph.getGraph().invoke({
-      databaseId: data.databaseId,
-      companyName: data.companyName,
+      databaseId: data.data.databaseId,
+      companyName: data.data.companyName,
     });
-    WebSocketService.outputHandler('createCubes', result.finalResult, this.ws);
+    WebSocketService.outputHandler('createCubes', result.cubes, this.ws);
   }
 }
