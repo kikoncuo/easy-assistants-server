@@ -152,6 +152,28 @@ export const GenerateInsightTool: ToolDefinition = {
   }
 };
 
+export const GeneratePythonCodeTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generatePythonCode",
+    description: "Generate Python code to extract insights based on the task and query result",
+    parameters: {
+      type: "object",
+      properties: {
+        explanation: {
+          type: "string",
+          description: "Brief explanation of what the generated code does"
+        },
+        pythonCode: {
+          type: "string",
+          description: "Complete Python code to extract insights, including necessary imports and data manipulation"
+        }        
+      },
+      required: ["pythonCode", "explanation"]
+    }
+  }
+};
+
 export const GenerateMetabaseQueryTool: ToolDefinition = {
   type: "function",
   function: {
