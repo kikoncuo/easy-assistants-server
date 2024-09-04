@@ -11,8 +11,8 @@ export async function fetchSchema(company_name: string, database: number): Promi
   const sessionToken = await authenticate(company_name);
   const schema = await getSchema(company_name, sessionToken, database);
   //Logger.log({schema}); //For development
-  return { sessionToken, schema };
 
+  return { sessionToken, schema };
 }
 
 
@@ -57,13 +57,12 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
     }
   }
 
-  console.log(fieldDetails);
   return {fieldDetails, isPossible};
 };
 
 //TODO: Check this functionality
 export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
-Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQuery: string }> {
+Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQuery: string }> {
 
   const filter = { databaseID: databaseId };
   //TODO: Check this functionality
@@ -85,7 +84,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
     }
 
     if (ids.length === 0) {
-      Logger.log('No related cards found using fallback cards');
+      Logger.log('No related cards found, using fallback cards');
       exampleRelatedCards = fallbackCardExamples(databaseId);
     } else {
       exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
@@ -155,7 +154,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
 }
 
 export async function executeMetabaseQuery(sessionToken: string, cardId: number, metabaseQuery: any, companyName:string):
- Promise<{ queryResult: any } | { error: string; metabaseQuery: string}> {
+ Promise<{ queryResult: any } | { error: string; metabaseQuery: string }> {
   const queryResult = await executeQuery(companyName, sessionToken, cardId);
 
   if ("error" in queryResult) {
@@ -167,7 +166,7 @@ export async function executeMetabaseQuery(sessionToken: string, cardId: number,
     if (errorMessage.includes("Can't detect Cube query")) {
       errorMessage = "The SQL created from your query is not supported by cubejs, please try to create the query in a different way";
     } else if (errorMessage.includes("Can't find join path")) {
-      // errorMessage = "There is no JOIN between the sources. Please revise your query.";
+      // errorMessage = "There is no JOIN between the sources. Please review your query.";
       // TODO: Improve error message
     }
 

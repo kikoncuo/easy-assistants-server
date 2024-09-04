@@ -78,7 +78,7 @@ export class GraphApplication {
         agentSubGraph: new subgraphConfig.Graph(
           +this.clientData[0],
           [this.clientAgentFunction],
-          this.clientData[1]
+          this.clientData[1],
         ),
       };
     });
