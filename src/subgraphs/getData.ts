@@ -20,7 +20,6 @@ interface DataRecoveryState extends BaseState {
   needsSemanticUpdate: boolean;
   semanticTask: string; 
   isPossible: string;
-  status: NodeStatus | null;
 }
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
@@ -85,11 +84,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       isPossible: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
-      },
-      status: {
-        value: (x: NodeStatus | null, y?: NodeStatus | null) => (y ? y : x),
-        default: () => null,
-      },
+      }
     };
     super(graphState);
     this.functions = functions;
@@ -111,25 +106,25 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const { sessionToken, schema, status } = await fetchSchema(this.companyName, this.database);
     this.handleStatusUpdate(status);
-    return { ...state, sessionToken, schema, status };
+    return { ...state, sessionToken, schema };
   }
 
   private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
     const {needsSemanticUpdate, semanticTask, status} = await checkUpdateSemanticLayer(state.task, this.companyName);
     this.handleStatusUpdate(status);
-    return { ...state, needsSemanticUpdate, semanticTask, status };
+    return { ...state, needsSemanticUpdate, semanticTask };
   }
 
   private async handleEditCubeGraph(state: DataRecoveryState): Promise<DataRecoveryState> {
     const { schema, status } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
     this.handleStatusUpdate(status);
-    return { ...state, schema, status };
+    return { ...state, schema };
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const { fieldDetails, isPossible, status } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
     this.handleStatusUpdate(status);
-    return { ...state, fieldDetails, isPossible, status };
+    return { ...state, fieldDetails, isPossible };
   }
 
   private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
@@ -140,7 +135,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         ...state,
         queryAttempts, 
         finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
-        status: {type: 'error', error: { message: "Unable to generate a suitable query after 3 attempts" }}
       }
     }
     const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.database, this.companyName, state.feedbackMessage, state.metabaseQuery);
@@ -152,7 +146,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         feedbackMessage: result.status.error!.message,
         metabaseQuery: result.metabaseQuery,
         queryAttempts: state.queryAttempts + 1,
-        status: result.status
       };
     } else {
       return {
@@ -160,7 +153,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         cardId: result.cardId!,
         metabaseQuery: result.metabaseQuery,
         queryAttempts: state.queryAttempts + 1,
-        status: result.status
       };
     }
   }
@@ -177,13 +169,11 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         feedbackMessage: result.status.error!.message,
         metabaseQuery: result.metabaseQuery,
         stopExecution: stopExecution,
-        status: result.status
       };
     } else {
       return {
         ...state,
         queryResult: result.queryResult,
-        status: result.status
       };
     }
   }
@@ -192,32 +182,23 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     const result = await getReasoning( state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
 
     this.handleStatusUpdate(result.status);
-    if ('error' in result.status) {
-      return {
-        ...state,
-        status: result.status
-      }
+    const getDatasetQuery = [
+      {
+        function_name: 'getDatasetQuery',
+        arguments: {
+          cardId: state.cardId,
+          reasoning: result.reasoning,
+          sources: result.sources
+        }
+      },
+    ];
 
-    } else {
-      const getDatasetQuery = [
-        {
-          function_name: 'getDatasetQuery',
-          arguments: {
-            cardId: state.cardId,
-            reasoning: result.reasoning,
-            sources: result.sources
-          }
-        },
-      ];
-  
-      this.functions[0]('tool', getDatasetQuery);
-  
-      return {
-        ...state,
-        finalResult: state.queryAttempts > 1 ? result.finalResult + " Is this what you were looking for?" : result.finalResult,
-        status: result.status
-      };
-    }
+    this.functions[0]('tool', getDatasetQuery);
+
+    return {
+      ...state,
+      finalResult: state.queryAttempts > 1 ? result.finalResult + " Is this what you were looking for?" : result.finalResult,
+    };
   }
 
   getGraph(): CompiledStateGraph<DataRecoveryState> {
