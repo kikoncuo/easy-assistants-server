@@ -3,7 +3,7 @@ import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@lan
 import { fetchSchema, getFieldDetails, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
 import { checkUpdateSemanticLayer, handleEditCubeGraph } from './nodes/semanticLayerLogic';
-import { NodeStatus } from '../utils/NodeResponseUtils';
+import { createNodeResponse } from '../utils/NodeResponseUtils';
 
 interface DataRecoveryState extends BaseState {
   task: string;
@@ -92,26 +92,40 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { sessionToken, schema, status } = await fetchSchema(this.companyName, this.database);
-    this.functions[0]('info', status);
+    const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
+
+    if (schema) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
+    } else {
+      this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+    }
+
     return { ...state, sessionToken, schema };
   }
 
   private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const {needsSemanticUpdate, semanticTask, status} = await checkUpdateSemanticLayer(state.task, this.companyName);
-    this.functions[0]('info', status);
+    const {needsSemanticUpdate, semanticTask} = await checkUpdateSemanticLayer(state.task, this.companyName);
+    if (needsSemanticUpdate) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Successfully identified required semantic layer updates" }));
+    } else {
+      this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer does not need updates" }));
+    }
     return { ...state, needsSemanticUpdate, semanticTask };
   }
 
   private async handleEditCubeGraph(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { schema, status } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
-    this.functions[0]('info', status);
+    const { schema, result } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
+    this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer edited to include required fields missing for query", data: { result } }));
     return { ...state, schema };
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { fieldDetails, isPossible, status } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
-    this.functions[0]('info', status);
+    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
+    if (fieldDetails) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Appropriate fields identified for query", data: { fieldDetails } }));
+    } else {
+      this.functions[0]('info', createNodeResponse('error', { message: "No appropriate fields were found for this query" }));
+    }
     return { ...state, fieldDetails, isPossible };
   }
 
@@ -127,15 +141,16 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     }
     const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.database, this.companyName, state.feedbackMessage, state.metabaseQuery);
 
-    this.functions[0]('info', result.status);
-    if ('error' in result.status) {
+    if ('error' in result) {
+      this.functions[0]('info', createNodeResponse('error', { message: result.error }));
       return {
         ...state,
-        feedbackMessage: result.status.payload!.message,
+        feedbackMessage: result.error,
         metabaseQuery: result.metabaseQuery,
         queryAttempts: state.queryAttempts + 1,
       };
     } else {
+      this.functions[0]('info', createNodeResponse('data', { message: `Metabase card created with ID ${result.cardId}`, data: { cardId: result.cardId } }));
       return {
         ...state,
         cardId: result.cardId!,
@@ -148,17 +163,18 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
     
-    if ('error' in result.status) {
-      const stopExecution = result.status.payload!.message.includes("Can't find join path");
+    if ('error' in result) {
+      const stopExecution = result.error.includes("Can't find join path");
       
-      this.functions[0]('info', result.status);
+      this.functions[0]('info', createNodeResponse('error', { message: result.error }));
       return {
         ...state,
-        feedbackMessage: result.status.payload!.message,
+        feedbackMessage: result.error,
         metabaseQuery: result.metabaseQuery,
         stopExecution: stopExecution,
       };
     } else {
+      this.functions[0]('info', createNodeResponse('data', { message: "Query executed successfully", data: { cardId: state.cardId } }));
       return {
         ...state,
         queryResult: result.queryResult,
@@ -169,7 +185,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private async getReasoningNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const result = await getReasoning( state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
 
-    this.functions[0]('info', result.status);
+    this.functions[0]('info', createNodeResponse('data', { message: "Result insights and explanation prepared", data: { cardId: state.cardId } }));
     const getDatasetQuery = [
       {
         function_name: 'getDatasetQuery',

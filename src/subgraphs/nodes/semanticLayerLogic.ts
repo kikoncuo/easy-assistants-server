@@ -10,7 +10,7 @@ import { NodeStatus, createNodeResponse } from "../../utils/NodeResponseUtils";
 export async function checkUpdateSemanticLayer(
     task: string,
     company_name: string,
-  ): Promise<{ needsSemanticUpdate: boolean; semanticTask: string, status: NodeStatus }> {
+  ): Promise<{ needsSemanticUpdate: boolean; semanticTask: string }> {
     const cubeModels = await getModelsData(company_name);
   
     const model = createStructuredResponseAgent(anthropicSonnet(), [GetSourcesTool]); 
@@ -41,13 +41,12 @@ export async function checkUpdateSemanticLayer(
   
     return {
       needsSemanticUpdate: needsSemanticUpdate,
-      semanticTask: needsSemanticUpdate ? semanticTask : '',
-      status: createNodeResponse('data', { message: "Successfully identified required semantic layer updates" })
+      semanticTask: needsSemanticUpdate ? semanticTask : ''
     };
   
   }
 
-  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{schema: any[], status: NodeStatus}> {
+  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{schema: any[], result: string}> {
     const editCubeGraph = new EditCubeGraph(company_name, sessionToken, databaseId, functions);
     const result = await editCubeGraph.getGraph().invoke({
       task: semanticTask,
@@ -59,7 +58,7 @@ export async function checkUpdateSemanticLayer(
     
     return {
       schema,
-      status: createNodeResponse('data', { message: "Semantic layer edited to include required fields missing for query", data: { result: result.finalResult } })
+      result
     };
   }
   
