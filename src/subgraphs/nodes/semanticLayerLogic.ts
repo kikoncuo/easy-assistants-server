@@ -5,11 +5,12 @@ import Logger from "../../utils/Logger";
 import { EditCubeGraph } from "../editCubes";
 import { getSchema, syncDatabaseSchema } from "../../utils/MetabaseAPI";
 import { getModelsData } from "../../utils/DataStructure";
+import { NodeStatus } from "../../utils/StatusType";
 
 export async function checkUpdateSemanticLayer(
     task: string,
     company_name: string,
-  ): Promise<{ needsSemanticUpdate: boolean; semanticTask: string}> {
+  ): Promise<{ needsSemanticUpdate: boolean; semanticTask: string, status: NodeStatus }> {
     const cubeModels = await getModelsData(company_name);
   
     const model = createStructuredResponseAgent(anthropicSonnet(), [GetSourcesTool]); 
@@ -41,11 +42,12 @@ export async function checkUpdateSemanticLayer(
     return {
       needsSemanticUpdate: needsSemanticUpdate,
       semanticTask: needsSemanticUpdate ? semanticTask : '',
+      status: {type: 'data', data: { message: "Successfully identified required semantic layer updates" }}
     };
   
   }
 
-  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{schema: any[]}> {
+  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{schema: any[], status: NodeStatus}> {
     const editCubeGraph = new EditCubeGraph(company_name, sessionToken, databaseId, functions);
     const result = await editCubeGraph.getGraph().invoke({
       task: semanticTask,
@@ -56,7 +58,8 @@ export async function checkUpdateSemanticLayer(
     //TODO: Inform frontend user that the result is OK.
     
     return {
-      schema
+      schema,
+      status: {type: 'data', data: { message: "Semantic layer edited to include required fields missing for query", payload: { result: result.finalResult } }}
     };
   }
   

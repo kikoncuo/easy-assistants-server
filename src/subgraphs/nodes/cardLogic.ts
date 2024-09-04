@@ -5,18 +5,25 @@ import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, Genera
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
+import { NodeStatus } from '../../utils/StatusType';
 
 
-export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any }> {
+export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any, status: NodeStatus }> {
   const sessionToken = await authenticate(company_name);
   const schema = await getSchema(company_name, sessionToken, database);
   //Logger.log({schema}); //For development
-  return { sessionToken, schema };
+  let status: NodeStatus;
+  if (schema) {
+    status = {type: 'data', data: {message: "Schema successfully retrieved", payload: { numTables: schema.length }}};
+  } else {
+    status = {type: 'error', error: {message: "Schema could not be retrieved"}}
+  }
 
+  return { sessionToken, schema, status };
 }
 
 
-export async function getFieldDetails(task: string, sessionToken: string, schema: any, companyName: string): Promise<{fieldDetails: Record<number, any>, isPossible: string}> {
+export async function getFieldDetails(task: string, sessionToken: string, schema: any, companyName: string): Promise<{fieldDetails: Record<number, any>, isPossible: string, status: NodeStatus}> {
   const model = createStructuredResponseAgent(getStrongestModel(), [IdentifyFieldsTool]);
 
   const message = await model.invoke([
@@ -57,13 +64,19 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
     }
   }
 
-  console.log(fieldDetails);
-  return {fieldDetails, isPossible};
+  let status: NodeStatus;
+  if (requiredFieldIds.length) {
+    status = {type: 'data', data: { message: "Appropriate fields identified for query", payload: { fieldDetails } }};
+  } else {
+    status = {type: 'error', error: { message: "No appropriate fields were found for this query" }}
+  }
+
+  return {fieldDetails, isPossible, status};
 };
 
 //TODO: Check this functionality
 export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
-Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQuery: string }> {
+Promise<{ status: NodeStatus; cardId?: number; metabaseQuery: string }> {
 
   const filter = { databaseID: databaseId };
   //TODO: Check this functionality
@@ -85,7 +98,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
     }
 
     if (ids.length === 0) {
-      Logger.log('No related cards found using fallback cards');
+      Logger.log('No related cards found, using fallback cards');
       exampleRelatedCards = fallbackCardExamples(databaseId);
     } else {
       exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
@@ -142,12 +155,13 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
       errorMessage = "unknown error, try to create the query in a different way";
     }
     return {
-      error: errorMessage,
+      status: {type: 'error', error: { message: errorMessage }},
       metabaseQuery: JSON.stringify(metabaseQueryResult)
     };
   } else {
     Logger.log('Card ID:', cardIdResponse); 
     return {
+      status: {type: 'data', data: { message: `Metabase card created with ID ${cardIdResponse}`, payload: { cardId: cardIdResponse } }},
       cardId: cardIdResponse,
       metabaseQuery: JSON.stringify(metabaseQueryResult)
     };
@@ -155,7 +169,7 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string; metabaseQue
 }
 
 export async function executeMetabaseQuery(sessionToken: string, cardId: number, metabaseQuery: any, companyName:string):
- Promise<{ queryResult: any } | { error: string; metabaseQuery: string}> {
+ Promise<{ status: NodeStatus; queryResult?: any; metabaseQuery?: string }> {
   const queryResult = await executeQuery(companyName, sessionToken, cardId);
 
   if ("error" in queryResult) {
@@ -167,26 +181,27 @@ export async function executeMetabaseQuery(sessionToken: string, cardId: number,
     if (errorMessage.includes("Can't detect Cube query")) {
       errorMessage = "The SQL created from your query is not supported by cubejs, please try to create the query in a different way";
     } else if (errorMessage.includes("Can't find join path")) {
-      // errorMessage = "There is no JOIN between the sources. Please revise your query.";
+      // errorMessage = "There is no JOIN between the sources. Please review your query.";
       // TODO: Improve error message
     }
 
     Logger.error(errorMessage);
 
     return {
-      error: errorMessage,
+      status: {type: 'error', error: { message: errorMessage }},
       metabaseQuery: metabaseQuery,
     };
   } else {
     Logger.log('Query executed successfully');
     return {
+      status: {type: 'data', data: { message: "Query executed successfully", payload: { cardId } }},
       queryResult: queryResult
     };
   }
 }
 
 export async function getReasoning(queryResult: any, task: string, metabaseQuery: any, cardId: any, fieldDetails: any, schema: any): // TODO: fix types
-Promise<{ finalResult: string; reasoning: string; sources: string[] }> {
+Promise<{ finalResult: string; reasoning: string; sources: string[], status: NodeStatus }> {
 
 const model = createStructuredResponseAgent(getFasterModel(), [GetReasoningTool]); 
 
@@ -245,7 +260,8 @@ const sources = args.sources;
 return {
   finalResult: resultString, // we reassign here the truncated result
   reasoning: reasoning,
-  sources: sources
+  sources: sources,
+  status: {type: 'data', data: { message: "Result insights and explanation prepared", payload: { cardId } }}
 };
 }
 

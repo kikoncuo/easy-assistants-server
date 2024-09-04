@@ -7,7 +7,7 @@ import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
   name: string;
-  Graph: new (databaseId: number, clientAgentFunctions: Function[], companyName: string) => any;
+  Graph: new (databaseId: number, clientAgentFunctions: Function[], companyName: string, outputHandler: Function) => any;
 };
 
 type AppConfig = {
@@ -78,7 +78,8 @@ export class GraphApplication {
         agentSubGraph: new subgraphConfig.Graph(
           +this.clientData[0],
           [this.clientAgentFunction],
-          this.clientData[1]
+          this.clientData[1],
+          this.outputHandler,
         ),
       };
     });
