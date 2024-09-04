@@ -1,6 +1,6 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { fetchSchema, getFieldDetails, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
+import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
 import { checkUpdateSemanticLayer, handleEditCubeGraph } from './nodes/semanticLayerLogic';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
@@ -16,6 +16,7 @@ interface DataRecoveryState extends BaseState {
   cardId: number;
   queryResult: any;
   fieldDetails: Record<number, any>; 
+  exampleRelatedCards: string;
   stopExecution: boolean;
   needsSemanticUpdate: boolean;
   semanticTask: string; 
@@ -67,6 +68,10 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       fieldDetails: {  
         value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
         default: () => ({}),
+      },
+      exampleRelatedCards: {  
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
       },
       stopExecution: {  
         value: (x: boolean, y?: boolean) => (y ? y : x),
@@ -129,6 +134,16 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     return { ...state, fieldDetails, isPossible };
   }
 
+  private async evaluateExamplesNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const { exampleRelatedCards, ids } = await getExampleRelatedCards(state.task, state.sessionToken, this.database, this.companyName, state.feedbackMessage);
+    if (ids) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Example cards related to the task have been identified", data: { exampleCardIds: ids } }));
+    } else {
+      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task"}));
+    }
+    return { ...state, exampleRelatedCards };
+  }
+
   private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const queryAttempts =  (state.queryAttempts || 0) + 1;
     if (queryAttempts > 3) {
@@ -139,7 +154,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
       }
     }
-    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, this.database, this.companyName, state.feedbackMessage, state.metabaseQuery);
+    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, state.exampleRelatedCards, this.companyName, state.feedbackMessage, state.metabaseQuery);
 
     if ('error' in result) {
       this.functions[0]('info', createNodeResponse('error', { message: result.error }));
@@ -211,6 +226,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     subGraphBuilder
       .addNode('fetch_schema', this.fetchSchemaNode.bind(this))
       .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
+      .addNode('evaluate_examples', this.evaluateExamplesNode.bind(this))
       .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
       .addNode('edit_cube_graph', this.handleEditCubeGraph.bind(this))
       .addNode('create_card', this.createCardNode.bind(this))
@@ -218,6 +234,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addNode('getReasoning', this.getReasoningNode.bind(this))
       .addEdge(START, 'fetch_schema')
       .addEdge('fetch_schema', 'evaluate_fields')
+      .addEdge('fetch_schema', 'evaluate_examples')
       .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
         if (state.isPossible === 'yes') {
           return 'create_card';
@@ -233,6 +250,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         }
       })
       .addEdge('edit_cube_graph', 'create_card')
+      .addEdge('evaluate_examples', 'create_card')
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
           return END;
