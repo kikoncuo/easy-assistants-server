@@ -450,16 +450,33 @@ export async function getResults(task: string, sessionToken: string, databaseId:
   const insights = [];
   Logger.log("Relevant cards", relevantCards)
   for (const card of relevantCards) {
+
+    let queryResult;
+
+    if (card.queryResult && card.queryResult.length > 0) {
+
+      Logger.log(`Using existing queryResult for card ${card}`);
+      queryResult = card.queryResult;
+
+    } else {
+
+      queryResult = await executeQuery(companyName, sessionToken, card.id);
+ 
+     if (queryResult.error) {
+       Logger.warn(`Error executing query for card ${card.id}: ${queryResult.error}`);
+       continue;
+     }
+    }
     const model = createStructuredResponseAgent(getFasterModel(), [GenerateInsightTool]);
 
-    let resultString = JSON.stringify(card);
+    let resultString = JSON.stringify(queryResult);
     if (resultString.length > 5000) {
       resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
     }
 
     const message = await model.invoke([
       new HumanMessage(`
-        You have just executed a query for the card with ID ${card}. 
+        You have just executed a query for the card with ID ${card.id}. 
         The user's request was: ${task}
 
         The query result is: ${resultString}
@@ -472,8 +489,9 @@ export async function getResults(task: string, sessionToken: string, databaseId:
     const args = message.lc_kwargs.tool_calls[0].args;
 
     insights.push({
-      cardId: card,
+      cardId: card.id,
       insightExplanation: args.insightExplanation,
+      // queryResult: queryResult
     });
   }
  
@@ -551,6 +569,7 @@ export async function getResultsForFilteredCards(task: string, sessionToken: str
     insights.push({
       cardId: card,
       insightExplanation: args.insightExplanation,
+      // queryResult: queryResult
     });
   }
  

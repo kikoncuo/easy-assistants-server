@@ -193,9 +193,15 @@ export class InsightGraph extends AbstractGraph<InsightState> {
         stopExecution: stopExecution
       };
     } else {
+      const newRelevantCard = {
+        cardId: state.cardId,
+        queryResult: result.queryResult
+      };
+  
       return {
         ...state,
         queryResult: result.queryResult,
+        relevantCards: [...state.relevantCards, newRelevantCard]
       };
     }
   }
