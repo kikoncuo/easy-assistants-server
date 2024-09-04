@@ -5,6 +5,7 @@ import { WebSocketService } from '../services/WebSocketService';
 //import { EditCubeGraph } from '../subgraphs/editCubes';
 import { CreateCubeGraph } from '../subgraphs/createCube'; 
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
+import { getCodeInterpreterInstance, runCodeInterpret } from '../utils/codeInterpreter';
 import Logger from '../utils/Logger';
 
 export class Router {
@@ -36,6 +37,9 @@ export class Router {
         break;
       case 'deleteDocuments':
         await this.handleDeleteDocuments(data);
+        break;
+      case 'runPythonCode':
+        await this.handleRunPythonCode(data);
         break;
       case 'toolResponse':
         // this is handled by the graph application itself
@@ -121,5 +125,50 @@ export class Router {
       companyName: data.companyName,
     });
     WebSocketService.outputHandler('createCubes', result.finalResult, this.ws);
+  }
+
+  private async handleRunPythonCode(data: any) {
+    Logger.log('Running Python code');
+    const { code } = data.data;
+  
+    const codeInterpreter = await getCodeInterpreterInstance();
+  
+    const outputHandler = (type: string, message: any) => {
+      WebSocketService.outputHandler(type, message, this.ws);
+    };
+  
+    try {
+      const exec = await runCodeInterpret(codeInterpreter, code, [outputHandler]);
+  
+      if (!exec) {
+        throw new Error("Failed to execute Python code");
+      }
+  
+      let results = [];
+      for (let result of exec.results) {
+        if (result.png) {
+          results.push({
+            type: 'image',
+            data: result.png,
+            description: result.text
+          });
+        } else {
+          results.push({
+            type: 'text',
+            data: result.text
+          });
+        }
+      }
+  
+      outputHandler('pythonCodeResult', {
+        logs: exec.logs,
+        results: results
+      });
+    } catch (error) {
+      Logger.error('Error running Python code:', error);
+      outputHandler('pythonCodeError', error);
+    } finally {
+      await codeInterpreter.close();
+    }
   }
 }
