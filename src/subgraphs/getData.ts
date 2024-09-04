@@ -3,7 +3,7 @@ import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@lan
 import { fetchSchema, getFieldDetails, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
 import { checkUpdateSemanticLayer, handleEditCubeGraph } from './nodes/semanticLayerLogic';
-import { NodeStatus } from '../utils/StatusType';
+import { NodeStatus } from '../utils/NodeResponseUtils';
 
 interface DataRecoveryState extends BaseState {
   task: string;
@@ -131,7 +131,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     if ('error' in result.status) {
       return {
         ...state,
-        feedbackMessage: result.status.error!.message,
+        feedbackMessage: result.status.payload!.message,
         metabaseQuery: result.metabaseQuery,
         queryAttempts: state.queryAttempts + 1,
       };
@@ -149,12 +149,12 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
     
     if ('error' in result.status) {
-      const stopExecution = result.status.error!.message.includes("Can't find join path");
+      const stopExecution = result.status.payload!.message.includes("Can't find join path");
       
       this.functions[0]('info', result.status);
       return {
         ...state,
-        feedbackMessage: result.status.error!.message,
+        feedbackMessage: result.status.payload!.message,
         metabaseQuery: result.metabaseQuery,
         stopExecution: stopExecution,
       };

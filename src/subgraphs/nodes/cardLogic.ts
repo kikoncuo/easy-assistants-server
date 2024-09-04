@@ -5,7 +5,7 @@ import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, Genera
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
-import { NodeStatus } from '../../utils/StatusType';
+import { NodeStatus, createNodeResponse } from '../../utils/NodeResponseUtils';
 
 
 export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any, status: NodeStatus }> {
@@ -14,9 +14,9 @@ export async function fetchSchema(company_name: string, database: number): Promi
   //Logger.log({schema}); //For development
   let status: NodeStatus;
   if (schema) {
-    status = {type: 'data', data: {message: "Schema successfully retrieved", payload: { numTables: schema.length }}};
+    status = createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} });
   } else {
-    status = {type: 'error', error: {message: "Schema could not be retrieved"}}
+    status = createNodeResponse('error', { message: "Schema could not be retrieved" })
   }
 
   return { sessionToken, schema, status };
@@ -66,9 +66,9 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
 
   let status: NodeStatus;
   if (requiredFieldIds.length) {
-    status = {type: 'data', data: { message: "Appropriate fields identified for query", payload: { fieldDetails } }};
+    status = createNodeResponse('data', { message: "Appropriate fields identified for query", data: { fieldDetails } })
   } else {
-    status = {type: 'error', error: { message: "No appropriate fields were found for this query" }}
+    status = createNodeResponse('error', { message: "No appropriate fields were found for this query" })
   }
 
   return {fieldDetails, isPossible, status};
@@ -155,13 +155,13 @@ Promise<{ status: NodeStatus; cardId?: number; metabaseQuery: string }> {
       errorMessage = "unknown error, try to create the query in a different way";
     }
     return {
-      status: {type: 'error', error: { message: errorMessage }},
+      status: createNodeResponse('error', { message: errorMessage }),
       metabaseQuery: JSON.stringify(metabaseQueryResult)
     };
   } else {
     Logger.log('Card ID:', cardIdResponse); 
     return {
-      status: {type: 'data', data: { message: `Metabase card created with ID ${cardIdResponse}`, payload: { cardId: cardIdResponse } }},
+      status: createNodeResponse('data', { message: `Metabase card created with ID ${cardIdResponse}`, data: { cardId: cardIdResponse } }),
       cardId: cardIdResponse,
       metabaseQuery: JSON.stringify(metabaseQueryResult)
     };
@@ -188,13 +188,13 @@ export async function executeMetabaseQuery(sessionToken: string, cardId: number,
     Logger.error(errorMessage);
 
     return {
-      status: {type: 'error', error: { message: errorMessage }},
+      status: createNodeResponse('error', { message: errorMessage }),
       metabaseQuery: metabaseQuery,
     };
   } else {
     Logger.log('Query executed successfully');
     return {
-      status: {type: 'data', data: { message: "Query executed successfully", payload: { cardId } }},
+      status: createNodeResponse('data', { message: "Query executed successfully", data: { cardId } }),
       queryResult: queryResult
     };
   }
@@ -261,7 +261,7 @@ return {
   finalResult: resultString, // we reassign here the truncated result
   reasoning: reasoning,
   sources: sources,
-  status: {type: 'data', data: { message: "Result insights and explanation prepared", payload: { cardId } }}
+  status: createNodeResponse('data', { message: "Result insights and explanation prepared", data: { cardId } })
 };
 }
 

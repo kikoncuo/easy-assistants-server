@@ -5,7 +5,7 @@ import Logger from "../../utils/Logger";
 import { EditCubeGraph } from "../editCubes";
 import { getSchema, syncDatabaseSchema } from "../../utils/MetabaseAPI";
 import { getModelsData } from "../../utils/DataStructure";
-import { NodeStatus } from "../../utils/StatusType";
+import { NodeStatus, createNodeResponse } from "../../utils/NodeResponseUtils";
 
 export async function checkUpdateSemanticLayer(
     task: string,
@@ -42,7 +42,7 @@ export async function checkUpdateSemanticLayer(
     return {
       needsSemanticUpdate: needsSemanticUpdate,
       semanticTask: needsSemanticUpdate ? semanticTask : '',
-      status: {type: 'data', data: { message: "Successfully identified required semantic layer updates" }}
+      status: createNodeResponse('data', { message: "Successfully identified required semantic layer updates" })
     };
   
   }
@@ -59,7 +59,7 @@ export async function checkUpdateSemanticLayer(
     
     return {
       schema,
-      status: {type: 'data', data: { message: "Semantic layer edited to include required fields missing for query", payload: { result: result.finalResult } }}
+      status: createNodeResponse('data', { message: "Semantic layer edited to include required fields missing for query", data: { result: result.finalResult } })
     };
   }
   
