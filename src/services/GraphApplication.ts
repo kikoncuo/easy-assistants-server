@@ -2,7 +2,8 @@ import { GraphManager } from './GraphManager';
 import { getFasterModel, createPlanner } from '../models/Models';
 import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
-import { InsightGraph } from '../subgraphs/getInsights';
+// import { InsightGraph } from '../subgraphs/getInsights';
+import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
@@ -30,7 +31,7 @@ export class GraphApplication {
       systemPrompt: dataSystemPrompt
     },
     insights: {
-      subgraphs: [{ name: 'getInsights', Graph: InsightGraph }],
+      subgraphs: [{ name: 'getInsights', Graph: InsightExtractorGraph }],
       systemPrompt: insightsSystemPrompt
     },
     // Add more app types here as needed

@@ -14,7 +14,7 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: [2, "blank_street"], appType: 'insights' }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [9, "blank_street"], appType: 'insights' }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 
@@ -39,7 +39,7 @@ function connectToServer() {
       // Process each function and send the responses back to the server
       const responses = functions.map(
         ({ function_name, arguments: args }: { function_name: string; arguments: any }) => {
-          Logger.log(`Processing function: ${function_name} with args:`, args);
+          console.log(`Processing function: ${function_name} with args:`, args);
 
           let response;
           if (function_name === 'calculate') {

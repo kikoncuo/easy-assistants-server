@@ -170,7 +170,7 @@ export async function executeMetabaseQuery(sessionToken: string, cardId: number,
 
   if ("error" in queryResult) {
     Logger.log("Error executing query. Deleting card...");
-    await deleteCard(companyName, sessionToken, cardId);
+    // await deleteCard(companyName, sessionToken, cardId);
     
     let errorMessage = queryResult.error;
     
