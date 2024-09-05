@@ -60,10 +60,8 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
   return {fieldDetails, isPossible};
 };
 
-//TODO: Check this functionality
-export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, databaseId: number,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
-Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQuery: string }> {
-
+export async function getExampleRelatedCards(task: string, sessionToken: string, databaseId: number,  companyName:string, feedbackMessage?: string):
+Promise<{ exampleRelatedCards: string, ids?: number[] }> {
   const filter = { databaseID: databaseId };
   //TODO: Check this functionality
 
@@ -90,10 +88,17 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQue
       exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
       //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
     }
+
+    return { exampleRelatedCards, ids }
   } else {
     exampleRelatedCards = fallbackCardExamples(databaseId);
+    return { exampleRelatedCards }
   }
+}
 
+//TODO: Check this functionality
+export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, exampleRelatedCards: any,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
+Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQuery: string }> {
   
   const model = createStructuredResponseAgent(anthropicSonnet(), [GenerateMetabaseQueryTool]); // Only model flexible enough to generate the query
 
