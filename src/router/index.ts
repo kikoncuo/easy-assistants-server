@@ -5,6 +5,7 @@ import { WebSocketService } from '../services/WebSocketService';
 import { EditCubeGraph } from '../subgraphs/editCubes';
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
+import { getCodeInterpreterInstance, runCodeInterpret } from '../utils/codeInterpreter';
 
 export class Router {
   private graphApps: Map<string, GraphApplication> = new Map();
@@ -13,7 +14,6 @@ export class Router {
 
   async handleMessage(message: string) {
     const data = JSON.parse(message);
-
     switch (data.type) {
       case 'query':
         await this.handleQuery(data);
@@ -26,6 +26,9 @@ export class Router {
         break;*/
       case 'editSemanticLayer':
         await this.handleEditSemanticLayer(data);
+        break;
+      case 'runPythonCode':
+        await this.handleRunPythonCode(data);
         break;
       case 'addDocuments':
         await this.handleAddDocuments(data);
@@ -104,6 +107,62 @@ export class Router {
     } catch (error) {
       Logger.error('Error deleting documents:', error);
       WebSocketService.outputHandler('deleteDocuments', 'Error deleting documents', this.ws);
+    }
+  }
+
+  private async handleRunPythonCode(data: any) {
+    const code = data.data;
+    Logger.log('code', code)
+  
+    const codeInterpreter = await getCodeInterpreterInstance();
+  
+    const outputHandler = (type: string, functions: any) => {
+      
+      WebSocketService.queryUser(type, functions, this.ws);
+    };
+  
+    try {
+      const exec = await runCodeInterpret(codeInterpreter, code, [outputHandler]);
+      
+      if (!exec) {
+        throw new Error("Failed to execute Python code");
+      }
+  
+      let results = [];
+      for (let result of exec.results) {
+        if (result.png) {
+          results.push({
+            type: 'image',
+            data: result.png,
+            description: result.text
+          });
+        } else {
+          results.push({
+            type: 'text',
+            data: result.text
+          });
+        }
+      }
+  
+      // outputHandler('tool', {
+      //   logs: exec.logs,
+      //   results: results
+      // });
+      const getPythonCodeResult = [
+        {
+            function_name: 'pythonCodeResult',
+            arguments: {
+              logs: exec.logs,
+              results: results
+            }
+        }
+    ]
+    outputHandler('tool', getPythonCodeResult);
+    } catch (error) {
+      Logger.error('Error running Python code:', error);
+      outputHandler('tool', error);
+    } finally {
+      await codeInterpreter.close();
     }
   }
 }

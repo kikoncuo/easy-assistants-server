@@ -1,7 +1,7 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, EvaluateCardsTool} from '../../models/Tools';
+import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, EvaluateCardsTool, TableIdentifyingTool} from '../../models/Tools';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
@@ -575,3 +575,24 @@ export async function getResultsForFilteredCards(task: string, sessionToken: str
  
   return insights
 }
+
+export async function getRelevantTables(task: string, schema: any): Promise<{ relevantTables: any[] }> {
+  const model = createStructuredResponseAgent(getStrongestModel(), [TableIdentifyingTool]);
+
+  const message = await model.invoke([
+    new HumanMessage(`
+        Given the task: "${task}"
+
+        And the following schema: ${JSON.stringify(schema, null, 2)}
+
+        Please identify the most relevant tables for this task using the identifyRelevantTables function.
+
+      `)
+  ]);
+
+  const { relevantTables, reasoning } = message.lc_kwargs.tool_calls[0].args;
+
+  Logger.log('Table selection reasoning:', reasoning);
+
+  return { relevantTables };
+};
