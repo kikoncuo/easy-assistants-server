@@ -1,4 +1,4 @@
-import { authenticate, getCards } from '../src/utils/MetabaseAPI';
+import { authenticate, getCards } from '../src/services/MetabaseAPI';
 import { addDocuments, deleteDocuments } from '../src/utils/EmbeddingUtils';
 import dotenv from 'dotenv';
 

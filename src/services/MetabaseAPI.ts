@@ -1,6 +1,6 @@
 import axios from 'axios';
 import Logger from '../utils/Logger';
-import { ConfigurationManager } from './ConfigurationManager';
+import { ConfigurationManager } from '../utils/ConfigurationManager';
 
 /**
  * Authenticate with Metabase and return a session token.
@@ -38,6 +38,7 @@ export async function getSchema(companyName: string, sessionToken: string, datab
   const tables = databaseMetadata.data.tables.map((table: any) => ({
     display_name: table.display_name,
     id: table.id,
+    joinFieldId: table.fields.find((f: any) => f.name === "__cubeJoinField").id,
     fields: table.fields.map((field: any) => ({
       id: field.id,
       name: field.name,
@@ -132,7 +133,6 @@ export async function getExampleCards(companyName: string, sessionToken: string,
  */
 export async function createCard(companyName: string, sessionToken: string, cardData: any): Promise<number | { error: string; status: number }> {
   const config = ConfigurationManager.getConfig(companyName);
-  cardData.visualization_settings = {}; // TODO
   try {
   const response = await axios.post(`${config.METABASE_URL}/card`, cardData, {
     headers: {
@@ -386,10 +386,11 @@ export async function syncDatabaseSchema(companyName: string, sessionToken: stri
 export async function getDatasetQuery(companyName: string, sessionToken: string, card:any): Promise<any | { error: string; status: number }> {
   const config = ConfigurationManager.getConfig(companyName);
   try {
-    
+    const cardJson = JSON.parse(card)
+    const datasetQuery = cardJson.dataset_query;
     const response = await axios.post(
       `${config.METABASE_URL}/dataset`,
-      card.datasetQuery,
+      JSON.stringify(datasetQuery),
       {
         headers: {
           'X-Metabase-Session': sessionToken,

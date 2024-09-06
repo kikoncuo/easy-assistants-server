@@ -1,4 +1,4 @@
-import { createDashboard } from '../../utils/MetabaseAPI';
+import { createDashboard } from '../../services/MetabaseAPI';
 import { addDocuments } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
 import { getFasterModel, createStructuredResponseAgent } from '../../models/Models';

@@ -2,8 +2,7 @@ import { Parser } from 'json2csv';
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
-import Logger from './Logger';
-
+import Logger from '../utils/Logger';
 type MessageCreationStepDetails = {
   message_creation: {
     message_id: string;
@@ -139,7 +138,7 @@ export const createThread = async (): Promise<string> => {
 export const createMessage = async (
   threadId: string, 
   content: string, 
-  attachments: OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[]
+  attachments?: OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[]
 ) => {
   await openai.beta.threads.messages.create(threadId, {
     role: "user",
@@ -258,32 +257,41 @@ export const pollRun = async (
   onToolCallDone: (tool: any) => void,
   onImageFileDone: (content: any, snapshot: any) => void,
   onTextDone: (content: any, snapshot: any) => void,
+  onRequiresAction: (
+    runStatus: any, 
+    schema: any, 
+    companyName: string, 
+    sessionToken: string, 
+    dbId: number, 
+    threadId: string, 
+    run: any
+  ) => Promise<any>,
+  schema: any,
+  companyName: string,
+  sessionToken: string,
+  dbId: number,
   pollInterval: number = 1000, // Poll every 1 second by default
   maxAttempts: number = 60 // Maximum number of polling attempts (1 minute by default)
 ): Promise<void> => {
-  const run = await openai.beta.threads.runs.create(threadId, { assistant_id: assistantId });
+  let run = await openai.beta.threads.runs.create(threadId, { assistant_id: assistantId });
   let attempts = 0;
+
   while (attempts < maxAttempts) {
     const runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
 
     if (runStatus.status === 'completed') {
       const runSteps = await openai.beta.threads.runs.steps.list(threadId, run.id);
-      
       for (const step of runSteps.data) {
-        if (step.type === 'message_creation') {
-          const  stepDetails = step.step_details;
+        if (step.type === 'message_creation' && step.status === 'completed') {
+          const stepDetails = step.step_details;
           if (isMessageCreationStepDetails(stepDetails)) {
             const messageDetails = stepDetails.message_creation;
             const message = await openai.beta.threads.messages.retrieve(threadId, messageDetails.message_id);
-            for (const content of message.content) {
-              if (content.type === 'text') {
-                onTextDone(content.text.value, { run_id: run.id });
-              } else if (content.type === 'image_file') {
-                onImageFileDone(content, { run_id: run.id });
-              }
+            const textContent = message.content.find(content => content.type === 'text');
+            if (textContent) {
+              onTextDone(textContent.text.value, { run_id: run.id, run: run });
+              break;
             }
-          } else {
-            console.error("step_details does not contain message_creation details.");
           }
         } else if (step.type === 'tool_calls') {
           const toolCallsDetails = step.step_details as ToolCallsStepDetails;
@@ -291,11 +299,16 @@ export const pollRun = async (
             if (toolCall.type === 'code_interpreter' && toolCall.code_interpreter) {
               onToolCallDone(toolCall.code_interpreter);
             }
-            // Add handling for other tool types if needed
           }
         }
       }
+
       return;
+    } else if (runStatus.status === 'requires_action') {
+      const toolOutputs = await onRequiresAction(runStatus, schema, companyName, sessionToken, dbId, threadId, run);
+      if (toolOutputs.length > 0) {
+        await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, { tool_outputs: toolOutputs });
+      }
     } else if (runStatus.status === 'failed') {
       throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
     }

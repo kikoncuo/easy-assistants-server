@@ -1,33 +1,30 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
-import Logger from '../utils/Logger';
-import { checkUpdateSemanticLayer, handleEditCubeGraph } from './nodes/semanticLayerLogic';
+import { getExampleRelatedCards } from './nodes/cardLogic';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
+import Logger from '../utils/Logger';
+import { createMessage, createThread, pollRun } from '../services/AssistantsOpenAI';
+import { generateCombinedJSON, getMetabaseJSON } from '../utils/DataStructure';
+import { authenticate, createCard, getDatasetQuery } from '../services/MetabaseAPI';
+import { ConfigurationManager } from '../utils/ConfigurationManager';
 
 interface DataRecoveryState extends BaseState {
   task: string;
   metabaseQuery: any;
-  feedbackMessage: string;
-  finalResult: string;
+  queryStructure: any;
   queryAttempts: number;
-  sessionToken: string;
-  schema: any[];
   cardId: number;
-  queryResult: any;
-  fieldDetails: Record<number, any>; 
   exampleRelatedCards: string;
-  stopExecution: boolean;
-  needsSemanticUpdate: boolean;
-  semanticTask: string; 
-  isPossible: string;
 }
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
   private database: number;
   private companyName: string;
-
-  constructor(database: number, functions: Function[], companyName: string) {
+  private resultsMap: Record<string, any>;
+  private resultsIdsMap: Record<string, any>;
+  private schema: any[];
+  private sessionToken: string;
+  constructor(database: number, functions: Function[], companyName: string, schema: any[]) {
     const graphState: StateGraphArgs<DataRecoveryState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -37,11 +34,11 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: any, y?: any) => (y ? y : x),
         default: () => null,
       },
-      feedbackMessage: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
+      queryStructure: {
+        value: (x: any, y?: any) => (y ? y : x),
+        default: () => null,
       },
-      finalResult: {  
+      finalResult: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -49,231 +46,194 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: number, y?: number) => (y !== undefined ? y : x),
         default: () => 0,
       },
-      sessionToken: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      schema: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
       cardId: {
         value: (x: number, y?: number) => (y !== undefined ? y : x),
         default: () => 0,
       },
-      queryResult: {
-        value: (x: any, y?: any) => (y ? y : x),
-        default: () => null,
-      },
-      fieldDetails: {  
-        value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
-        default: () => ({}),
-      },
-      exampleRelatedCards: {  
+      exampleRelatedCards: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      stopExecution: {  
-        value: (x: boolean, y?: boolean) => (y ? y : x),
-        default: () => false,
-      },
-      needsSemanticUpdate: {
-        value: (x: boolean, y?: boolean) => (y ? y : x),
-        default: () => false,
-      },
-      semanticTask: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      isPossible: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      }
     };
     super(graphState);
     this.functions = functions;
     this.database = database;
     this.companyName = companyName;
+    this.resultsMap = {};
+    this.resultsIdsMap = {};
+    this.onRequiresAction = this.onRequiresAction.bind(this);
+    this.createCardNode = this.createCardNode.bind(this);
+    this.onRequiresAction = this.onRequiresAction.bind(this);
+    this.createCardNode = this.createCardNode.bind(this);
+    this.sessionToken = '';
+    this.schema = schema;
   }
 
-  private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
-
-    if (schema) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
-    } else {
-      this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+  async initialize(): Promise<void> {
+    try {
+      const sessionToken = await authenticate(this.companyName);
+      this.sessionToken = sessionToken;
+      if (sessionToken) {
+        Logger.log('Authenticated successfully');
+      } else {
+        this.functions[0]('info', createNodeResponse('error', { message: "Sorry could not authenticate" }));
+      }
+    } catch (error) {
+      console.error("Error fetching schema:", error);
+      this.functions[0]('info', createNodeResponse('error', { message: "Error fetching schema" }));
     }
-
-    return { ...state, sessionToken, schema };
-  }
-
-  private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const {needsSemanticUpdate, semanticTask} = await checkUpdateSemanticLayer(state.task, this.companyName);
-    if (needsSemanticUpdate) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Successfully identified required semantic layer updates" }));
-    } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer does not need updates" }));
-    }
-    return { ...state, needsSemanticUpdate, semanticTask };
-  }
-
-  private async handleEditCubeGraph(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { schema, result } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
-    this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer edited to include required fields missing for query", data: { result } }));
-    return { ...state, schema };
-  }
-
-  private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
-    if (fieldDetails) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Appropriate fields identified for query", data: { fieldDetails } }));
-    } else {
-      this.functions[0]('info', createNodeResponse('error', { message: "No appropriate fields were found for this query" }));
-    }
-    return { ...state, fieldDetails, isPossible };
   }
 
   private async evaluateExamplesNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { exampleRelatedCards, ids } = await getExampleRelatedCards(state.task, state.sessionToken, this.database, this.companyName, state.feedbackMessage);
+    const { exampleRelatedCards, ids } = await getExampleRelatedCards();
     if (ids) {
       this.functions[0]('info', createNodeResponse('data', { message: "Example cards related to the task have been identified", data: { exampleCardIds: ids } }));
     } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task"}));
+      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task" }));
     }
     return { ...state, exampleRelatedCards };
   }
 
-  private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const queryAttempts =  (state.queryAttempts || 0) + 1;
-    if (queryAttempts > 3) {
-      Logger.log("Unable to generate a suitable query after 3 attempts.")
-      return {
-        ...state,
-        queryAttempts, 
-        finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
+  private async onRequiresAction(
+    runStatus: any,
+    schema: any,
+    companyName: string,
+    sessionToken: string,
+    dbId: number,
+  ): Promise<any[]> {
+    const toolOutputs = [];
+    if (
+      runStatus.required_action &&
+      runStatus.required_action.submit_tool_outputs &&
+      runStatus.required_action.submit_tool_outputs.tool_calls
+    ) {
+      for (const tool of runStatus.required_action.submit_tool_outputs.tool_calls) {
+        if (tool.function.name === "generateQueryStructure") {
+          const query = JSON.parse(tool.function.arguments);
+          try {
+            const metabaseJSON = await getMetabaseJSON(query, schema, dbId);
+            try {
+              const tableResult = await getDatasetQuery(companyName, sessionToken, JSON.stringify(metabaseJSON));
+              this.resultsMap[runStatus.id] = metabaseJSON;
+              toolOutputs.push({
+                tool_call_id: tool.id,
+                output: JSON.stringify(tableResult),
+              });
+            } catch (e) {
+
+              if (e instanceof Error) {
+                Logger.error(e.message);
+                toolOutputs.push({
+                  tool_call_id: tool.id,
+                  output: e.message
+                });
+                this.functions[0]('info', createNodeResponse('data', { message: "We had a problem creating the card. We are trying again." }));
+              }
+            }
+
+          } catch (e) {
+            if (e instanceof Error) {
+              Logger.error(e.message);
+              toolOutputs.push({
+                tool_call_id: tool.id,
+                output: e.message
+              });
+              this.functions[0]('info', createNodeResponse('data', { message: "We had a problem creating the card. We are trying again." }));
+            }
+          }
+        } else if (tool.function.name === "createCard") {
+          const query = JSON.parse(tool.function.arguments);
+          const metabaseJSON = this.resultsMap[runStatus.id];
+          const requestJSON = generateCombinedJSON(query, metabaseJSON);
+          const request = JSON.stringify(requestJSON, null, 2);
+          const cardIdResponse = await createCard(companyName, sessionToken, request);
+          this.resultsIdsMap[runStatus.id] = cardIdResponse;
+
+          toolOutputs.push({
+            tool_call_id: tool.id,
+            output: request,
+          });
+        } else {
+          toolOutputs.push({
+            tool_call_id: tool.id,
+            output: "0",
+          });
+        }
       }
     }
-    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, state.exampleRelatedCards, this.companyName, state.feedbackMessage, state.metabaseQuery);
 
-    if ('error' in result) {
-      this.functions[0]('info', createNodeResponse('error', { message: result.error }));
-      return {
-        ...state,
-        feedbackMessage: result.error,
-        metabaseQuery: result.metabaseQuery,
-        queryAttempts: state.queryAttempts + 1,
-      };
-    } else {
-      this.functions[0]('info', createNodeResponse('data', { message: `Metabase card created with ID ${result.cardId}`, data: { cardId: result.cardId } }));
-      return {
-        ...state,
-        cardId: result.cardId!,
-        metabaseQuery: result.metabaseQuery,
-        queryAttempts: state.queryAttempts + 1,
-      };
-    }
-  }
+    return toolOutputs;
+  };
 
-  private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
-    
-    if ('error' in result) {
-      const stopExecution = result.error.includes("Can't find join path");
-      
-      this.functions[0]('info', createNodeResponse('error', { message: result.error }));
-      return {
-        ...state,
-        feedbackMessage: result.error,
-        metabaseQuery: result.metabaseQuery,
-        stopExecution: stopExecution,
-      };
-    } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Query executed successfully", data: { cardId: state.cardId } }));
-      return {
-        ...state,
-        queryResult: result.queryResult,
-      };
-    }
-  }
+  private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const threadId = await createThread();
 
-  private async getReasoningNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const result = await getReasoning( state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
+    const queryGuidelines = `
+The schema of the database is:
+${JSON.stringify(this.schema, null, 2)}
 
-    this.functions[0]('info', createNodeResponse('data', { message: "Result insights and explanation prepared", data: { cardId: state.cardId } }));
-    const getDatasetQuery = [
-      {
-        function_name: 'getDatasetQuery',
-        arguments: {
-          cardId: state.cardId,
-          reasoning: result.reasoning,
-          sources: result.sources
+You can only use the tables and fields that are provided in the schema.
+
+Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
+When applying filters, try to apply "is not empty" filters and prioritize "contains" filters over "equals" filters.
+
+Try to leverage the "CubeJoinField" fields that all tables have to join source tables.
+When available, try to use names instead of IDs for visualizations, even if a new join is necessary to get an item's name.
+For aggregations of type sum, use fields named starting with 'total' (e.g., totalAmount), if not available raise an error.
+For aggregations of type average, use fields named starting with 'average' (e.g., averageAmount), if not available raise an error.
+       
+Here are some examples of a natural language query and its corresponding JSON representation (which used other tables you may not be able to use):
+
+${state.exampleRelatedCards}
+`;
+
+
+    state.task = `${state.task}\n\n${queryGuidelines}\n`;
+    await createMessage(threadId, state.task);
+    const config = ConfigurationManager.getConfig(this.companyName);
+    const assistantId = config.DATA_ASSISTANT_KEY;
+
+    await pollRun(
+      threadId,
+      assistantId,
+      (tool: any) => {
+        Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`);
+      },
+      (content: any, snapshot: any) => Logger.log(`\nIMAGE FILE DONE > ${JSON.stringify(content, null, 2)}\n\n`),
+      (content: any, snapshot: any) => {
+        const runId = snapshot.run_id;
+        if (this.resultsMap[runId]) {
+          const metabaseJSON = this.resultsMap[runId];
+          const cardIdResponse = this.resultsIdsMap[runId];
+          state.cardId = cardIdResponse;
+          state.metabaseQuery = metabaseJSON;
+          state.queryAttempts = state.queryAttempts + 1
+          this.functions[0]('result', createNodeResponse('data', { message: content, data: { cardIdResponse } }));
+          delete this.resultsMap[runId];
+          delete this.resultsIdsMap[runId];
         }
       },
-    ];
-
-    this.functions[0]('tool', getDatasetQuery);
-
-    return {
-      ...state,
-      finalResult: state.queryAttempts > 1 ? result.finalResult + " Is this what you were looking for?" : result.finalResult,
-    };
+      this.onRequiresAction,
+      this.schema,
+      this.companyName,
+      this.sessionToken,
+      this.database
+    );
+    return { ...state }
   }
 
   getGraph(): CompiledStateGraph<DataRecoveryState> {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('fetch_schema', this.fetchSchemaNode.bind(this))
-      .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
       .addNode('evaluate_examples', this.evaluateExamplesNode.bind(this))
-      .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
-      .addNode('edit_cube_graph', this.handleEditCubeGraph.bind(this))
       .addNode('create_card', this.createCardNode.bind(this))
-      .addNode('execute_query', this.executeQueryNode.bind(this))
-      .addNode('getReasoning', this.getReasoningNode.bind(this))
-      .addEdge(START, 'fetch_schema')
-      .addEdge('fetch_schema', 'evaluate_fields')
-      .addEdge('fetch_schema', 'evaluate_examples')
-      .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
-        if (state.isPossible === 'yes') {
-          return 'create_card';
-        } else {
-          return 'check_update_semantic_layer';
-        }
-      })
-      .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
-        if (state.needsSemanticUpdate) {
-          return 'edit_cube_graph';
-        } else {
-          return 'create_card';
-        }
-      })
-      .addEdge('edit_cube_graph', 'create_card')
+      .addEdge(START, 'evaluate_examples')
       .addEdge('evaluate_examples', 'create_card')
-      .addConditionalEdges('create_card', (state: DataRecoveryState) => {
-        if (state.queryAttempts > 3) {
-          return END;
-        } else if (!state.cardId) {
-          return 'create_card';
-        } else {
-          return 'execute_query';
-        }
-      })
-      .addConditionalEdges('execute_query', (state: DataRecoveryState) => {
-        if (state.queryAttempts > 3 || state.stopExecution) {
-          return END;
-        } else if (state.queryResult && !("error" in state.queryResult)) {
-          return 'getReasoning';
-        } else {
-          return 'create_card';
-        }
-      })
-      .addEdge('getReasoning', END);
-
+      .addEdge('create_card', END)
     return subGraphBuilder.compile();
   }
-  
+
   getApp(): any {
     return this.getGraph();
   }

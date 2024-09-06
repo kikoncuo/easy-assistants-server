@@ -1,255 +1,54 @@
-export const fallbackCardExamples = (databaseID: number) => `
+export const queryStructureExamples = `
 **Example 1:**
 
-    **Natural Language Query:**
-    Show me a bar chart of the top 20 items by number of orders for the last month.
+    **Natural Language Task:**
+    Show me the average sales and percent of units wasted for each product in June
 
     **JSON Representation:**
     {
-    "name": "Top 20 Items by Orders (Last Month)",
-    "display": "bar",
-    "dataset_query": {
-      "database": ${databaseID},
-      "type": "query",
-      "query": {
-        "filter": [
-          "not-empty",
-          [
-            "field",
-            "Product - CubeJoinField__itemName",
-            {
-              "base-type": "type/Text"
-            }
-          ]
-        ],
-        "source-query": {
-          "source-table": 136,
-          "joins": [
-            {
-              "strategy": "left-join",
-              "alias": "Product - CubeJoinField",
-              "condition": [
-                "=",
-                [
-                  "field",
-                  1937,
-                  {
-                    "base-type": "type/Text"
-                  }
-                ],
-                [
-                  "field",
-                  1973,
-                  {
-                    "base-type": "type/Text",
-                    "join-alias": "Product - CubeJoinField"
-                  }
-                ]
-              ],
-              "source-table": 139
-            }
-          ],
-          "aggregation": [
-            [
-              "sum",
-              [
-                "field",
-                1944,
-                {
-                  "base-type": "type/BigInteger"
-                }
-              ]
-            ]
-          ],
-          "breakout": [
-            [
-              "field",
-              1969,
-              {
-                "base-type": "type/Text",
-                "join-alias": "Product - CubeJoinField"
-              }
-            ]
-          ],
-          "limit": 20,
-          "order-by": [
-            [
-              "desc",
-              [
-                "aggregation",
-                0
-              ]
-            ]
-          ],
-          "filter": [
-            "time-interval",
-            [
-              "field",
-              1940,
-              {
-                "base-type": "type/DateTime"
-              }
-            ],
-            -1,
-            "month"
-          ]
-        }
-      }
-    },
-  }
-
-
+      "source_tables": [
+        "Inventory",
+        "Product"
+      ],
+      "fields": [
+        "Inventory.createdAt",
+        "Product.itemName"
+      ],
+      "aggregations": [
+        {"type": "avg", "field": "Inventory.averageSold"},
+        {"type": "custom", "expression": "['aggregation-options', ['/', ['sum', ['field', 2333, {'base_type': 'type/Decimal'}]], ['sum', ['field', 2052, {'base_type': 'type/Decimal'}]]], {'name': '% Units Wasted', 'display_name': '% Units Wasted'}]"}
+      ],
+      "filters": [
+        {"field": "Inventory.createdAt", "operator": "not empty"},
+        {"field": "Product.itemName", "operator": "not empty"},
+        {"field": "Inventory.createdAt", "operator": "between", "value1": "2024-06-01", "value2": "2024-06-30"}
+      ],
+      "order_by": [{"field": "Inventory.createdAt", "direction": "asc"}]
+    }
 
 **Example 2:**
 
-    **Natural Language Query:**
-    Show me a line graph of the total sales by product
+    **Natural Language Task:**
+    Show me average customer satisfaction ratings, total orders and the percentage of ratings 4.5 or above across product categories
 
     **JSON Representation:**
     {
-    "name": "Total Sales by Product",
-    "display": "line",
-    "dataset_query": {
-      "database": ${databaseID},
-      "type":"query",
-      "query":{
-        "source-table":142,
-        "aggregation":[
-          ["sum",
-            [
-              "field",
-              2270,
-              {"base-type":"type/Decimal"}
-            ]
-          ]
-        ],
-        "breakout":[
-          [
-            "field",
-            2090,
-            {"base-type":"type/Text","join-alias":"Product"}
-          ]
-        ],
-        "joins":[{
-          "fields":"all",
-          "alias":"Product",
-          "condition":[
-            "=",
-            [
-              "field",
-              2038,
-              null
-            ],
-            [
-              "field",
-              2092,
-              {"join-alias":"Product"}
-            ]
-          ],
-          "source-table":147
-          }
-        ],
-        "filter":
-          [
-            "not-empty",
-            [
-              "field",
-              2027,
-              {"base-type":"type/DateTime"}
-            ]
-          ]
-        }
-      }
-  }
+      "source_tables": [
+        "orders"
+      ],
+      "fields": [
+        "orders.product_category",
+      ],
+      "aggregations": [
+        {"type": "count", "field": "orders.id"},
+        {"type": "avg", "field": "orders.rating"},
+        {"type": "custom", "expression": "(count(case when orders.rating >= 4.5 then 1 else null end) / count(orders.rating) * 100", "alias": "percent_ratings_4.5_or_higher"},
+      ],
+      "filters": [
+        {"field": "orders.created_at", "operator": "not empty"},
 
+      ],
+      "order_by": [{"field": "orders.created_at", "direction": "asc"}]
+    }
 
-
-**Example 3:**
-
-    **Natural Language Query:**
-    Make a bar chart showing the average cost of wasted products by day of the week
-
-    **JSON Representation:**
-    {
-    "name": "Average Cost of Wastage by Day of the Week",
-    "display": "bar",
-    "dataset_query": {
-      "database": ${databaseID},
-      "type":"query",
-      "query":{
-        "aggregation":
-          [
-            [
-              "avg",
-              [
-                "field",
-                2334,
-                {"base-type":"type/Decimal"}
-              ]
-            ]
-          ],
-        "breakout":
-          [
-            [
-              "field",
-              2090,
-              {"base-type":"type/Text","join-alias":"Product - CubeJoinField"}
-            ],
-            [
-              "field",
-              2305,
-              {"base-type":"type/Text"}
-            ]
-          ],
-        "joins":
-          [
-            {
-              "alias":"Product - CubeJoinField",
-              "strategy":"left-join",
-              "condition":[
-                "=",
-                [
-                  "field",
-                  2054,
-                  {"base-type":"type/Text"}
-                ],
-                [
-                  "field",
-                  2092,
-                  {"base-type":"type/Text","join-alias":"Product - CubeJoinField"}
-                ]
-              ],
-              "source-table":147
-            },
-            {
-              "alias":"Location - CubeJoinField",
-              "fields":"all",
-              "strategy":"left-join",
-              "condition":[
-                "=",
-                [
-                  "field",
-                  2054,
-                  {"base-type":"type/Text"}
-                ],
-                [
-                  "field",
-                  2099,
-                  {"base-type":"type/Text","join-alias":"Location - CubeJoinField"}
-                ]
-              ],
-              "source-table":148
-              }
-            ],
-          "source-table":145,
-          "filter":[
-            "not-empty",
-            [
-              "field",
-              2305,
-              {"base-type":"type/Text"}
-            ]
-          ]
-        }
-      }
-`;
+`

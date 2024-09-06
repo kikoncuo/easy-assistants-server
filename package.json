@@ -10,6 +10,7 @@
     "prettier": "npx prettier --write ."
   },
   "devDependencies": {
+    "@types/json2csv": "^5.0.7",
     "bun-types": "^1.0.30"
   },
   "peerDependencies": {
@@ -28,10 +29,10 @@
     "async_hooks": "^1.0.0",
     "axios": "^1.7.3",
     "dotenv": "^16.4.5",
+    "json2csv": "^6.0.0-alpha.2",
     "langchain": "^0.2.7",
     "pdf-parse": "^1.1.1",
     "pg": "^8.12.0",
-    "prettier": "^3.2.5",
-    "json2csv": "^6.0.0-alpha.2"
+    "prettier": "^3.2.5"
   }
 }

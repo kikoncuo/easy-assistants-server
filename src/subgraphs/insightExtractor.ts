@@ -1,12 +1,12 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { getRelevantTables } from './nodes/cardLogic';
-import { authenticate, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
+import { authenticate, getDatasetQuery, getDatasetAsCSV } from '../services/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
-import { createThread, createMessage, streamRun, parseAndUploadTables, pollRun, saveOpenAIImage, uploadTables } from '../utils/AssistantsOpenAI';
+import { createThread, createMessage, streamRun, uploadTables } from '../services/AssistantsOpenAI';
 import OpenAI from 'openai';
 import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';

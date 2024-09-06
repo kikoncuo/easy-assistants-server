@@ -26,7 +26,7 @@ export const executeQuery = async (query: any, projectName: string) => {
       data = await response.json();
 
       if (data.error && data.error === "Continue wait") {
-        console.log(`Wait error - retry`);
+        Logger.log(`Wait error - retry`);
         await new Promise(resolve => setTimeout(resolve, 1000)); // Timeout of 1 second
         continueWait = true;
       } else {
@@ -44,49 +44,49 @@ export const executeQuery = async (query: any, projectName: string) => {
 
 export const getModelsData = async (projectName: string): Promise<string[]> => {
   try {
-      const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/getMeta?projectName=${projectName}`, {
-          method: 'GET',
-          headers: {
-              'Content-Type': 'application/json'
-          }
-      });
-
-      if (!response.ok) {
-        const responseJson = await response.json();
-        Logger.error(`HTTP error! status: ${response.status} - ${responseJson}`);
-        return responseJson;
+    const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/getMeta?projectName=${projectName}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
       }
+    });
 
-      const data = await response.json();
-      const cubesStrings = data.cubes.map((cube: any) => JSON.stringify(cube));
+    if (!response.ok) {
+      const responseJson = await response.json();
+      Logger.error(`HTTP error! status: ${response.status} - ${responseJson}`);
+      return responseJson;
+    }
 
-      return cubesStrings;
+    const data = await response.json();
+    const cubesStrings = data.cubes.map((cube: any) => JSON.stringify(cube));
+
+    return cubesStrings;
   } catch (error) {
-      console.error('Error executing query:', error);
-      throw error;
+    console.error('Error executing query:', error);
+    throw error;
   }
 };
 
 export const getSQLQuery = async (projectName: string, query: any): Promise<string[]> => {
   try {
-      const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/getQuery?projectName=${projectName}&query=${query}`, {
-          method: 'GET',
-          headers: {
-              'Content-Type': 'application/json'
-          }
-      });
-
-      if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+    const response = await fetch(`${process.env.CUBE_API_SERVER_URL}/api/getQuery?projectName=${projectName}&query=${query}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
       }
+    });
 
-      const data = await response.json();
-      const sqlString = data.sql.sql;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-      return sqlString;
+    const data = await response.json();
+    const sqlString = data.sql.sql;
+
+    return sqlString;
   } catch (error) {
-      console.error('Error executing query:', error);
-      throw error;
+    console.error('Error executing query:', error);
+    throw error;
   }
 };
 
@@ -185,11 +185,11 @@ interface ViewReport {
 async function getTableNames(prefixes: string, client: Client): Promise<string[]> {
   try {
     let tablePrefixes;
-    if(prefixes) {
+    if (prefixes) {
       tablePrefixes = prefixes.split(',');
     }
     const prefixConditions = tablePrefixes?.map((prefix: string) => `tablename LIKE '${prefix}%'`).join(' OR ');
-    Logger.log({prefixConditions});
+    Logger.log({ prefixConditions });
 
     const res = await client.query(`
             SELECT tablename
@@ -403,7 +403,7 @@ export async function createPLV8function(query: string, functionName: string, pg
 
   try {
     await client.query(query);
-    const execution =  await client.query(`select * from ${functionName}() limit 10`);
+    const execution = await client.query(`select * from ${functionName}() limit 10`);
     return JSON.stringify(execution.rows);
   } catch (error) {
     console.warn(`Error creating function ${error}`);
@@ -548,7 +548,7 @@ export async function getDataSamples(tableName: string, columns: string[], pgCon
   }
 }
 
-export async function getDuplicatedRows(tableName: string,  columns:string[], pgConnectionString?: string): Promise<number> {
+export async function getDuplicatedRows(tableName: string, columns: string[], pgConnectionString?: string): Promise<number> {
   const client = new Client({
     connectionString: pgConnectionString ?? process.env.PG_CONNECTION_STRING,
   });
@@ -557,18 +557,18 @@ export async function getDuplicatedRows(tableName: string,  columns:string[], pg
 
   try {
     let query;
-  if (columns.length === 1) {
-    query = `
+    if (columns.length === 1) {
+      query = `
       SELECT COUNT(*) - COUNT(DISTINCT ${columns[0]}) AS duplicated_rows
       FROM "${tableName}"
     `;
-  } else {
-    const concatColumns = columns.map(col => `COALESCE(${col}::text, '')`).join(" || ");
-    query = `
+    } else {
+      const concatColumns = columns.map(col => `COALESCE(${col}::text, '')`).join(" || ");
+      query = `
       SELECT COUNT(*) - COUNT(DISTINCT (${concatColumns})) AS duplicated_rows
       FROM "${tableName}"
     `;
-  }
+    }
     const result = await client.query(query);
     return parseInt(result.rows[0].duplicated_rows);
   } catch (error) {
@@ -632,3 +632,114 @@ export async function getEmptyValuePercentage(tableName: string, columns: string
   }
 }
 
+export async function getMetabaseJSON(query: any, schema: any, dbId: number): Promise<{ dataset_query: any }> {
+  try {
+    const tables = query.source_tables.map((tableName: string) => {
+      return schema.find((table: any) => table.display_name === tableName);
+    });
+    const metabaseQuery = {
+      dataset_query: {
+        database: dbId,
+        type: "query",
+        query: {
+          source_table: tables[0].id,
+          joins: tables.length === 1 ? [] : tables.slice(1).map((t: any) => ({
+            alias: t.display_name,
+            fields: "all",
+            strategy: "left-join",
+            condition: [
+              "=",
+              [
+                "field",
+                tables[0].joinFieldId,
+                { baseType: "type/Text" }
+              ],
+              [
+                "field",
+                t.joinFieldId,
+                { baseType: "type/Text", joinAlias: t.display_name }
+              ]
+            ],
+            source_table: t.id
+          })),
+          aggregation: query.aggregations.map((a: any) => {
+            if (a.type === "custom") {
+              return JSON.parse(a.expression.replaceAll(`'`, `"`));
+            } else {
+              const [tableName, fieldName] = a.field.split(".");
+              const table = tables.find((table: any) => table.display_name === tableName);
+              const field = table.fields.find((field: any) => field.field_name === fieldName || field.name === fieldName);
+
+              return [
+                a.type,
+                [
+                  "field",
+                  field.id,
+                  { baseType: field.base_type }
+                ]
+              ];
+            }
+          }),
+          breakout: query.fields.map((f: any) => {
+            const [tableName, fieldName] = f.split(".");
+            const table = tables.find((table: any) => table.display_name === tableName);
+            const field = table.fields.find((field: any) => field.field_name === fieldName || field.name === fieldName);
+
+            return [
+              "field",
+              field.id,
+              { baseType: field.base_type }
+            ];
+          }),
+          filter: query.filters.length ? query.filters.map((f: any) => {
+            const [tableName, fieldName] = f.field.split(".");
+            const table = tables.find((table: any) => table.display_name === tableName);
+            const field = table.fields.find((field: any) => field.field_name === fieldName || field.name === fieldName);
+
+            return [
+              f.operator,
+              [
+                "field",
+                field.id,
+                { baseType: field.base_type }
+              ],
+              f.value ? f.value : null
+            ];
+          }) : [],
+          orderBy: query.order_by.map((o: any) => {
+            const [tableName, fieldName] = o.field.split(".");
+            const table = tables.find((table: any) => table.display_name === tableName);
+            const field = table.fields.find((field: any) => field.field_name === fieldName || field.name === fieldName);
+
+            return [
+              o.direction,
+              [
+                "field",
+                field.id,
+                { baseType: field.base_type }
+              ]
+            ];
+          })
+        }
+      }
+    }
+    return metabaseQuery;
+  } catch (e) {
+    if (e instanceof Error) {
+      throw e;
+    } else {
+      throw new Error("An unknown error occurred");
+    }
+  }
+}
+
+export function generateCombinedJSON(query: any, metabaseJSON: any): any {
+  return {
+    name: query.name,
+    collection_id: 2,
+    description: query.description,
+    display: query.display,
+    visualization_settings: query.visualization_settings,
+    dataset_query: metabaseJSON.dataset_query
+  };
+}
