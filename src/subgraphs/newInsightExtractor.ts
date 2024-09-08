@@ -9,6 +9,8 @@ import { getCodeInterpreterInstance, runCodeInterpret } from '../utils/codeInter
 import { GenerateFixedCodeTool, GeneratePlanTool, GeneratePythonCodeTool } from '../models/Tools';
 import fs from 'fs'; // Just for testing, delete this and path later, and add the code to send the image to the frontend
 import path from 'path';
+import { createThread, createMessage, streamRun, parseAndUploadTables, saveOpenAIImage } from '../utils/AssitantsOpenAI';
+
 
 interface InsightExtractorState extends BaseState {
   task: string;
@@ -33,7 +35,8 @@ interface InsightExtractorState extends BaseState {
   errorMessages: any[];
   errorCodeIds: number[]
   pythonCodeIds: number[];
-  finalResult: string;  
+  finalResult: string; 
+  threadId: string;
 }
 
 export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> {
@@ -135,6 +138,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         value: (x: number[], y?: number[]) => (y ? y : x),
         default: () => [],
       },
+      threadId: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
     };
     super(graphState);
     this.database = databaseId;
@@ -149,7 +156,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
   private async identifyRelevantTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const { relevantTables } = await getRelevantTables(state.task, state.schema);
-    console.log('relevantTables',relevantTables)
+    Logger.log('relevantTables',relevantTables)
     return { ...state, relevantTables };
   }
 
@@ -161,7 +168,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
                 database: this.database,
                 type: "query",
                 query: {
-                    "source-table": table.id
+                    "source-table": table.id,
+                    //"limit": 1000 // I think we are going to need a limit at some point
                 }
             }
         };        
@@ -173,14 +181,13 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
             queryResults.push({ name: table.name, rows: tableResult.data.rows, columns: colNames });
         }
     }
-    console.log('queryResults',queryResults)
     return { ...state, queryResult: queryResults };
   }
 
   private async plannerNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const tables = state.queryResult.map((table: any) => ({
         tableName: table.name,
-        rows: table.rows.slice(0,10),
+        rows: table.rows.slice(0,100),
         columns: table.columns
       }));
   
@@ -192,7 +199,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       new HumanMessage(`
         Given the following task: "${state.task}"
         
-        You are provided with one or more tables. Each table contains its name, rows of data, and column names.
+        You are provided with several tables. Each table contains its name, rows of data, and column names.
         
         For each table, you will receive:
         tableName: The name of the table.
@@ -202,13 +209,12 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         table data: ${formattedTables}
   
         Create a detailed step-by-step plan to extract insights based on the task above. Your plan should be an array of steps, where each step includes:
-  
+
         1. Step Name: A brief, descriptive name for the step.
         2. Description: A detailed description of what this step should accomplish.
-        3. Columns: Specify which columns to use from each table. Ensure that the selected columns actually exist in the given table.
-        4. Transformations: Detail any data transformations required for this step (e.g., aggregations, filtering, or calculations).
-        5. Visualization: If applicable, suggest an appropriate visualization (e.g., bar chart, scatter plot, line chart) for this step.
-        6. Expected Insight: Describe the insight or information you expect to gain from this step.
+        3. Transformations: Detail any data transformations required for this step (e.g., aggregations, filtering, or calculations).
+        4. Visualization: If applicable, suggest an appropriate visualization (e.g., bar chart, scatter plot, line chart) for this step.
+        5. Expected Insight: Describe the insight or information you expect to gain from this step.
   
         IMPORTANT: This plan will be used to generate Python code for each step. Ensure that each step is clear, concise, and can be translated into a single Python script.
         IMPORTANT: Choose columns that actually exist in the table and avoid columns that do not exist.
@@ -220,7 +226,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
           {
             "stepName": "Identify Underperforming Products",
             "description": "Calculate the sales performance of each product over the past month and compare it to the previous month to identify underperforming products.",
-            "columns": ["ProductId", "ItemName", "TotalSold", "CreatedAt"],
             "transformations": [
               "Aggregate TotalSold by ProductId for the current month and the previous month",
               "Calculate the percentage change in TotalSold for each product"
@@ -231,7 +236,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
           {
             "stepName": "Analyze Time-based Patterns",
             "description": "Examine sales patterns across different days of the week and times of day to identify potential factors affecting product performance.",
-            "columns": ["ProductId", "ItemName", "TotalSold", "CreatedAt", "DayOfWeek"],
             "transformations": [
               "Aggregate TotalSold by DayOfWeek and hour of day",
               "Calculate average sales for each product by day and hour"
@@ -273,7 +277,38 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     return {...state, plan: plan}
   }
 
-  private async generatePythonCodeNode(state: InsightExtractorState): Promise<InsightExtractorState> {
+  private async codeInterpreterNode(state: InsightExtractorState): Promise<InsightExtractorState> {
+    let threadId = state.threadId;
+
+    if (!threadId) { // If there is no threadId create it and expect a plan and files
+      threadId = await createThread();
+      const tables = state.queryResult.map((table: any) => ({
+        tableName: table.name,
+        columns: table.columns,
+        rows: table.rows
+      }));
+    
+      const attachments = await parseAndUploadTables(tables);
+    
+      await createMessage(threadId, JSON.stringify(state.plan), attachments);
+    } else { // If there is a threadId, we are continuing a plan we will just send the new task
+      await createMessage(threadId, JSON.stringify(state.task), []);
+    }
+    
+    const assistantId = "asst_W5Q66sX3XpEzD9X2LU4mCzo6";
+  
+    await streamRun(
+      threadId,
+      assistantId,
+      (tool) => Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`),
+      (content, snapshot) => saveOpenAIImage(content.file_id), // TODO: create a private function to send the image to the frontend
+      (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
+    );
+  
+    return {...state, threadId: threadId};
+  } 
+
+/*  private async generatePythonCodeNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     // const queryAttempts =  (state.queryAttempts || 0) + 1;
     // if (queryAttempts > 3) {
     //   Logger.log("Unable to generate a suitable python code after 3 attempts.")
@@ -577,7 +612,7 @@ ${pythonCode}
     this.functions[0]('tool', getInsightsImages);
     
     return { ...state, finalResult: actionableInsights.toString() };
-  }
+  }*/
 
   getGraph(): CompiledStateGraph<InsightExtractorState> {
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
@@ -587,11 +622,18 @@ ${pythonCode}
       .addNode('select_tables', this.identifyRelevantTablesNode.bind(this))
       .addNode('get_tables', this.getTablesNode.bind(this))
       .addNode("plan_execution", this.plannerNode.bind(this))
-      .addNode("generate_python_code", this.generatePythonCodeNode.bind(this))
-      .addNode("execute_code", this.executeCodeNode.bind(this))
-      .addNode("error_code", this.ErrorCodeNode.bind(this))
-      .addNode("extract_actionable_insights", this.extractActionableInsightsNode.bind(this))
+      .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
+      //.addNode("execute_code", this.executeCodeNode.bind(this))
+      //.addNode("error_code", this.ErrorCodeNode.bind(this))
+      //.addNode("extract_actionable_insights", this.extractActionableInsightsNode.bind(this))
       .addEdge(START, "fetch_schema")
+      .addConditionalEdges('fetch_schema', (state) => { // Now if there is a threadId from openai, we will go there directly
+        if (state.threadId !== '') {
+          return 'generate_python_code';
+        } else {
+          return 'select_tables';
+        }
+      })
       .addEdge('fetch_schema', 'select_tables')
       .addConditionalEdges('select_tables', (state) => {
         if (state.relevantTables.length >= 1) {
@@ -602,8 +644,8 @@ ${pythonCode}
       })
       .addEdge('get_tables', 'plan_execution')
       .addEdge('plan_execution', 'generate_python_code') 
-      .addEdge("generate_python_code", "execute_code")
-      .addConditionalEdges('execute_code', (state) => {
+      .addEdge("generate_python_code", END)
+      /*.addConditionalEdges('execute_code', (state) => {
         if (state.stopExecution) {
           return END;
         } else if (state.errorCodes.length > 0 && state.queryAttempts < 2) {
@@ -613,8 +655,12 @@ ${pythonCode}
         }
       })
       .addEdge("error_code", "execute_code")
-      .addEdge("extract_actionable_insights", END);
+      .addEdge("extract_actionable_insights", END);*/
   
     return graphBuilder.compile();
+  }
+
+  getApp(): any {
+    return this.getGraph();
   }
 }
