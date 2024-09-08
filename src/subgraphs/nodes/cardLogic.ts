@@ -577,7 +577,7 @@ export async function getResultsForFilteredCards(task: string, sessionToken: str
 }
 
 export async function getRelevantTables(task: string, schema: any): Promise<{ relevantTables: any[] }> {
-  const model = createStructuredResponseAgent(getStrongestModel(), [TableIdentifyingTool]);
+  const model = createStructuredResponseAgent(getFasterModel(), [TableIdentifyingTool]);
 
   const message = await model.invoke([
     new HumanMessage(`
