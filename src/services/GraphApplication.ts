@@ -88,9 +88,8 @@ export class GraphApplication {
     return { subgraphs, systemPrompt: config.systemPrompt };
   }
 
-  async processTask(task: string, thread_id: string, ws: WebSocket): Promise<void> {
-    const config = { 
-      configurable: { thread_id },
+  async processTask(task: string, thread_id?: string): Promise<void> { 
+    let config = { 
       streamMode: 'values',
       recursion_limit: 2,
     };

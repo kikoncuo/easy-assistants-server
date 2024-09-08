@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import { GraphApplication } from '../services/GraphApplication';
 import { WebSocketService } from '../services/WebSocketService';
 //import { SemanticLayerGraph } from '../subgraphs/createSemanticLayer'; // Enable this when fixed
-import { EditCubeGraph } from '../subgraphs/editCubes';
+//import { EditCubeGraph } from '../subgraphs/editCubes';
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
 import { getCodeInterpreterInstance, runCodeInterpret } from '../utils/codeInterpreter';
@@ -24,9 +24,9 @@ export class Router {
       /*case 'createSemanticLayer':
         await this.handleCreateSemanticLayer(data);
         break;*/
-      case 'editSemanticLayer':
+      /*case 'editSemanticLayer':
         await this.handleEditSemanticLayer(data);
-        break;
+        break;*/
       case 'runPythonCode':
         await this.handleRunPythonCode(data);
         break;
@@ -48,7 +48,7 @@ export class Router {
     Logger.log('Processing task:', data.task);
     const graphApp = this.graphApps.get(data.appType || 'default');
     if (graphApp) {
-      await graphApp.processTask(data.task, data.thread_id, this.ws);
+      await graphApp.processTask(data.task, data.thread_id);
     } else {
       Logger.error(`GraphApp not found for type: ${data.appType}`);
     }
@@ -75,7 +75,7 @@ export class Router {
     WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
   }*/
 
-  private async handleEditSemanticLayer(data: any) {
+  /*private async handleEditSemanticLayer(data: any) {
     Logger.log('Started process for editing semantic layer');
     const editCubeGraph = new EditCubeGraph(data.company_name, [
       (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
@@ -84,7 +84,7 @@ export class Router {
       task: data.task,
     });
     WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
-  }
+  }*/
 
   private async handleAddDocuments(data: any) {
     try {
