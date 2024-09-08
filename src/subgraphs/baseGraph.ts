@@ -20,5 +20,7 @@ export abstract class AbstractGraph<T extends BaseState> implements IGraph<T> {
   }
 
   abstract getGraph(): CompiledStateGraph<T>;
+
+  abstract getApp(): any 
 }
 
