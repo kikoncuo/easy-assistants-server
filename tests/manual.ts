@@ -7,7 +7,7 @@ dotenv.config();
 
 
 let ws: WebSocket | null = null;
-const thread_id = Math.floor(Math.random() * 1000);
+const thread_id = undefined //= Math.floor(Math.random() * 1000);
 
 function connectToServer() {
   ws = new WebSocket('ws://localhost:8090');
