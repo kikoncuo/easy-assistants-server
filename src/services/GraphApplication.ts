@@ -20,7 +20,7 @@ type AppConfig = {
 };
 
 export class GraphApplication {
-  private graphManager!: GraphManager;
+  private graphManager!: GraphManager | any; // Create a type common to all subgraphs
   error: any;
 
   private static readonly APP_CONFIGS: AppConfig = {
@@ -45,7 +45,7 @@ export class GraphApplication {
     private readonly appType: string,
   ) {
     this.validateClientData();
-    this.initializeGraphManager();
+    this.initializeGraphManager(appType);
   }
 
   private validateClientData(): void {
@@ -56,19 +56,24 @@ export class GraphApplication {
     }
   }
 
-  private initializeGraphManager(): void {
-    const fasterModel = getFasterModel();
-    const planner = createPlanner(fasterModel);
-    const { subgraphs, systemPrompt } = this.createSubgraphsAndSystemPrompt();
+  private initializeGraphManager(appType?: string): void {
 
-    this.graphManager = new GraphManager(
-      this.clientData[1],
-      planner,
-      systemPrompt,
-      subgraphs,
-      fasterModel,
-      this.outputHandler
-    );
+    if (appType === 'insights') {
+      this.graphManager = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1]);
+    } else {
+      const fasterModel = getFasterModel();
+      const planner = createPlanner(fasterModel);
+      const { subgraphs, systemPrompt } = this.createSubgraphsAndSystemPrompt();
+
+      this.graphManager = new GraphManager(
+        this.clientData[1],
+        planner,
+        systemPrompt,
+        subgraphs,
+        fasterModel,
+        this.outputHandler
+      );
+    }
   }
 
   private createSubgraphsAndSystemPrompt(): { subgraphs: any; systemPrompt: string } {
@@ -92,8 +97,12 @@ export class GraphApplication {
     let config = { 
       streamMode: 'values',
       recursion_limit: 2,
+      configurable: {}
     };
-
-    await this.graphManager.getApp().invoke({ task }, config);
+    if (thread_id) {
+      config.configurable = { thread_id }
+    } 
+    // TODO: we can't pass an ID on the first message, we need to receive it from the first invoke
+    await this.graphManager.getApp().invoke({ task: task, threadId: thread_id }, config); 
   }
 }
