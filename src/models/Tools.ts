@@ -650,6 +650,10 @@ export const TableIdentifyingTool: ToolDefinition = {
     parameters: {
       type: "object",
       properties: {
+        reasoning: {
+          type: "string",
+          description: "A brief explanation of why these tables were chosen and how they relate to the task."
+        },
         relevantTables: {
           type: "array",
           description: "An array of objects representing the relevant tables.",
@@ -668,10 +672,6 @@ export const TableIdentifyingTool: ToolDefinition = {
             required: ["id", "name"]
           }
         },
-        reasoning: {
-          type: "string",
-          description: "A brief explanation of why these tables were chosen and how they relate to the task."
-        }
       },
       required: ["relevantTables", "reasoning"]
     }
