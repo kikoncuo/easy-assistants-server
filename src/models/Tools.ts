@@ -585,3 +585,66 @@ export const GetSourcesTool: ToolDefinition = {
     }
   }
 };
+
+export const GenerateCubeJSCubesTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generateCubeJSCubes",
+    description: "Generate CubeJS cubes based on a database schema",
+    parameters: {
+      type: "object",
+      properties: {
+        cubes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Name of the cube (should match table name)" },
+              sql: { type: "string", description: "SQL table name for the cube" },
+              measures: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    type: { type: "string", enum: ["count", "sum", "avg", "min", "max", "countDistinct"] },
+                    sql: { type: "string" },
+                    description: { type: "string" }
+                  },
+                  required: ["name", "type", "sql"]
+                }
+              },
+              dimensions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    type: { type: "string", enum: ["string", "number", "time", "boolean"] },
+                    sql: { type: "string" },
+                    description: { type: "string" }
+                  },
+                  required: ["name", "type", "sql"]
+                }
+              },
+              joins: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    relationship: { type: "string", enum: ["belongsTo", "hasMany", "hasOne"] },
+                    sql: { type: "string" }
+                  },
+                  required: ["name", "relationship", "sql"]
+                }
+              }
+            },
+            required: ["name", "sql", "measures", "dimensions"]
+          }
+        }
+      },
+      required: ["cubes"]
+    }
+  }
+};

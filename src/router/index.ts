@@ -2,7 +2,8 @@ import { WebSocket } from 'ws';
 import { GraphApplication } from '../services/GraphApplication';
 import { WebSocketService } from '../services/WebSocketService';
 //import { SemanticLayerGraph } from '../subgraphs/createSemanticLayer'; // Enable this when fixed
-import { EditCubeGraph } from '../subgraphs/editCubes';
+//import { EditCubeGraph } from '../subgraphs/editCubes';
+import { CreateCubeGraph } from '../subgraphs/createCube'; 
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
 
@@ -24,9 +25,12 @@ export class Router {
       /*case 'createSemanticLayer':
         await this.handleCreateSemanticLayer(data);
         break;*/
-      case 'editSemanticLayer':
+      /*case 'editSemanticLayer':
         await this.handleEditSemanticLayer(data);
-        break;
+        break;*/
+      case 'createCubes': // Add this case
+        await this.handleCreateCubes(data);
+      break;
       case 'addDocuments':
         await this.handleAddDocuments(data);
         break;
@@ -72,7 +76,7 @@ export class Router {
     WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
   }*/
 
-  private async handleEditSemanticLayer(data: any) {
+  /*private async handleEditSemanticLayer(data: any) {
     Logger.log('Started process for editing semantic layer');
     const editCubeGraph = new EditCubeGraph(data.company_name, [
       (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
@@ -81,7 +85,7 @@ export class Router {
       task: data.task,
     });
     WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
-  }
+  }*/
 
   private async handleAddDocuments(data: any) {
     try {
@@ -105,5 +109,17 @@ export class Router {
       Logger.error('Error deleting documents:', error);
       WebSocketService.outputHandler('deleteDocuments', 'Error deleting documents', this.ws);
     }
+  }
+
+  private async handleCreateCubes(data: any) {
+    Logger.log('Creating CubeJS cubes');
+    const createCubeGraph = new CreateCubeGraph([
+      (type: string, message: any) => WebSocketService.outputHandler(type, message, this.ws),
+    ]);
+    const result = await createCubeGraph.getGraph().invoke({
+      databaseId: data.data.databaseId,
+      companyName: data.data.companyName,
+    });
+    WebSocketService.outputHandler('createCubes', result.cubes, this.ws);
   }
 }
