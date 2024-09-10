@@ -24,6 +24,7 @@
     "@langchain/langgraph": "0.0.23",
     "@langchain/openai": "^0.2.7",
     "@supabase/supabase-js": "^2.45.1",
+    "@types/json2csv": "^5.0.7",
     "@types/pg": "^8.11.6",
     "async_hooks": "^1.0.0",
     "axios": "^1.7.3",

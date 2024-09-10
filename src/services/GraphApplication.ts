@@ -103,6 +103,6 @@ export class GraphApplication {
       config.configurable = { thread_id }
     } 
     // TODO: we can't pass an ID on the first message, we need to receive it from the first invoke
-    await this.graphManager.getApp().invoke({ task: task, threadId: thread_id }, config); 
+    await this.graphManager.getApp().invoke({ task: task }, config); 
   }
 }

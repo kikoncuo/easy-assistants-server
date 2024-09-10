@@ -3,38 +3,23 @@ import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@lan
 import { fetchSchema, getRelevantTables } from './nodes/cardLogic';
 import { getDatasetQuery } from '../utils/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
-import { createStructuredResponseAgent, getFasterModel, getStrongestModel } from '../models/Models';
+import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
-import { getCodeInterpreterInstance, runCodeInterpret } from '../utils/codeInterpreter';
-import { GenerateFixedCodeTool, GeneratePlanTool, GeneratePythonCodeTool } from '../models/Tools';
-import fs from 'fs'; // Just for testing, delete this and path later, and add the code to send the image to the frontend
-import path from 'path';
-import { createThread, createMessage, streamRun, parseAndUploadTables, saveOpenAIImage } from '../utils/AssitantsOpenAI';
+import { GeneratePlanTool } from '../models/Tools';
+import { createThread, createMessage, streamRun, parseAndUploadTables } from '../utils/AssitantsOpenAI';
+import OpenAI from 'openai';
 
+type MessageType = 'Image' | 'Text' | 'Code';
 
 interface InsightExtractorState extends BaseState {
   task: string;
   schema: any[];
   sessionToken: string;
-  codeId: number;
   queryResult: any;
-  pythonCode: any[]; 
-  codeExplanation: string;
-  insight: string;
   fieldDetails: Record<number, any>; 
   isPossible: string;
-  relevantCards: any[]; 
-  newCardDescription: string;
-  insightsData: any[]; 
-  queryAttempts: number;
-  stopExecution: boolean;
-  feedbackMessage: string;
   relevantTables: any[];
   plan: any[];
-  errorCodes: any[];
-  errorMessages: any[];
-  errorCodeIds: number[]
-  pythonCodeIds: number[];
   finalResult: string; 
   threadId: string;
 }
@@ -58,27 +43,11 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      codeId: {
-        value: (x: number, y?: number) => (y !== undefined ? y : x),
-        default: () => 0,
-      },
       queryResult: {
         value: (x: any, y?: any) => (y ? y : x),
         default: () => null,
       },
-      pythonCode: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
-      insight: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
       finalResult: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      codeExplanation: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -86,31 +55,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
         default: () => ({}),
       },
-      relevantCards: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
       isPossible: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      newCardDescription: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      insightsData: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
-      queryAttempts: {
-        value: (x: number, y?: number) => (y !== undefined ? y : x),
-        default: () => 0,
-      },
-      stopExecution: {  
-        value: (x: boolean, y?: boolean) => (y ? y : x),
-        default: () => false,
-      },
-      feedbackMessage: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -120,22 +65,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       },
       plan: {
         value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
-      errorCodes: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
-      errorMessages: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
-      pythonCodeIds: {
-        value: (x: number[], y?: number[]) => (y ? y : x),
-        default: () => [],
-      },
-      errorCodeIds: {
-        value: (x: number[], y?: number[]) => (y ? y : x),
         default: () => [],
       },
       threadId: {
@@ -161,8 +90,9 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   }
 
   private async getTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const queryResults = []
-    for(const table of state.relevantTables)  {
+    const queryResults = [];
+
+    for (const table of state.relevantTables) {
         const questionData = {
             datasetQuery: {
                 database: this.database,
@@ -172,8 +102,27 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
                     //"limit": 1000 // I think we are going to need a limit at some point
                 }
             }
-        };        
-        const tableResult = await getDatasetQuery(this.companyName, state.sessionToken, questionData);
+        };
+
+        let retry = true;
+        let tableResult;
+
+        while (retry) {
+            try {
+                tableResult = await getDatasetQuery(this.companyName, state.sessionToken, questionData);
+
+                if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
+                    Logger.log(`Query for table ${table.name} failed, retrying...`);
+                } else {
+                    retry = false; // Exit retry loop if no failure
+                }
+
+            } catch (error) {
+                Logger.error(`Error querying table ${table.name}:`, error);
+                retry = false; // Exit retry loop in case of an error
+            }
+        }
+
         if (tableResult && tableResult.data) {
             const colNames = tableResult.data.cols
                 .map((col: any) => col.name)
@@ -182,7 +131,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         }
     }
     return { ...state, queryResult: queryResults };
-  }
+}
+
 
   private async plannerNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const tables = state.queryResult.map((table: any) => ({
@@ -270,7 +220,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         const response = await this.functions[0]('tool', userOptions);
         userResponses.push({ plan: planString, response: response.planReview });
       } catch (error) {
-        console.error('Error sending plan to user:', error);
+        Logger.error('Error sending plan to user:', error);
       }
 
 
@@ -300,319 +250,56 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     await streamRun(
       threadId,
       assistantId,
-      (tool) => Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`),
-      (content, snapshot) => saveOpenAIImage(content.file_id), // TODO: create a private function to send the image to the frontend
-      (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
+      async (tool) => {
+        Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
+        if(tool.outputs && tool.outputs.length > 0 && tool.outputs[0].type === 'image') {
+          const openai = new OpenAI();
+
+          const imageId = tool.outputs[0].image.file_id;
+          // Retrieve the image data from OpenAI
+          const response = await openai.files.content(imageId);
+
+          // Extract the binary data from the Response object
+          const imageData = await response.arrayBuffer();
+
+          // Convert the binary data to a Buffer
+          const imageDataBuffer = Buffer.from(imageData);
+          this.sendImageAndTextToFrontend(imageDataBuffer, "Image");
+        }
+        this.sendImageAndTextToFrontend(tool.input, "Code");
+      },
+      async (content, snapshot) => {
+        const imageFileId = content.file_id;
+        // const imageDataBuffer = await saveOpenAIImage(imageFileId);
+        Logger.log(`\nIMAGE PROCESSED > ${imageFileId}\n\n`);
+      },
+      (content, snapshot) => {
+        this.sendImageAndTextToFrontend(content, "Text");
+        Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
+      }
     );
-  
+
     return {...state, threadId: threadId};
   } 
 
-/*  private async generatePythonCodeNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    // const queryAttempts =  (state.queryAttempts || 0) + 1;
-    // if (queryAttempts > 3) {
-    //   Logger.log("Unable to generate a suitable python code after 3 attempts.")
-    //   return {
-    //     ...state,
-    //     queryAttempts, 
-    //     finalResult: "Unable to generate a suitable python code after 3 attempts. Here is the feedback message: "
-    //   }
-    // }
-    const model = createStructuredResponseAgent(getStrongestModel(), [GeneratePythonCodeTool]);
-
-    const tables = state.queryResult.map((table: any) => ({
-      tableName: table.name,
-      columns: table.columns,
-      rows: table.rows.slice(0,10)
-    }));
-
-    console.log('state.plan',state.plan)
-
-    const formattedTables = JSON.stringify(tables)
-    const pythonCodes: string[] = [];
-    const pythonCodeIds: number[] = [];
-    for (const step of state.plan)  {
-      const message = await model.invoke([
-        new HumanMessage(`
-          **IMPORTANT: Do not include the table data in the code; as I already declared a variable named table_data.**
-          **IMPORTANT: Handle indentation properly to avoid errors. Ensure consistent use of spaces or tabs for indentation throughout the code.**
-          **IMPORTANT: If there is a plan provided, follow the plan to generate the code. Do not generate code without following the plan.**
+  private async sendImageAndTextToFrontend(value: string | Buffer, type: string): Promise<void> {
+    const argumentKeyMap = {
+      Image: 'generatedImages',
+      Text: 'generatedTexts',
+      Code: 'generatedCodes'
+    };
   
-          Task: "${state.task}"
-          You are provided with one or more tables. Each table contains its name, rows of data, and column names. The goal is to focus on how to process this data logically, not on the data loading aspect.
-  
-          For each table, you will receive:
-  
-          tableName: The name of the table.
-          columns: The name of each column in the table.
-          rows: The actual data in the table.
-  
-          table_data: "${formattedTables}"
-  
-          ${step ? `Here is the plan for the code: ${step} Follow this plan to generate the code.` : ''}
-  
-          - Your task is to generate Python code that extracts insights from this table data using pandas for data manipulation and matplotlib or seaborn for visualizations.
-          - Ensure that the code is complete and executable in a Jupyter notebook without any additional imports or data.
-          - The human user will only see the print statements and visualizations, so make sure all outputs are clear and well-explained.
-          - Include comments in the code to indicate the purpose of each step and ensure that any functions you define are executed.
-          - Aim to provide a thorough solution that fully addresses the task, even if it requires loops or extensive code.
-          - Verify that table_data is a list of dictionaries before creating the DataFrame. If table_data is not in the expected format, convert it to the required format using the appropriate pandas function (e.g., df = pd.DataFrame(table_data)).
-          **Reminder: Handle indentation properly to avoid errors. Ensure consistent use of spaces or tabs for indentation throughout the code.**
-          **Reminder: Do not include the table data in the code; as I already declared a variable named table_data.**
-        `)
-      ]);
-
-      console.log('message.lc_kwargs.tool_calls[0].args',message.lc_kwargs.tool_calls[0].args)
-  
-      const { pythonCode, plan } = message.lc_kwargs.tool_calls[0].args;
-      console.log('pythonCode',pythonCode)
-      if (pythonCode) {
-        pythonCodes.push(pythonCode);
-        pythonCodeIds.push(state.codeId);
-        state.codeId++;
+    const getArguments = (type: MessageType, value: string | Buffer) => ({
+      function_name: `get${type}`,
+      arguments: {
+        [argumentKeyMap[type]]: value
       }
-    }
-  
-    console.log('pythonCodeIds',pythonCodeIds)
-
-    return { ...state, pythonCode: pythonCodes, pythonCodeIds: pythonCodeIds };
-  }
-
-  private async executeCodeNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-
-    const tables = state.queryResult.map((table: any) => ({
-        tableName: table.name,
-        columns: table.columns,
-        rows: table.rows
-      }));
-
-    const formattedTables = JSON.stringify(tables)
-
-    const insightDataArr: any[] = [];
-    const execArray: any[] = [];
-
-    console.log('length of pythonCode',state.pythonCode.length)
-    
-    for (let i = 0; i < state.pythonCode.length; i++)  {
-      const pythonCode = state.pythonCode[i];
-      const codeId = state.pythonCodeIds[i];
-      
-      const resultArr = []
-    const encodedPythonCode = `
-import json
-  
-print("Loading data")
-  
-table_data = json.loads('''${formattedTables}''')
-  
-print("Data loaded")
-  
-${pythonCode}
-`;
-    
-      const codeInterpreter = await getCodeInterpreterInstance();
-    
-      const exec = await runCodeInterpret(codeInterpreter, encodedPythonCode, this.functions);
-      
-      if (!exec) {
-        throw new Error("Failed to execute Python code");
-      }
-    
-      Logger.log('[Code Interpreter Logs]', exec.logs);
-      console.log('state.queryAttempts from Execute Node',state.queryAttempts)
-      if(state.queryAttempts < 2) {
-        if(exec.error){
-          Logger.error(exec.error);
-          // throw new Error(exec.error.value);
-          Logger.warn(`Code Interpreter Error ${pythonCode}`, exec.error.value);
-          resultArr.push(exec.error);
-          state.errorCodes.push(pythonCode)
-          state.errorCodeIds.push(codeId)
-          state.errorMessages.push(`ErrorName:${exec.error.name} ErrorValue:${exec.error.value} ErrorTraceback:${exec.error.traceback}`)
-        }
-      }
-    
-      let insightData: any = {
-        logs: exec.logs,
-        results: []
-      };
-    
-      if (exec.results.length === 0) {
-        Logger.log('No results from Code Interpreter');
-      } else {
-        exec.results.forEach((result, index) => {
-          Logger.log(`[Code Interpreter Result ${index + 1}]`, result.text);
-          resultArr.push(result)
-          if (result.png) {
-            const pngData = Buffer.from(result.png, 'base64');
-            const filename = `chart_${Date.now()}_${index}.png`;
-            const filePath = path.join(process.cwd(), 'outputs', filename);
-    
-            fs.mkdirSync(path.dirname(filePath), { recursive: true });
-            fs.writeFileSync(filePath, pngData);
-    
-            Logger.log(`Saved chart to ${filePath}`);
-    
-            insightData.results.push({
-              type: 'image',
-              description: result.text,
-              filename: filename,
-              base64: result.png
-            });
-          } else {
-            insightData.results.push({
-              type: 'text',
-              content: result.text
-            });
-          }
-        });
-        execArray.push(exec);
-      }
-
-      const getPythonCodeWithResult = [
-        {
-            function_name: 'getPythonCodeWithResult',
-            arguments: {
-                pythonCode: encodedPythonCode,
-                result: resultArr,
-                codeId: codeId
-            }
-        }
-      ]
-      this.functions[0]('tool', getPythonCodeWithResult);
-    
-      const insight = JSON.stringify(insightData); // we should pass the stdout, to the frontend parsed, and store it as the final result with the long strings cutted
-      insightDataArr.push(insightData);
-      await codeInterpreter.close();
-
-    }
-
-    // console.log('insightDataArr',insightDataArr)
-    // console.log('execArray',execArray)
-
-
-    const output = execArray[0]?.logs?.stdout?.join(' ') ?? execArray[0]?.logs ?? '';
-    
-    return { ...state, insightsData:insightDataArr, finalResult: output };
-  }
-
-  private async ErrorCodeNode(state: InsightExtractorState): Promise<InsightExtractorState>  {
-    
-    const queryAttempts =  (state.queryAttempts || 0) + 1;
-    // if (queryAttempts > 2) {
-    //   Logger.log("Unable to Fix the error after 2 attempts.")
-    //   return {
-    //     ...state,
-    //     queryAttempts
-    //   }
-    // }
-    console.log('state.queryAttempts from Error Node',state.queryAttempts)
-
-    const model = createStructuredResponseAgent(getFasterModel(), [GenerateFixedCodeTool]);
-    state.pythonCode = [];
-    const newPythonCode = [];
-    const newPythonCodeIds = [];
-    for(let i = 0; i < state.errorCodes.length; i++)  {
-      const errorCode = state.errorCodes[i];
-      // console.log('errorCode', errorCode)
-      const errorMessage = state.errorMessages[i]
-      // console.log('errorMessage', errorMessage)
-      const errorCodeId = state.errorCodeIds[i]
-      
-      const message = await model.invoke([
-        new HumanMessage(`
-          You generated the following error code:
-          ${errorCode}
-          
-          Here is the error message:
-          ${errorMessage}
-
-          Please analyze the error, identify the issue, and then generate the complete, corrected code. 
-          IMPORTANT: generate the entire code, not only the fix.
-          
-          `)
-        ]);
-        
-        // const errorMessage = message.content;
-        const { fixedCode } = message.lc_kwargs.tool_calls[0].args;
-        // console.log('fixedCode', fixedCode)
-        newPythonCode.push(fixedCode);
-        newPythonCodeIds.push(errorCodeId)
-        // Logger.log('Error Message', errorMessage)
-      }
-
-      console.log('newPythonCodeIds',newPythonCodeIds)
-
-      state.errorCodes = [];
-      state.errorMessages = [];
-      state.errorCodeIds = [];
-
-      
-
-    return { ...state, pythonCode: newPythonCode, pythonCodeIds: newPythonCodeIds, queryAttempts: queryAttempts };
-  }
-
-  private async extractActionableInsightsNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const model = createStructuredResponseAgent(getFasterModel(), []);
-  
-    const tables = state.queryResult.map((table: any) => ({
-      tableName: table.name,
-      columns: table.columns,
-      rows: table.rows.slice(0,10)
-    }));
-
-  const formattedTables = JSON.stringify(tables)
-
-  console.log('state.finalResult',state.finalResult)
-
-    const message = await model.invoke([
-      new HumanMessage(`
-        Given the following task: "${state.task}"
-        You are provided with one or more tables. Each table contains its name, rows of data, and column names.
-  
-        For each table, you will receive:
-
-        tableName: The name of the table.
-        columns: The name of each column in the table.
-        rows: The actual data in the table.
-
-        table_data: "${formattedTables}"
-
-        And the following result:
-        ${state.finalResult}
-  
-        Please actionable insights that can be presented alongside the result.
-        Focus on the most important and practical takeaways that can lead to concrete actions or decisions.
-        Present each insight as a bullet point, starting with a clear, concise statement followed by a brief explanation if necessary.
-      `)
-    ]);
-  
-    const actionableInsights = message.content; // TODO: send this to frontend
-    Logger.log('Actionable insights', actionableInsights)
-
-    const updatedInsightsData = state.insightsData.map((insight, index) => {
-      if (index === 0) {
-        return {
-          ...insight,
-          insightExplanation: actionableInsights,
-        };
-      }
-      return insight;
     });
-    
-    const getInsightsImages = [
-      {
-        function_name: 'getInsightsImages',
-        arguments: {
-          insights: updatedInsightsData,
-        },
-      },
-    ];
-    
-    this.functions[0]('tool', getInsightsImages);
-    
-    return { ...state, finalResult: actionableInsights.toString() };
-  }*/
+  
+    const data = [getArguments(type as MessageType, value)];
+  
+    this.functions[0]('tool', data);
+  }  
 
   getGraph(): CompiledStateGraph<InsightExtractorState> {
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
@@ -623,9 +310,6 @@ ${pythonCode}
       .addNode('get_tables', this.getTablesNode.bind(this))
       .addNode("plan_execution", this.plannerNode.bind(this))
       .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
-      //.addNode("execute_code", this.executeCodeNode.bind(this))
-      //.addNode("error_code", this.ErrorCodeNode.bind(this))
-      //.addNode("extract_actionable_insights", this.extractActionableInsightsNode.bind(this))
       .addEdge(START, "fetch_schema")
       .addConditionalEdges('fetch_schema', (state) => { // Now if there is a threadId from openai, we will go there directly
         if (state.threadId !== '') {
@@ -645,18 +329,6 @@ ${pythonCode}
       .addEdge('get_tables', 'plan_execution')
       .addEdge('plan_execution', 'generate_python_code') 
       .addEdge("generate_python_code", END)
-      /*.addConditionalEdges('execute_code', (state) => {
-        if (state.stopExecution) {
-          return END;
-        } else if (state.errorCodes.length > 0 && state.queryAttempts < 2) {
-          return 'error_code';
-        } else {
-          return 'extract_actionable_insights';
-        }
-      })
-      .addEdge("error_code", "execute_code")
-      .addEdge("extract_actionable_insights", END);*/
-  
     return graphBuilder.compile();
   }
 

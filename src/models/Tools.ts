@@ -700,11 +700,6 @@ export const GeneratePlanTool: ToolDefinition = {
                 type: "string",
                 description: "A detailed description of what this step should accomplish"
               },
-              columns: {
-                type: "array",
-                items: { type: "string" },
-                description: "An array of column names to be used in this step"
-              },
               transformations: {
                 type: "array",
                 items: { type: "string" },
@@ -719,7 +714,7 @@ export const GeneratePlanTool: ToolDefinition = {
                 description: "The insight or information expected to be gained from this step"
               }
             },
-            required: ["stepName", "description", "columns", "transformations", "expectedInsight"]
+            required: ["stepName", "description", "transformations", "expectedInsight"]
           }
         }
       },

@@ -4,6 +4,31 @@ import fs from 'fs';
 import path from 'path';
 import Logger from './Logger';
 
+type MessageCreationStepDetails = {
+  message_id: string;
+  // Add other properties if needed
+};
+
+type ToolCallsStepDetails = {
+  tool_calls: Array<{
+    type: string;
+    code_interpreter?: any; // Replace 'any' with a more specific type if available
+    // Add other tool call types if needed
+  }>;
+};
+
+type RunStep = {
+  step_details: MessageCreationStepDetails | ToolCallsStepDetails;
+  thread_id: string;
+  type: 'message_creation' | 'tool_calls';
+  usage: any | null; // Replace 'any' with a more specific type if available
+};
+
+type RunState = {
+  status: string;
+  steps: RunStep[];
+};
+
 const openai = new OpenAI();
 
 const uploadCSVToOpenAI = async (csvContent: string, tableName: string) => {
@@ -194,6 +219,57 @@ export const saveOpenAIImage = async (imageId: string): Promise<string> => {
     Logger.error(`Error saving OpenAI image (ID: ${imageId}):`, error);
     throw error;
   }
+};
+
+// Polling version
+export const pollRun = async (
+  threadId: string,
+  assistantId: string,
+  onToolCallDone: (tool: any) => void,
+  onImageFileDone: (content: any, snapshot: any) => void,
+  onTextDone: (content: any, snapshot: any) => void,
+  pollInterval: number = 1000, // Poll every 1 second by default
+  maxAttempts: number = 60 // Maximum number of polling attempts (1 minute by default)
+): Promise<void> => {
+  const run = await openai.beta.threads.runs.create(threadId, { assistant_id: assistantId });
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    const runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+
+    if (runStatus.status === 'completed') {
+      const runSteps = await openai.beta.threads.runs.steps.list(threadId, run.id);
+      
+      for (const step of runSteps.data) {
+        if (step.type === 'message_creation') {
+          const messageDetails = step.step_details as unknown as MessageCreationStepDetails;
+          const message = await openai.beta.threads.messages.retrieve(threadId, messageDetails.message_id);
+          for (const content of message.content) {
+            if (content.type === 'text') {
+              onTextDone(content.text.value, { run_id: run.id });
+            } else if (content.type === 'image_file') {
+              onImageFileDone(content, { run_id: run.id });
+            }
+          }
+        } else if (step.type === 'tool_calls') {
+          const toolCallsDetails = step.step_details as ToolCallsStepDetails;
+          for (const toolCall of toolCallsDetails.tool_calls) {
+            if (toolCall.type === 'code_interpreter' && toolCall.code_interpreter) {
+              onToolCallDone(toolCall.code_interpreter);
+            }
+            // Add handling for other tool types if needed
+          }
+        }
+      }
+      return;
+    } else if (runStatus.status === 'failed') {
+      throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    attempts++;
+  }
+
+  throw new Error('Run timed out');
 };
 
 // Function to schedule the file check
