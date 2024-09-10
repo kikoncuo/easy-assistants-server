@@ -5,8 +5,9 @@ import path from 'path';
 import Logger from './Logger';
 
 type MessageCreationStepDetails = {
-  message_id: string;
-  // Add other properties if needed
+  message_creation: {
+    message_id: string;
+  };
 };
 
 type ToolCallsStepDetails = {
@@ -241,14 +242,19 @@ export const pollRun = async (
       
       for (const step of runSteps.data) {
         if (step.type === 'message_creation') {
-          const messageDetails = step.step_details as unknown as MessageCreationStepDetails;
-          const message = await openai.beta.threads.messages.retrieve(threadId, messageDetails.message_id);
-          for (const content of message.content) {
-            if (content.type === 'text') {
-              onTextDone(content.text.value, { run_id: run.id });
-            } else if (content.type === 'image_file') {
-              onImageFileDone(content, { run_id: run.id });
+          const  stepDetails = step.step_details;
+          if (isMessageCreationStepDetails(stepDetails)) {
+            const messageDetails = stepDetails.message_creation;
+            const message = await openai.beta.threads.messages.retrieve(threadId, messageDetails.message_id);
+            for (const content of message.content) {
+              if (content.type === 'text') {
+                onTextDone(content.text.value, { run_id: run.id });
+              } else if (content.type === 'image_file') {
+                onImageFileDone(content, { run_id: run.id });
+              }
             }
+          } else {
+            console.error("step_details does not contain message_creation details.");
           }
         } else if (step.type === 'tool_calls') {
           const toolCallsDetails = step.step_details as ToolCallsStepDetails;
@@ -271,6 +277,13 @@ export const pollRun = async (
 
   throw new Error('Run timed out');
 };
+
+// Define a type guard to check if step_details is MessageCreationStepDetails
+function isMessageCreationStepDetails(
+  stepDetails: MessageCreationStepDetails | ToolCallsStepDetails
+): stepDetails is MessageCreationStepDetails {
+  return 'message_creation' in stepDetails;
+}
 
 // Function to schedule the file check
 const scheduleFileCheck = () => {

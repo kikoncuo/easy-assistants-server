@@ -6,7 +6,7 @@ import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
-import { createThread, createMessage, streamRun, parseAndUploadTables } from '../utils/AssitantsOpenAI';
+import { createThread, createMessage, streamRun, parseAndUploadTables, pollRun, saveOpenAIImage } from '../utils/AssitantsOpenAI';
 import OpenAI from 'openai';
 
 type MessageType = 'Image' | 'Text' | 'Code';
@@ -278,6 +278,14 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
       }
     );
+
+    // await pollRun(
+    //   threadId, 
+    //   assistantId, 
+    //   (tool) => Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`),
+    //   (content, snapshot) => saveOpenAIImage(content.image_file.file_id), // TODO: create a private function to send the image to the frontend
+    //   (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
+    // );
 
     return {...state, threadId: threadId};
   } 
