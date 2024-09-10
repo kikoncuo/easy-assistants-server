@@ -91,6 +91,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
         card_id = EXCLUDED.card_id,
         insights = EXCLUDED.insights
     `;
+
+    const ensureArray = (value: any): any[] => {
+      return Array.isArray(value) ? value : [];
+    };
+    
     const values = [
       config.configurable?.thread_id,
       checkpoint.id,
@@ -101,9 +106,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
       checkpoint?.channel_values?.agentName || checkpoint?.channel_values?.dataAgent,
       checkpoint?.channel_values?.agentDescription,
       checkpoint?.channel_values?.cardId,
-      checkpoint?.channel_values?.solve && checkpoint?.versions_seen?.getInsights
-    ? checkpoint?.channel_values?.result
-    : []
+      ensureArray(checkpoint?.channel_values?.solve && checkpoint?.versions_seen?.getInsights
+        ? checkpoint?.channel_values?.result
+        : [])
     ];
   
     try {

@@ -2,7 +2,7 @@ import { GraphManager } from './GraphManager';
 import { getFasterModel, createPlanner } from '../models/Models';
 import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
-import { InsightGraph } from '../subgraphs/getInsights';
+import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
@@ -18,7 +18,7 @@ type AppConfig = {
 };
 
 export class GraphApplication {
-  private graphManager!: GraphManager;
+  private graphManager!: GraphManager | any; // TODO: Create a type common to all subgraphs
   error: any;
 
   private static readonly APP_CONFIGS: AppConfig = {
@@ -30,7 +30,7 @@ export class GraphApplication {
       systemPrompt: dataSystemPrompt
     },
     insights: {
-      subgraphs: [{ name: 'getInsights', Graph: InsightGraph }],
+      subgraphs: [{ name: 'getInsights', Graph: InsightExtractorGraph }],
       systemPrompt: insightsSystemPrompt
     },
     // Add more app types here as needed
@@ -43,7 +43,7 @@ export class GraphApplication {
     private readonly appType: string,
   ) {
     this.validateClientData();
-    this.initializeGraphManager();
+    this.initializeGraphManager(appType);
   }
 
   private validateClientData(): void {
@@ -54,19 +54,24 @@ export class GraphApplication {
     }
   }
 
-  private initializeGraphManager(): void {
-    const fasterModel = getFasterModel();
-    const planner = createPlanner(fasterModel);
-    const { subgraphs, systemPrompt } = this.createSubgraphsAndSystemPrompt();
+  private initializeGraphManager(appType?: string): void {
 
-    this.graphManager = new GraphManager(
-      this.clientData[1],
-      planner,
-      systemPrompt,
-      subgraphs,
-      fasterModel,
-      this.outputHandler
-    );
+    if (appType === 'insights') {
+      this.graphManager = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1]);
+    } else {
+      const fasterModel = getFasterModel();
+      const planner = createPlanner(fasterModel);
+      const { subgraphs, systemPrompt } = this.createSubgraphsAndSystemPrompt();
+
+      this.graphManager = new GraphManager(
+        this.clientData[1],
+        planner,
+        systemPrompt,
+        subgraphs,
+        fasterModel,
+        this.outputHandler
+      );
+    }
   }
 
   private createSubgraphsAndSystemPrompt(): { subgraphs: any; systemPrompt: string } {
@@ -86,13 +91,15 @@ export class GraphApplication {
     return { subgraphs, systemPrompt: config.systemPrompt };
   }
 
-  async processTask(task: string, thread_id: string, ws: WebSocket): Promise<void> {
-    const config = { 
-      configurable: { thread_id },
+  async processTask(task: string, thread_id?: string): Promise<void> { 
+    let config = { 
       streamMode: 'values',
       recursion_limit: 2,
+      configurable: {}
     };
-
-    await this.graphManager.getApp().invoke({ task }, config);
+    if (thread_id) {
+      config.configurable = { thread_id }
+    } 
+    await this.graphManager.getApp().invoke({ task: task }, config); 
   }
 }

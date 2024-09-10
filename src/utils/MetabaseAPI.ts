@@ -377,3 +377,43 @@ export async function syncDatabaseSchema(companyName: string, sessionToken: stri
     }
   }
 }
+
+/**
+ * Sync the schema of a specific database in Metabase.
+ * @param companyName The name of the company to get the configuration for.
+ * @param sessionToken The session token obtained from authentication.
+ */
+export async function getDatasetQuery(companyName: string, sessionToken: string, card:any): Promise<any | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
+  try {
+    
+    const response = await axios.post(
+      `${config.METABASE_URL}/dataset`,
+      card.datasetQuery,
+      {
+        headers: {
+          'X-Metabase-Session': sessionToken,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.data && 
+      response.data.data && 
+      Array.isArray(response.data.data) && 
+      response.data.data.length > 0 ) {
+        Logger.warn(`Error executing query: ${response.data}`);
+        return { error: response.data, status: 500 };
+      } 
+      // Logger.log(`Response data for card ${card.id}`, response.data);
+    return response.data; 
+
+  } catch (error: any) {
+    Logger.error('Error retieving dataset query:', error);
+    if (error.response) {
+      return { error: error.response.data || 'Unknown error occurred', status: error.response.status };
+    } else {
+      return { error: 'An unexpected error occurred', status: 500 };
+    }
+  }
+}

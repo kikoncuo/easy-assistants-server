@@ -49,7 +49,7 @@ export class Router {
     Logger.log('Processing task:', data.task);
     const graphApp = this.graphApps.get(data.appType || 'default');
     if (graphApp) {
-      await graphApp.processTask(data.task, data.thread_id, this.ws);
+      await graphApp.processTask(data.task, data.thread_id);
     } else {
       Logger.error(`GraphApp not found for type: ${data.appType}`);
     }
