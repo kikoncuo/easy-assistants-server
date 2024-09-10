@@ -273,4 +273,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     return subGraphBuilder.compile();
   }
+  
+  getApp(): any {
+    return this.getGraph();
+  }
 }
