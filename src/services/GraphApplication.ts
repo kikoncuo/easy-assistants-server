@@ -2,7 +2,6 @@ import { GraphManager } from './GraphManager';
 import { getFasterModel, createPlanner } from '../models/Models';
 import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
-// import { InsightGraph } from '../subgraphs/getInsights';
 import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
@@ -19,7 +18,7 @@ type AppConfig = {
 };
 
 export class GraphApplication {
-  private graphManager!: GraphManager | any; // Create a type common to all subgraphs
+  private graphManager!: GraphManager | any; // TODO: Create a type common to all subgraphs
   error: any;
 
   private static readonly APP_CONFIGS: AppConfig = {
@@ -101,7 +100,6 @@ export class GraphApplication {
     if (thread_id) {
       config.configurable = { thread_id }
     } 
-    // TODO: we can't pass an ID on the first message, we need to receive it from the first invoke
     await this.graphManager.getApp().invoke({ task: task }, config); 
   }
 }

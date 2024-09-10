@@ -291,8 +291,8 @@ const scheduleFileCheck = () => {
   checkAndDeleteOldFiles();
 
   // Schedule to run every 24 hours
-  //setInterval(checkAndDeleteOldFiles, 24 * 60 * 60 * 1000);
-  setInterval(checkAndDeleteOldFiles, 10 * 60 * 1000);
+  setInterval(checkAndDeleteOldFiles, 24 * 60 * 60 * 1000);
+//   setInterval(checkAndDeleteOldFiles, 10 * 60 * 1000);
 
 };
 

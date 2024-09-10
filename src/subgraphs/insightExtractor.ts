@@ -21,7 +21,7 @@ interface InsightExtractorState extends BaseState {
   relevantTables: any[];
   plan: any[];
   finalResult: string; 
-  threadId: string;
+  codeInterpreterThreadId: string; 
 }
 
 export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> {
@@ -67,7 +67,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
-      threadId: {
+      codeInterpreterThreadId: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -228,10 +228,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   }
 
   private async codeInterpreterNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    let threadId = state.threadId;
+    let codeInterpreterThreadId = state.codeInterpreterThreadId;
 
-    if (!threadId) { // If there is no threadId create it and expect a plan and files
-      threadId = await createThread();
+    if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
+      codeInterpreterThreadId = await createThread();
       const tables = state.queryResult.map((table: any) => ({
         tableName: table.name,
         columns: table.columns,
@@ -240,15 +240,15 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     
       const attachments = await parseAndUploadTables(tables);
     
-      await createMessage(threadId, JSON.stringify(state.plan), attachments);
-    } else { // If there is a threadId, we are continuing a plan we will just send the new task
-      await createMessage(threadId, JSON.stringify(state.task), []);
+      await createMessage(codeInterpreterThreadId, JSON.stringify(state.plan), attachments);
+    } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
+      await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
     }
     
     const assistantId = "asst_W5Q66sX3XpEzD9X2LU4mCzo6";
   
     await streamRun(
-      threadId,
+      codeInterpreterThreadId,
       assistantId,
       async (tool) => {
         Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
@@ -280,14 +280,14 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     );
 
     // await pollRun(
-    //   threadId, 
+    //   codeInterpreterThreadId, 
     //   assistantId, 
     //   (tool) => Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`),
     //   (content, snapshot) => saveOpenAIImage(content.image_file.file_id), // TODO: create a private function to send the image to the frontend
     //   (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
     // );
 
-    return {...state, threadId: threadId};
+    return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
   } 
 
   private async sendImageAndTextToFrontend(value: string | Buffer, type: string): Promise<void> {
@@ -320,7 +320,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
       .addEdge(START, "fetch_schema")
       .addConditionalEdges('fetch_schema', (state) => { // Now if there is a threadId from openai, we will go there directly
-        if (state.threadId !== '') {
+        if (state.codeInterpreterThreadId !== '') {
           return 'generate_python_code';
         } else {
           return 'select_tables';
