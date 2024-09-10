@@ -8,6 +8,7 @@ import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
 import { createThread, createMessage, streamRun, parseAndUploadTables, pollRun, saveOpenAIImage } from '../utils/AssistantsOpenAI';
 import OpenAI from 'openai';
+import { ActivityManager } from '../utils/ActivityManager';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
@@ -20,8 +21,9 @@ interface InsightExtractorState extends BaseState {
   isPossible: string;
   relevantTables: any[];
   plan: any[];
-  finalResult: string; 
   codeInterpreterThreadId: string; 
+  runId: string; 
+  finalResult: string; 
 }
 
 export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> {
@@ -71,6 +73,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      runId: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      }
     };
     super(graphState);
     this.database = databaseId;
@@ -229,6 +235,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
   private async codeInterpreterNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     let codeInterpreterThreadId = state.codeInterpreterThreadId;
+    const openai = new OpenAI();
+    const activityManager = new ActivityManager(openai);
 
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
       codeInterpreterThreadId = await createThread();
@@ -251,9 +259,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       codeInterpreterThreadId,
       assistantId,
       async (tool) => {
+        activityManager.updateActivity();
         Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
         if(tool.outputs && tool.outputs.length > 0 && tool.outputs[0].type === 'image') {
-          const openai = new OpenAI();
+        
 
           const imageId = tool.outputs[0].image.file_id;
           // Retrieve the image data from OpenAI
@@ -269,13 +278,20 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         this.sendImageAndTextToFrontend(tool.input, "Code");
       },
       async (content, snapshot) => {
+        activityManager.updateActivity();
         const imageFileId = content.file_id;
         // const imageDataBuffer = await saveOpenAIImage(imageFileId);
         Logger.log(`\nIMAGE PROCESSED > ${imageFileId}\n\n`);
       },
       (content, snapshot) => {
+        activityManager.updateActivity();
         this.sendImageAndTextToFrontend(content, "Text");
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
+      },
+      (runId) => {
+        activityManager.startMonitoring(runId, codeInterpreterThreadId!);
+        this.sendRunIdAndCodeInterpreterThreadIdToFrontend(runId, codeInterpreterThreadId!);
+        Logger.log(`Stream started with Run ID: ${runId}`);
       }
     );
 
@@ -286,6 +302,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     //   (content, snapshot) => saveOpenAIImage(content.image_file.file_id), // TODO: create a private function to send the image to the frontend
     //   (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
     // );
+
+    activityManager.stopMonitoring();
 
     return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
   } 
@@ -307,7 +325,20 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     const data = [getArguments(type as MessageType, value)];
   
     this.functions[0]('tool', data);
-  }  
+  }
+  
+  private async sendRunIdAndCodeInterpreterThreadIdToFrontend( runId: string, codeInterpreterThreadId: string): Promise<void> {
+    const getRunIdandCodeInterpreterThreadId = [ {
+      function_name: 'getRunIdandCodeInterpreterThreadId',
+      arguments: {
+        runId: runId,
+        codeInterpreterThreadId: codeInterpreterThreadId
+      }
+    },
+    ];
+
+    this.functions[0]('tool', getRunIdandCodeInterpreterThreadId);
+  } 
 
   getGraph(): CompiledStateGraph<InsightExtractorState> {
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
