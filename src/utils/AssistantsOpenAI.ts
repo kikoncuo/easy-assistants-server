@@ -126,7 +126,8 @@ export const streamRun = async (
   assistantId: string,
   onToolCallDone: (tool: any) => void,
   onImageFileDone: (content: any, snapshot: any) => void,
-  onTextDone: (content: any, snapshot: any) => void
+  onTextDone: (content: any, snapshot: any) => void,
+  onStreamStart: (runId: string) => void
 ): Promise<void> => {
   const run = openai.beta.threads.runs.stream(threadId, { assistant_id: assistantId }) // IDK this is such a mess we may try the non streamed version
     //.on('toolCallDone', onToolCallDone) // This is super inconsistent, most of the time is not called and it's called empty
@@ -134,7 +135,7 @@ export const streamRun = async (
     .on('textDone', async (content: any, snapshot: any) => {
     // Fetch the run steps before calling onTextDone
     const runSteps = await openai.beta.threads.runs.steps.list(threadId, snapshot.run_id);
-    
+    onStreamStart(snapshot.run_id)
     // This fucking shitshow is because the async events from openai are completly broken, so every message, we parse the steps and handle for all their problems
     const stepsData = runSteps.data;
     if (stepsData.length > 1)
