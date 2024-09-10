@@ -7,14 +7,14 @@ dotenv.config();
 
 
 let ws: WebSocket | null = null;
-const thread_id = Math.floor(Math.random() * 1000);
+const thread_id = undefined //= Math.floor(Math.random() * 1000);
 
 function connectToServer() {
   ws = new WebSocket('ws://localhost:8090');
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: [2, "COMPANY_NAME"], appType: 'default' }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [9, "blank_street"], appType: 'insights' }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 
@@ -39,7 +39,7 @@ function connectToServer() {
       // Process each function and send the responses back to the server
       const responses = functions.map(
         ({ function_name, arguments: args }: { function_name: string; arguments: any }) => {
-          Logger.log(`Processing function: ${function_name} with args:`, args);
+          console.log(`Processing function: ${function_name} with args:`, args);
 
           let response;
           if (function_name === 'calculate') {
@@ -76,7 +76,7 @@ function connectToServer() {
         },
       );
       // Send the responses back to the server
-      ws?.send(JSON.stringify({ type: 'toolResponse', response: JSON.stringify(responses) }));
+      ws?.send(JSON.stringify({ type: 'toolResponse', response: JSON.stringify(responses), appType: 'insights' }));
     } else if (data.type === 'result') {
       // Server has sent a result
       Logger.log('Result:', data.message);
@@ -117,7 +117,7 @@ function promptUserInput() {
 
   if (ws) {
     Logger.time('planTimer'); // Start the timer
-    ws.send(JSON.stringify({ type: 'query', task: query, thread_id:  thread_id}));
+    ws.send(JSON.stringify({ type: 'query', task: query, thread_id:  thread_id, appType: 'insights' }));
   }
 }
 

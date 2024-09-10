@@ -648,3 +648,84 @@ export const GenerateCubeJSCubesTool: ToolDefinition = {
     }
   }
 };
+
+export const TableIdentifyingTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "identifyRelevantTables",
+    description: "Identify the most relevant tables in the schema for the given task, considering relationships between tables and choosing only the necessary tables to answer the task efficiently.",
+    parameters: {
+      type: "object",
+      properties: {
+        reasoning: {
+          type: "string",
+          description: "A brief explanation of why these tables were chosen and how they relate to the task."
+        },
+        relevantTables: {
+          type: "array",
+          description: "An array of objects representing the relevant tables.",
+          items: {
+            type: "object",
+            properties: {
+              id: {
+                type: "integer",
+                description: "The numeric ID of the table."
+              },
+              name: {
+                type: "string",
+                description: "The name of the table."
+              }
+            },
+            required: ["id", "name"]
+          }
+        },
+      },
+      required: ["relevantTables", "reasoning"]
+    }
+  }
+};
+
+export const GeneratePlanTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generatePlan",
+    description: "Generates a detailed step-by-step plan for extracting insights from the table data based on the given task.",
+    parameters: {
+      type: "object",
+      properties: {
+        plan: {
+          type: "array",
+          description: "An array of step objects, each representing a distinct step in the insight extraction process",
+          items: {
+            type: "object",
+            properties: {
+              stepName: {
+                type: "string",
+                description: "A brief, descriptive name for the step"
+              },
+              description: {
+                type: "string",
+                description: "A detailed description of what this step should accomplish"
+              },
+              transformations: {
+                type: "array",
+                items: { type: "string" },
+                description: "An array of data transformations required for this step"
+              },
+              visualization: {
+                type: "string",
+                description: "A suggested visualization for this step, if applicable"
+              },
+              expectedInsight: {
+                type: "string",
+                description: "The insight or information expected to be gained from this step"
+              }
+            },
+            required: ["stepName", "description", "transformations", "expectedInsight"]
+          }
+        }
+      },
+      required: ["plan"]
+    }
+  }
+};
