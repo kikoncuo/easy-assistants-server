@@ -663,7 +663,7 @@ export const TableIdentifyingTool: ToolDefinition = {
         },
         relevantTables: {
           type: "array",
-          description: "An array of objects representing the relevant tables.",
+          description: "An array of objects representing the relevant tables. (Do not use fields, datapoints or variables, only tables)",
           items: {
             type: "object",
             properties: {
