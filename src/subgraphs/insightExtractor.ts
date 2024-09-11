@@ -255,7 +255,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
       codeInterpreterThreadId = await createThread();
 
-      const csvs = await this.getDatasetAsCSV(state.relevantTables, state.sessionToken, this.database);
+      const csvs = await this.getDatasetAsCSV(state.relevantTables, state.sessionToken, this.database, this.companyName);
 
       const attachments = await uploadTables(csvs);
     
@@ -351,7 +351,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     this.functions[0]('tool', getRunIdandCodeInterpreterThreadId);
   } 
 
-  private async getDatasetAsCSV(relevantTables:any[], sessionToken: string, databaseID:number): Promise<any> {
+  private async getDatasetAsCSV(relevantTables:any[], sessionToken: string, databaseID:number, companyName:string): Promise<any> {
     const csvs: { [tableName: string]: string } = {};
     for(const table of relevantTables) {
       let retry = true;
@@ -370,7 +370,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       };
       while (retry) {
         try {
-            csv = await getDatasetAsCSV(payload, sessionToken);
+            csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               Logger.log(`CSV for table ${table.name} failed, retrying...`);
             } else {
@@ -381,9 +381,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
           retry = false; // Exit retry loop in case of an error
         }
       }
-      if(csv && csv.data) {
         csvs[table.name] = csv;
-      }
     }
     return csvs;
   }

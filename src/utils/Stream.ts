@@ -2,11 +2,14 @@ import OpenAI from 'openai';
 import Logger from './Logger';
 
 export async function cancelRun(
-    openai: OpenAI,
     threadId: string,
-    runId: string
+    runId: string,
+    openai?: OpenAI
 ): Promise<boolean> {
     try {
+        if (!openai) {
+            openai = new OpenAI();
+        }
         await openai.beta.threads.runs.cancel(threadId, runId);
         Logger.log(`Stream stopped. Run ID: ${runId}`);
         return true;

@@ -423,10 +423,11 @@ export async function getDatasetQuery(companyName: string, sessionToken: string,
  * @param companyName The name of the company to get the configuration for.
  * @param sessionToken The session token obtained from authentication.
  */
-export async function getDatasetAsCSV(payload:any, sessionToken: string): Promise<any | { error: string; status: number }> {
+export async function getDatasetAsCSV(companyName: string, payload:any, sessionToken: string): Promise<any | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
   try {
     const response = await axios.post(
-        "http://localhost:3000/api/dataset/csv?format_rows=true",
+        `${config.METABASE_URL}/dataset/csv?format_rows=true`,
       new URLSearchParams(payload).toString(),
       {
         headers: {
@@ -435,8 +436,13 @@ export async function getDatasetAsCSV(payload:any, sessionToken: string): Promis
         },
       }
     );
-
-    // console.log('Data fetched successfully:', response.data);
+    if (response.data && 
+      response.data.data && 
+      Array.isArray(response.data.data) && 
+      response.data.data.length > 0 ) {
+        Logger.warn(`Error executing query: ${response.data}`);
+        return { error: response.data, status: 500 };
+      } 
     return response.data;
   } catch (error) {
     console.error('Error fetching data:', error);

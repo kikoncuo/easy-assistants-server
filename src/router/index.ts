@@ -6,7 +6,6 @@ import { WebSocketService } from '../services/WebSocketService';
 import { CreateCubeGraph } from '../subgraphs/createCube'; 
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
-import OpenAI from 'openai';
 import { cancelRun } from '../utils/Stream';
 
 export class Router {
@@ -130,8 +129,7 @@ export class Router {
 
   private async handleStopStreaming(data: any) {
     Logger.log('Stopping streaming');
-    const openai = new OpenAI();
-    const result = await cancelRun(openai, data.data.codeInterpreterThreadId, data.data.runId);
+    const result = await cancelRun(data.data.codeInterpreterThreadId, data.data.runId);
     const resultString = result ? 'Stream stopped successfully' : 'Stream already stopped';
     WebSocketService.outputHandler('stopStreaming', resultString, this.ws);
   }
