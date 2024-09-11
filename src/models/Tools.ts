@@ -659,7 +659,7 @@ export const TableIdentifyingTool: ToolDefinition = {
       properties: {
         reasoning: {
           type: "string",
-          description: "A brief explanation of why these tables were chosen and how they relate to the task."
+          description: "A brief explanation of why these tables were chosen and how they relate to the task. Always mention the name of the table explicitly."
         },
         relevantTables: {
           type: "array",
