@@ -6,6 +6,8 @@ import { WebSocketService } from '../services/WebSocketService';
 import { CreateCubeGraph } from '../subgraphs/createCube'; 
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
+import OpenAI from 'openai';
+import { cancelRun } from '../utils/Stream';
 
 export class Router {
   private graphApps: Map<string, GraphApplication> = new Map();
@@ -36,6 +38,9 @@ export class Router {
         break;
       case 'deleteDocuments':
         await this.handleDeleteDocuments(data);
+        break;
+      case 'stopStreaming':
+        await this.handleStopStreaming(data);
         break;
       case 'toolResponse':
         // this is handled by the graph application itself
@@ -121,5 +126,13 @@ export class Router {
       companyName: data.data.companyName,
     });
     WebSocketService.outputHandler('createCubes', result.cubes, this.ws);
+  }
+
+  private async handleStopStreaming(data: any) {
+    Logger.log('Stopping streaming');
+    const openai = new OpenAI();
+    const result = await cancelRun(openai, data.data.codeInterpreterThreadId, data.data.runId);
+    const resultString = result ? 'Stream stopped successfully' : 'Stream already stopped';
+    WebSocketService.outputHandler('stopStreaming', resultString, this.ws);
   }
 }

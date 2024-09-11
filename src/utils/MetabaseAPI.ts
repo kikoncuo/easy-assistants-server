@@ -42,6 +42,7 @@ export async function getSchema(companyName: string, sessionToken: string, datab
       id: field.id,
       name: field.name,
       fieldName: field.display_name,
+      description: field.description,
       details: field.fingerprint ? JSON.stringify(field.fingerprint) : null
     }))
   }));
@@ -238,7 +239,6 @@ export async function fetchFieldValues(companyName: string, sessionToken: string
         'X-Metabase-Session': sessionToken,
       },
     });
-    
     return fieldValuesResponse.data.values.flat(1);
   } catch (error: any) {
     Logger.error('Error fetching field values:', error);
@@ -415,5 +415,30 @@ export async function getDatasetQuery(companyName: string, sessionToken: string,
     } else {
       return { error: 'An unexpected error occurred', status: 500 };
     }
+  }
+}
+
+/**
+ * Fetch dataset as CSV from Metabase.
+ * @param companyName The name of the company to get the configuration for.
+ * @param sessionToken The session token obtained from authentication.
+ */
+export async function getDatasetAsCSV(payload:any, sessionToken: string): Promise<any | { error: string; status: number }> {
+  try {
+    const response = await axios.post(
+        "http://localhost:3000/api/dataset/csv?format_rows=true",
+      new URLSearchParams(payload).toString(),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'X-Metabase-Session': sessionToken, // Replace with your session token
+        },
+      }
+    );
+
+    // console.log('Data fetched successfully:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching data:', error);
   }
 }

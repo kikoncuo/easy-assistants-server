@@ -1,14 +1,15 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { fetchSchema, getRelevantTables } from './nodes/cardLogic';
-import { getDatasetQuery } from '../utils/MetabaseAPI';
+import { fetchFieldValues, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
-import { createThread, createMessage, streamRun, parseAndUploadTables, pollRun, saveOpenAIImage } from '../utils/AssistantsOpenAI';
+import { createThread, createMessage, streamRun, parseAndUploadTables, pollRun, saveOpenAIImage, uploadTables } from '../utils/AssistantsOpenAI';
 import OpenAI from 'openai';
 import { ActivityManager } from '../utils/ActivityManager';
+import { createNodeResponse } from '../utils/NodeResponseUtils';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
@@ -86,11 +87,21 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
   private async fetchSchemaNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
+    if (schema) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
+    } else {
+      this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+    }
     return { ...state, sessionToken, schema };
   }
 
   private async identifyRelevantTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const { relevantTables } = await getRelevantTables(state.task, state.schema);
+    if (relevantTables) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
+    } else {
+      this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
+    }
     Logger.log('relevantTables',relevantTables)
     return { ...state, relevantTables };
   }
@@ -105,7 +116,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
                 type: "query",
                 query: {
                     "source-table": table.id,
-                    //"limit": 1000 // I think we are going to need a limit at some point
+                    "limit": 10
                 }
             }
         };
@@ -130,10 +141,13 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         }
 
         if (tableResult && tableResult.data) {
-            const colNames = tableResult.data.cols
-                .map((col: any) => col.name)
-                .map((colName: string) => colName.charAt(0).toUpperCase() + colName.slice(1));
-            queryResults.push({ name: table.name, rows: tableResult.data.rows, columns: colNames });
+          const filteredSchema = state.schema.filter((schema) => schema.id === table.id);
+          const fields = filteredSchema.map((i: any) => i.fields).flat(1);
+          fields.forEach((field: any) => {
+            delete field.id
+            delete field.name
+          });
+          queryResults.push({ name: table.name, rows: tableResult.data.rows, fields: fields });
         }
     }
     return { ...state, queryResult: queryResults };
@@ -143,8 +157,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   private async plannerNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const tables = state.queryResult.map((table: any) => ({
         tableName: table.name,
-        rows: table.rows.slice(0,100),
-        columns: table.columns
+        rows: table.rows,
+        fields: table.fields
       }));
   
       const formattedTables = JSON.stringify(tables)
@@ -155,12 +169,12 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       new HumanMessage(`
         Given the following task: "${state.task}"
         
-        You are provided with several tables. Each table contains its name, rows of data, and column names.
+        You are provided with several tables. Each table contains its name, 10 rows of data, and fields array which will contain the fieldName of the field, description of the field and additional details of the field which can be very useful for the query.
         
         For each table, you will receive:
         tableName: The name of the table.
         rows: The actual data in the table.
-        columns: The name of each column in the table.
+        fields: The fields of the table.
         
         table data: ${formattedTables}
   
@@ -240,13 +254,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
       codeInterpreterThreadId = await createThread();
-      const tables = state.queryResult.map((table: any) => ({
-        tableName: table.name,
-        columns: table.columns,
-        rows: table.rows
-      }));
-    
-      const attachments = await parseAndUploadTables(tables);
+
+      const csvs = await this.getDatasetAsCSV(state.relevantTables, state.sessionToken, this.database);
+
+      const attachments = await uploadTables(csvs);
     
       await createMessage(codeInterpreterThreadId, JSON.stringify(state.plan), attachments);
     } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
@@ -339,6 +350,43 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
     this.functions[0]('tool', getRunIdandCodeInterpreterThreadId);
   } 
+
+  private async getDatasetAsCSV(relevantTables:any[], sessionToken: string, databaseID:number): Promise<any> {
+    const csvs: { [tableName: string]: string } = {};
+    for(const table of relevantTables) {
+      let retry = true;
+      let csv;
+      const payload = {
+        query: JSON.stringify({
+          database: databaseID,
+          query: { "source-table": table.id },
+          type: "query",
+          middleware: {
+            "js-int-to-string?": true,
+            "userland-query?": true,
+            "add-default-userland-constraints?": true
+          }
+        })
+      };
+      while (retry) {
+        try {
+            csv = await getDatasetAsCSV(payload, sessionToken);
+            if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
+              Logger.log(`CSV for table ${table.name} failed, retrying...`);
+            } else {
+              retry = false; // Exit retry loop if no failure
+            }
+          } catch (error) {
+            console.error(`Error fetching CSV for table ${table.name}:`, error);
+          retry = false; // Exit retry loop in case of an error
+        }
+      }
+      if(csv && csv.data) {
+        csvs[table.name] = csv;
+      }
+    }
+    return csvs;
+  }
 
   getGraph(): CompiledStateGraph<InsightExtractorState> {
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
