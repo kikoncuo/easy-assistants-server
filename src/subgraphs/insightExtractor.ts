@@ -1,7 +1,7 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { fetchSchema, getRelevantTables } from './nodes/cardLogic';
-import { fetchFieldValues, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
+import { getRelevantTables } from './nodes/cardLogic';
+import { authenticate, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
@@ -32,7 +32,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   private schema: any[];
   private sessionToken: string;
 
-  constructor(databaseId: number, functions: Function[], companyName: string) {
+  constructor(databaseId: number, functions: Function[], companyName: string, schema: any[]) {
     const graphState: StateGraphArgs<InsightExtractorState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -76,18 +76,17 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     this.companyName = companyName;
     this.functions = functions;
     this.sessionToken = '';
-    this.schema = [];
+    this.schema = schema;
   }
 
   async initialize(): Promise<void> {
     try {
-      const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
+      const sessionToken = await authenticate(this.companyName);
       this.sessionToken = sessionToken;
-      this.schema = schema;
-      if (schema) {
-        this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
+      if (sessionToken) {
+        Logger.log('Authenticated successfully');
       } else {
-        this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+        this.functions[0]('info', createNodeResponse('error', { message: "Sorry could not authenticate" }));
       }
     } catch (error) {
       console.error("Error fetching schema:", error);
