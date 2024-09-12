@@ -264,8 +264,13 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
       await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
     }
+
+    if(!process.env.INSIGHT_ASSISTANT_KEY) {
+      this.functions[0]('info', createNodeResponse('error', { message: "Insight assistant integration is not enabled. " }));
+      return { ...state, codeInterpreterThreadId: codeInterpreterThreadId };
+    }
     
-    const assistantId = "asst_W5Q66sX3XpEzD9X2LU4mCzo6";
+    const assistantId = process.env.INSIGHT_ASSISTANT_KEY
   
     await streamRun(
       codeInterpreterThreadId,
@@ -374,10 +379,9 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
             csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               Logger.log(`CSV for table ${table.name} failed, retrying...`);
-              this.functions[0]('info', createNodeResponse('error', { message: `CSV for table ${table.name} couldn't be retrieved for network issues, retrying...` }));
+              this.functions[0]('info', createNodeResponse('error', { message: `Table ${table.name} couldn't be retrieved for network issues, retrying...` }));
             } else {
               retry = false; // Exit retry loop if no failure
-              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved CSV for table ${table.name}`, data: {csv: table.name} }));
             }
           } catch (error) {
             console.error(`Error fetching CSV for table ${table.name}:`, error);
