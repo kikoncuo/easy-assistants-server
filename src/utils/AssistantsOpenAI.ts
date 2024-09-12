@@ -84,6 +84,34 @@ export const parseAndUploadTables = async (data: any): Promise<OpenAI.Beta.Threa
   return attachments;
 };
 
+export const uploadTables = async (data: { [tableName: string]: string }): Promise<OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[]> => {
+  const attachments: OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[] = [];
+
+  for (const [tableName, csvContent] of Object.entries(data)) {
+    if (!csvContent) {
+      Logger.warn(`Skipping table with missing CSV content: ${tableName}`);
+      continue;
+    }
+    
+    Logger.log(`Uploading table ${tableName} to OpenAI...`);
+    
+    // Upload CSV content to OpenAI and collect the file ID
+    const fileId = await uploadCSVToOpenAI(csvContent, tableName);
+    
+    // Create an attachment object for this file
+    const attachment: OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment = {
+      file_id: fileId,
+      tools: [{ type: "code_interpreter" }]
+    };
+    
+    attachments.push(attachment);
+  }
+
+  return attachments;
+};
+
+
+
 // Function to delete any old files older than 24 hours
 const checkAndDeleteOldFiles = async () => {
   try {

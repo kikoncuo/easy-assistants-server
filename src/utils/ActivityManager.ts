@@ -26,7 +26,7 @@ export class ActivityManager {
                 const status = await this.checkStatus();
                 console.log('status', status);
                 if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
-                    const cancelled = await cancelRun(this.openai, this.codeInterpreterThreadId, this.currentRunId);
+                    const cancelled = await cancelRun(this.codeInterpreterThreadId, this.currentRunId, this.openai);
                     if (cancelled) {
                         Logger.log(`Stream stopped due to inactivity. Run ID: ${this.currentRunId}`);
                         this.streamStatus = 'inactive';
