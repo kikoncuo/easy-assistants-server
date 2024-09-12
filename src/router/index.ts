@@ -79,6 +79,7 @@ export class Router {
           WebSocketService.queryUser(type, functions, this.ws),
         data.configData,
         data.appType || 'default',
+        data.schema || []
       );
       await graphApp.initialize();
       return graphApp;

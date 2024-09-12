@@ -7,7 +7,7 @@ import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
   name: string;
-  Graph: new (databaseId: number, clientAgentFunctions: Function[], companyName: string) => any;
+  Graph: new (databaseId: number, clientAgentFunctions: Function[], companyName: string, schema: any[]) => any;
 };
 
 type AppConfig = {
@@ -41,6 +41,7 @@ export class GraphApplication {
     private readonly clientAgentFunction: Function,
     private readonly clientData: string[],
     private readonly appType: string,
+    private readonly schema: any[]
   ) {
     this.validateClientData();
   }
@@ -53,10 +54,10 @@ export class GraphApplication {
     }
   }
 
-  private async initializeGraphManager(appType?: string): Promise<void> {
+  private async initializeGraphManager( schema: any[], appType?: string): Promise<void> {
 
     if (appType === 'insights') {
-      const insightExtractorGraph = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1]);
+      const insightExtractorGraph = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
       await insightExtractorGraph.initialize();
       this.graphManager = insightExtractorGraph;
     } else {
@@ -85,6 +86,7 @@ export class GraphApplication {
           +this.clientData[0],
           [this.clientAgentFunction],
           this.clientData[1],
+          this.schema
         ),
       };
     });
@@ -105,6 +107,6 @@ export class GraphApplication {
   }
 
   public async initialize(): Promise<void> {
-    await this.initializeGraphManager(this.appType);
+    await this.initializeGraphManager(this.schema, this.appType );
   }
 }
