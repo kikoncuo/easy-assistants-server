@@ -15,8 +15,6 @@ type MessageType = 'Image' | 'Text' | 'Code';
 
 interface InsightExtractorState extends BaseState {
   task: string;
-  schema: any[];
-  sessionToken: string;
   queryResult: any;
   fieldDetails: Record<number, any>; 
   isPossible: string;
@@ -31,18 +29,12 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   private database: number;
   private companyName: string;
   private functions: Function[];
+  private schema: any[];
+  private sessionToken: string;
 
   constructor(databaseId: number, functions: Function[], companyName: string) {
     const graphState: StateGraphArgs<InsightExtractorState>['channels'] = {
       task: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      schema: {
-        value: (x: any[], y?: any[]) => (y ? y : x),
-        default: () => [],
-      },
-      sessionToken: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -83,20 +75,28 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     this.database = databaseId;
     this.companyName = companyName;
     this.functions = functions;
+    this.sessionToken = '';
+    this.schema = [];
   }
 
-  private async fetchSchemaNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
-    if (schema) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
-    } else {
-      this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+  async initialize(): Promise<void> {
+    try {
+      const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
+      this.sessionToken = sessionToken;
+      this.schema = schema;
+      if (schema) {
+        this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
+      } else {
+        this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+      }
+    } catch (error) {
+      console.error("Error fetching schema:", error);
+      this.functions[0]('info', createNodeResponse('error', { message: "Error fetching schema" }));
     }
-    return { ...state, sessionToken, schema };
   }
 
   private async identifyRelevantTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const { relevantTables } = await getRelevantTables(state.task, state.schema);
+    const { relevantTables } = await getRelevantTables(state.task, this.schema);
     if (relevantTables) {
       this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
     } else {
@@ -126,12 +126,14 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
         while (retry) {
             try {
-                tableResult = await getDatasetQuery(this.companyName, state.sessionToken, questionData);
+                tableResult = await getDatasetQuery(this.companyName, this.sessionToken, questionData);
 
                 if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
                     Logger.log(`Query for table ${table.name} failed, retrying...`);
+                    this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retrying...` }));
                 } else {
                     retry = false; // Exit retry loop if no failure
+                    this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
                 }
 
             } catch (error) {
@@ -141,7 +143,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         }
 
         if (tableResult && tableResult.data) {
-          const filteredSchema = state.schema.filter((schema) => schema.id === table.id);
+          const filteredSchema = this.schema.filter((schema) => schema.id === table.id);
           const fields = filteredSchema.map((i: any) => i.fields).flat(1);
           fields.forEach((field: any) => {
             delete field.id
@@ -255,7 +257,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
       codeInterpreterThreadId = await createThread();
 
-      const csvs = await this.getDatasetAsCSV(state.relevantTables, state.sessionToken, this.database, this.companyName);
+      const csvs = await this.getDatasetAsCSV(state.relevantTables, this.sessionToken, this.database, this.companyName);
 
       const attachments = await uploadTables(csvs);
     
@@ -373,8 +375,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
             csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               Logger.log(`CSV for table ${table.name} failed, retrying...`);
+              this.functions[0]('info', createNodeResponse('error', { message: `CSV for table ${table.name} couldn't be retrieved for network issues, retrying...` }));
             } else {
               retry = false; // Exit retry loop if no failure
+              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved CSV for table ${table.name}`, data: {csv: table.name} }));
             }
           } catch (error) {
             console.error(`Error fetching CSV for table ${table.name}:`, error);
@@ -390,25 +394,19 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
   
     graphBuilder
-      .addNode("fetch_schema", this.fetchSchemaNode.bind(this))
       .addNode('select_tables', this.identifyRelevantTablesNode.bind(this))
       .addNode('get_tables', this.getTablesNode.bind(this))
       .addNode("plan_execution", this.plannerNode.bind(this))
       .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
-      .addEdge(START, "fetch_schema")
-      .addConditionalEdges('fetch_schema', (state) => { // Now if there is a threadId from openai, we will go there directly
+      .addEdge(START, "select_tables")
+      .addConditionalEdges('select_tables', (state) => { // Now if there is a threadId from openai, we will go there directly
         if (state.codeInterpreterThreadId !== '') {
           return 'generate_python_code';
-        } else {
-          return 'select_tables';
-        }
-      })
-      .addEdge('fetch_schema', 'select_tables')
-      .addConditionalEdges('select_tables', (state) => {
+        } 
         if (state.relevantTables.length >= 1) {
           return 'get_tables';
         } else {
-          return END;
+            return END;
         }
       })
       .addEdge('get_tables', 'plan_execution')

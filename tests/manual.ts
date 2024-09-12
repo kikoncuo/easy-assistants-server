@@ -13,7 +13,7 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: [3, "ey"], appType: 'insights' }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [2, "blank_street"], appType: 'insights' }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 

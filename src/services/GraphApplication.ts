@@ -43,7 +43,6 @@ export class GraphApplication {
     private readonly appType: string,
   ) {
     this.validateClientData();
-    this.initializeGraphManager(appType);
   }
 
   private validateClientData(): void {
@@ -54,10 +53,12 @@ export class GraphApplication {
     }
   }
 
-  private initializeGraphManager(appType?: string): void {
+  private async initializeGraphManager(appType?: string): Promise<void> {
 
     if (appType === 'insights') {
-      this.graphManager = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1]);
+      const insightExtractorGraph = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1]);
+      await insightExtractorGraph.initialize();
+      this.graphManager = insightExtractorGraph;
     } else {
       const fasterModel = getFasterModel();
       const planner = createPlanner(fasterModel);
@@ -101,5 +102,9 @@ export class GraphApplication {
       config.configurable = { thread_id }
     } 
     await this.graphManager.getApp().invoke({ task: task }, config); 
+  }
+
+  public async initialize(): Promise<void> {
+    await this.initializeGraphManager(this.appType);
   }
 }

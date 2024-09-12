@@ -51,25 +51,46 @@ export class Router {
 
   private async handleQuery(data: any) {
     Logger.log('Processing task:', data.task);
-    const graphApp = this.graphApps.get(data.appType || 'default');
-    if (graphApp) {
-      await graphApp.processTask(data.task, data.thread_id);
+  
+    const graphAppPromise = this.graphApps.get(data.appType || 'default');
+  
+    if (graphAppPromise) {
+      try {
+        // Await the GraphApplication initialization if it's still pending
+        const graphApp = await graphAppPromise;
+        await graphApp.processTask(data.task, data.thread_id);
+      } catch (error) {
+        Logger.error(`Error processing task for type: ${data.appType}`, error);
+      }
     } else {
       Logger.error(`GraphApp not found for type: ${data.appType}`);
     }
   }
+  
 
-  private handleConfigure(data: any) {
+  private async handleConfigure(data: any) {
     Logger.log('Configuring new graph application', data.appType || 'default');
-    const graphApp = new GraphApplication(
-      (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
-      (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
-        WebSocketService.queryUser(type, functions, this.ws),
-      data.configData,
-      data.appType || 'default',
-    );
-    this.graphApps.set(data.appType || 'default', graphApp);
+  
+    // Create a Promise for the GraphApplication initialization
+    const graphAppPromise = (async () => {
+      const graphApp = new GraphApplication(
+        (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+          WebSocketService.queryUser(type, functions, this.ws),
+        data.configData,
+        data.appType || 'default',
+      );
+      await graphApp.initialize();
+      return graphApp;
+    })();
+  
+    // Store the Promise in the map immediately
+    this.graphApps.set(data.appType || 'default', graphAppPromise as unknown as GraphApplication);
+  
+    // Log and resolve after initialization
+    const graphApp = await graphAppPromise;
   }
+  
 
   /*private async handleCreateSemanticLayer(data: any) {
     Logger.log('Creating semantic layer');
