@@ -96,7 +96,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
   private async identifyRelevantTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     const { relevantTables } = await getRelevantTables(state.task, this.schema);
-    if (relevantTables) {
+    if (relevantTables && relevantTables.length > 0) {
       this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
     } else {
       this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
@@ -265,45 +265,28 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
     }
     
-    const assistantId = "asst_W5Q66sX3XpEzD9X2LU4mCzo6";
+    if(!process.env.INSIGHT_ASSISTANT_KEY) {
+      this.functions[0]('info', createNodeResponse('error', { message: "Insight assistant integration is not enabled. " }));
+      return { ...state, codeInterpreterThreadId: codeInterpreterThreadId };
+    }
+
+    const assistantId = process.env.INSIGHT_ASSISTANT_KEY
   
     await streamRun(
       codeInterpreterThreadId,
       assistantId,
-      async (tool) => {
+      async (tool, imageData, status, runId) => {
         activityManager.updateActivity();
         Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
-        if(tool.outputs && tool.outputs.length > 0 && tool.outputs[0].type === 'image') {
-        
-
-          const imageId = tool.outputs[0].image.file_id;
-          // Retrieve the image data from OpenAI
-          const response = await openai.files.content(imageId);
-
-          // Extract the binary data from the Response object
-          const imageData = await response.arrayBuffer();
-
-          // Convert the binary data to a Buffer
-          const imageDataBuffer = Buffer.from(imageData);
-          this.sendImageAndTextToFrontend(imageDataBuffer, "Image");
+        if(imageData) {
+          this.sendImageAndTextToFrontend(imageData, "Image", status, runId, codeInterpreterThreadId);
         }
-        this.sendImageAndTextToFrontend(tool.input, "Code");
+        this.sendImageAndTextToFrontend(tool.input, "Code", status, runId, codeInterpreterThreadId);
       },
-      async (content, snapshot) => {
+      (content, status, runId) => {
         activityManager.updateActivity();
-        const imageFileId = content.file_id;
-        // const imageDataBuffer = await saveOpenAIImage(imageFileId);
-        Logger.log(`\nIMAGE PROCESSED > ${imageFileId}\n\n`);
-      },
-      (content, snapshot) => {
-        activityManager.updateActivity();
-        this.sendImageAndTextToFrontend(content, "Text");
+        this.sendImageAndTextToFrontend(content, "Text", status, runId);
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
-      },
-      (runId) => {
-        activityManager.startMonitoring(runId, codeInterpreterThreadId!);
-        this.sendRunIdAndCodeInterpreterThreadIdToFrontend(runId, codeInterpreterThreadId!);
-        Logger.log(`Stream started with Run ID: ${runId}`);
       }
     );
 
@@ -320,21 +303,31 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
   } 
 
-  private async sendImageAndTextToFrontend(value: string | Buffer, type: string): Promise<void> {
+  private async sendImageAndTextToFrontend(value: string | Buffer, type: string, status: string, runId: string, codeInterpreterThreadId?: string): Promise<void> {
     const argumentKeyMap = {
       Image: 'generatedImages',
       Text: 'generatedTexts',
       Code: 'generatedCodes'
     };
   
-    const getArguments = (type: MessageType, value: string | Buffer) => ({
-      function_name: `get${type}`,
-      arguments: {
-        [argumentKeyMap[type]]: value
-      }
-    });
+    const getArguments = (type: MessageType, value: string | Buffer, status: string, runId:string, codeInterpreterThreadId?: string) => {
+      const args: any = {
+        [argumentKeyMap[type]]: value,
+        status: status,
+        runId: runId
+      };
   
-    const data = [getArguments(type as MessageType, value)];
+      if ((type === 'Image' || type === 'Code') && codeInterpreterThreadId) {
+        args.codeInterpreterThreadId = codeInterpreterThreadId;
+      }
+  
+      return {
+        function_name: `get${type}`,
+        arguments: args
+      };
+    };
+  
+    const data = [getArguments(type as MessageType, value, status, runId, codeInterpreterThreadId)];
   
     this.functions[0]('tool', data);
   }
@@ -374,10 +367,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
             csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               Logger.log(`CSV for table ${table.name} failed, retrying...`);
-              this.functions[0]('info', createNodeResponse('error', { message: `CSV for table ${table.name} couldn't be retrieved for network issues, retrying...` }));
+              this.functions[0]('info', createNodeResponse('error', { message: `Table ${table.name} couldn't be retrieved for network issues, retrying...` }));
             } else {
               retry = false; // Exit retry loop if no failure
-              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved CSV for table ${table.name}`, data: {csv: table.name} }));
+              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved table ${table.name}`, data: {csv: table.name} }));
             }
           } catch (error) {
             console.error(`Error fetching CSV for table ${table.name}:`, error);
