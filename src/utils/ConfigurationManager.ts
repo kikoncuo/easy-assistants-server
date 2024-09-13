@@ -14,6 +14,7 @@ interface ClientConfig {
   PG_DATABASE: string;
   SUPABASE_PRIVATE_KEY: string;
   SUPABASE_URL: string;
+  DATA_ASSISTANT_KEY: string;
 }
 
 export class ConfigurationManager {
@@ -36,6 +37,7 @@ export class ConfigurationManager {
       PG_DATABASE: process.env[this.formatEnvKey(formattedClientKey, 'PG_DATABASE')] || '',
       SUPABASE_PRIVATE_KEY: process.env[this.formatEnvKey(formattedClientKey, 'SUPABASE_PRIVATE_KEY')] || '',
       SUPABASE_URL: process.env[this.formatEnvKey(formattedClientKey, 'SUPABASE_URL')] || '',
+      DATA_ASSISTANT_KEY: process.env['DATA_ASSISTANT_KEY'] || '',
     };
 
     return config;

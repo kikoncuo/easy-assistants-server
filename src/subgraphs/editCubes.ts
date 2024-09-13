@@ -5,7 +5,7 @@ import { HumanMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
 import { getCubes, updateSemanticLayer, validateSchema } from '../utils/SemanticLayer';
 import { ToolDefinition } from '@langchain/core/language_models/base';
-import { getSchema, syncDatabaseSchema } from '../utils/MetabaseAPI';
+import { getSchema, syncDatabaseSchema } from '../services/MetabaseAPI';
 
 interface EditCubeState extends BaseState {
   task: string;
@@ -479,5 +479,8 @@ export class EditCubeGraph extends AbstractGraph<EditCubeState> {
       .addEdge('update_and_test_semantic_layer', END);
 
     return subGraphBuilder.compile();
+  }
+  getApp(): any {
+    return this.getGraph();
   }
 }

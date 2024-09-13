@@ -3,9 +3,8 @@ import { anthropicSonnet, createStructuredResponseAgent } from "../../models/Mod
 import { GetSourcesTool } from "../../models/Tools";
 import Logger from "../../utils/Logger";
 import { EditCubeGraph } from "../editCubes";
-import { getSchema, syncDatabaseSchema } from "../../utils/MetabaseAPI";
+import { getSchema } from "../../services/MetabaseAPI";
 import { getModelsData } from "../../utils/DataStructure";
-import { NodeStatus, createNodeResponse } from "../../utils/NodeResponseUtils";
 
 export async function checkUpdateSemanticLayer(
     task: string,

@@ -1,22 +1,18 @@
-import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
-import { similaritySearch } from '../../utils/EmbeddingUtils';
+import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getCards, getCard } from '../../services/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool} from '../../models/Tools';
+import { IdentifyFieldsTool, TableIdentifyingTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool } from '../../models/Tools';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
-import { fallbackCardExamples } from '../../utils/CardExamples';
-
+import { queryStructureExamples } from '../../utils/CardExamples';
 
 export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any }> {
   const sessionToken = await authenticate(company_name);
   const schema = await getSchema(company_name, sessionToken, database);
-  //Logger.log({schema}); //For development
 
   return { sessionToken, schema };
 }
 
-
-export async function getFieldDetails(task: string, sessionToken: string, schema: any, companyName: string): Promise<{fieldDetails: Record<number, any>, isPossible: string}> {
+export async function getFieldDetails(task: string, sessionToken: string, schema: any, companyName: string): Promise<{ fieldDetails: Record<number, any>, isPossible: string }> {
   const model = createStructuredResponseAgent(getStrongestModel(), [IdentifyFieldsTool]);
 
   const message = await model.invoke([
@@ -57,84 +53,17 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
     }
   }
 
-  return {fieldDetails, isPossible};
+  return { fieldDetails, isPossible };
 };
 
-export async function getExampleRelatedCards(task: string, sessionToken: string, databaseId: number,  companyName:string, feedbackMessage?: string):
-Promise<{ exampleRelatedCards: string, ids?: number[] }> {
-  const filter = { databaseID: databaseId };
-  //TODO: Check this functionality
-
-  let exampleRelatedCards = "";
-  if (!feedbackMessage) {
-    const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
-    //Logger.log('Similarity search results', similaritySearchWithScoreResults);
-
-    let ids = [];
-
-    for (const [doc, score] of similaritySearchWithScoreResults) {
-      Logger.log(
-        `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
-          doc.metadata
-        )}]`
-      );
-      ids.push(doc.metadata.id);
-    }
-
-    if (ids.length === 0) {
-      Logger.log('No related cards found, using fallback cards');
-      exampleRelatedCards = fallbackCardExamples(databaseId);
-    } else {
-      exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
-      //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
-    }
-
-    return { exampleRelatedCards, ids }
-  } else {
-    exampleRelatedCards = fallbackCardExamples(databaseId);
-    return { exampleRelatedCards }
-  }
+export async function getExampleRelatedCards():
+  Promise<{ exampleRelatedCards: string, ids?: number[] }> {
+  const exampleRelatedCards = queryStructureExamples;
+  return { exampleRelatedCards }
 }
 
-//TODO: Check this functionality
-export async function createMetabaseCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, exampleRelatedCards: any,  companyName:string, feedbackMessage?: string, metabaseQuery?: any):
-Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQuery: string }> {
-  
-  const model = createStructuredResponseAgent(anthropicSonnet(), [GenerateMetabaseQueryTool]); // Only model flexible enough to generate the query
-
-  const message = await model.invoke([ 
-    new HumanMessage(`You are tasked with generating a Metabase query based on the following natural language task: 
-    "${task}"
-
-    The query must be interpretable by a business analyst, you should strive to make them easy to interpret and good looking.
-  
-    The schema of the database is:
-    ${JSON.stringify(schema, null, 2)}
-    You can only use the tables and fields that are provided in the schema.
-
-    Here are some value examples for some of the fields of the schema:
-    ${fieldDetails}
-  
-    Ensure that the query is well-formed, syntactically correct, and meets the requirements of the task.
-    When applying filters, try to apply is not empty filters and prioritize contains filters over equals filters.
-  
-    ${feedbackMessage ? `Previous attempt has generated the following query ${metabaseQuery}, and resulted in an error: ${feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
-
-    Try to leverage the "CubeJoinField" fields that all tables have to join source tables.
-    When available, try to use names instead of IDs for visualizations, even if a new join is necessary to get an item's name.
-    For aggregations of type sum, use fields named starting with 'total' (eg totalAmount), if not available raise an error.
-    For aggregations of type average, use fields named starting with 'average' (eg averageAmount), if not available raise an error.
-           
-    Here are some examples of a natural language query and its corresponding JSON representation (which used other tables you may not be able to use):
-
-    ${feedbackMessage ? fallbackCardExamples : exampleRelatedCards}
-  
-    `)
-  ]);
-  
-  const metabaseQueryResult = message.lc_kwargs.tool_calls[0].args;
-
-  const cardIdResponse = await createCard(companyName, sessionToken, metabaseQueryResult); 
+export async function createMetabaseCard(sessionToken: string, companyName: string, metabaseQuery: string): Promise<{ cardId: number } | { error: string }> {
+  const cardIdResponse = await createCard(companyName, sessionToken, metabaseQuery);
 
   if (typeof cardIdResponse === 'object' && ('error' in cardIdResponse)) {
     let errorMessage = "";
@@ -146,66 +75,33 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQue
       errorMessage = "unknown error, try to create the query in a different way";
     }
     return {
-      error: errorMessage,
-      metabaseQuery: JSON.stringify(metabaseQueryResult)
+      error: errorMessage
     };
   } else {
-    Logger.log('Card ID:', cardIdResponse); 
+    Logger.log('Card ID:', cardIdResponse);
     return {
-      cardId: cardIdResponse,
-      metabaseQuery: JSON.stringify(metabaseQueryResult)
-    };
-  }
-}
-
-export async function executeMetabaseQuery(sessionToken: string, cardId: number, metabaseQuery: any, companyName:string):
- Promise<{ queryResult: any } | { error: string; metabaseQuery: string }> {
-  const queryResult = await executeQuery(companyName, sessionToken, cardId);
-
-  if ("error" in queryResult) {
-    Logger.log("Error executing query. Deleting card...");
-    await deleteCard(companyName, sessionToken, cardId);
-    
-    let errorMessage = queryResult.error;
-    
-    if (errorMessage.includes("Can't detect Cube query")) {
-      errorMessage = "The SQL created from your query is not supported by cubejs, please try to create the query in a different way";
-    } else if (errorMessage.includes("Can't find join path")) {
-      // errorMessage = "There is no JOIN between the sources. Please review your query.";
-      // TODO: Improve error message
-    }
-
-    Logger.error(errorMessage);
-
-    return {
-      error: errorMessage,
-      metabaseQuery: metabaseQuery,
-    };
-  } else {
-    Logger.log('Query executed successfully');
-    return {
-      queryResult: queryResult
+      cardId: cardIdResponse
     };
   }
 }
 
 export async function getReasoning(queryResult: any, task: string, metabaseQuery: any, cardId: any, fieldDetails: any, schema: any): // TODO: fix types
-Promise<{ finalResult: string; reasoning: string; sources: string[] }> {
+  Promise<{ finalResult: string; reasoning: string; sources: string[] }> {
 
-const model = createStructuredResponseAgent(getFasterModel(), [GetReasoningTool]); 
+  const model = createStructuredResponseAgent(getFasterModel(), [GetReasoningTool]);
 
-let resultString = '';
+  let resultString = '';
 
-if (typeof queryResult === 'object') {
-  resultString = JSON.stringify(queryResult);
-}
+  if (typeof queryResult === 'object') {
+    resultString = JSON.stringify(queryResult);
+  }
 
-let message;
-if (queryResult.length === 0) {
-  Logger.log('No results!');
-  resultString = "The query has not returned values";
-  message = await model.invoke([
-    new HumanMessage(`You were asked to perform this task: ${task}
+  let message;
+  if (queryResult.length === 0) {
+    Logger.log('No results!');
+    resultString = "The query has not returned values";
+    message = await model.invoke([
+      new HumanMessage(`You were asked to perform this task: ${task}
   
       This is the query created for the card: ${metabaseQuery?.dataset_query ? (metabaseQuery.dataset_query.query ?? metabaseQuery.dataset_query) : 'No query available'}, 
       
@@ -220,16 +116,16 @@ if (queryResult.length === 0) {
 
       The current date is ${new Date()}
     `),
-  ]);
-} else {
-  if (resultString.length > 5000) {
-    resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
-  }
+    ]);
+  } else {
+    if (resultString.length > 5000) {
+      resultString = resultString.substring(0, 5000) + '... (truncated to 5000 characters)';
+    }
 
-  Logger.log('Query result:', resultString);
+    Logger.log('Query result:', resultString);
 
-  message = await model.invoke([
-    new HumanMessage(`You were asked to perform this task: ${task}
+    message = await model.invoke([
+      new HumanMessage(`You were asked to perform this task: ${task}
   
       This is the query created for the card: ${metabaseQuery.dataset_query ? (metabaseQuery.dataset_query.query ?? metabaseQuery.dataset_query) : metabaseQuery}, 
       due the following database schema: ${schema} 
@@ -238,22 +134,22 @@ if (queryResult.length === 0) {
       }
       
       Explain how the task has been performed and give a reasoning on the fields and tables that have been used. The sources should be provided as an object where each table is represented with its name, and each table contains an array of the fields used. Note that the query result has been truncated to 5000 characters if it exceeded that length.`),
-  ]);
+    ]);
+  }
+
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const reasoning = args.reasoning;
+  const sources = args.sources;
+
+  return {
+    finalResult: resultString, // we reassign here the truncated result
+    reasoning: reasoning,
+    sources: sources
+  };
 }
 
-const args = message.lc_kwargs.tool_calls[0].args;
-
-const reasoning = args.reasoning;
-const sources = args.sources;
-
-return {
-  finalResult: resultString, // we reassign here the truncated result
-  reasoning: reasoning,
-  sources: sources
-};
-}
-
-export async function identifyRelevantSources(task: string, sessionToken: string, databaseId: number, schema: any[], companyName:string): Promise<any[]> {
+export async function identifyRelevantSources(task: string, sessionToken: string, databaseId: number, schema: any[], companyName: string): Promise<any[]> {
   const cards = await getCards(companyName, sessionToken, databaseId);
 
 
@@ -287,7 +183,7 @@ export async function identifyRelevantSources(task: string, sessionToken: string
   return relevantCards;
 }
 
-export async function addFilters(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[], companyName:string): Promise<any[]> {
+export async function addFilters(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards: any[], companyName: string): Promise<any[]> {
   const model = createStructuredResponseAgent(anthropicSonnet(), [AnalyzeFiltersTool]);
 
   const message = await model.invoke([
@@ -409,7 +305,7 @@ export async function addFilters(task: string, sessionToken: string, databaseId:
       }
     `),
   ]);
-  
+
 
   const args = message.lc_kwargs.tool_calls[0].args;
 
@@ -440,7 +336,7 @@ export async function addFilters(task: string, sessionToken: string, databaseId:
   return updatedCards
 }
 
-export async function getResults(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards:any[], companyName:string): Promise<any[]> {
+export async function getResults(task: string, sessionToken: string, databaseId: number, schema: any[], relevantCards: any[], companyName: string): Promise<any[]> {
   const insights = [];
   Logger.log("Relevant cards", relevantCards)
   for (const card of relevantCards) {
@@ -477,7 +373,7 @@ export async function getResults(task: string, sessionToken: string, databaseId:
       insightExplanation: args.insightExplanation,
     });
   }
- 
+
   return insights
 }
 

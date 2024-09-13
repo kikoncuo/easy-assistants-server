@@ -16,7 +16,7 @@ export const IdentifySourcesTool: ToolDefinition = {
             type: "object",
             properties: {
               tableName: { type: "string" },
-              fields: { 
+              fields: {
                 type: "array",
                 items: { type: "string" }
               }
@@ -180,7 +180,7 @@ export const GenerateMetabaseQueryTool: ToolDefinition = {
               },
               unit: { type: ["string", "null"] },
               name: { type: "string" },
-              field_ref: { type: ["array", "null"]},
+              field_ref: { type: ["array", "null"] },
               id: { type: ["integer", "null"], minimum: 1 },
               display_name: { type: "string" },
               fingerprint: {
@@ -438,7 +438,7 @@ export const GenerateCardDescriptionsTool: ToolDefinition = {
             properties: {
               title: { type: "string" },
               description: { type: "string" },
-              queryType: { 
+              queryType: {
                 type: "string",
                 enum: ["table", "bar", "line", "pie", "scatter", "area", "funnel", "map"]
               },
@@ -448,7 +448,7 @@ export const GenerateCardDescriptionsTool: ToolDefinition = {
                   type: "object",
                   properties: {
                     tableName: { type: "string" },
-                    fields: { 
+                    fields: {
                       type: "array",
                       items: { type: "string" }
                     }

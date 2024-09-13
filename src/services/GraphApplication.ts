@@ -54,12 +54,16 @@ export class GraphApplication {
     }
   }
 
-  private async initializeGraphManager( schema: any[], appType?: string): Promise<void> {
+  private async initializeGraphManager(schema: any[], appType?: string): Promise<void> {
 
     if (appType === 'insights') {
       const insightExtractorGraph = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
       await insightExtractorGraph.initialize();
       this.graphManager = insightExtractorGraph;
+    } else if (appType === 'default') {
+      const dataRecoveryGraph = new DataRecoveryGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
+      await dataRecoveryGraph.initialize();
+      this.graphManager = dataRecoveryGraph;
     } else {
       const fasterModel = getFasterModel();
       const planner = createPlanner(fasterModel);
@@ -94,19 +98,19 @@ export class GraphApplication {
     return { subgraphs, systemPrompt: config.systemPrompt };
   }
 
-  async processTask(task: string, thread_id?: string): Promise<void> { 
-    let config = { 
+  async processTask(task: string, thread_id?: string): Promise<void> {
+    let config = {
       streamMode: 'values',
       recursion_limit: 2,
       configurable: {}
     };
     if (thread_id) {
       config.configurable = { thread_id }
-    } 
-    await this.graphManager.getApp().invoke({ task: task }, config); 
+    }
+    await this.graphManager.getApp().invoke({ task: task }, config);
   }
 
   public async initialize(): Promise<void> {
-    await this.initializeGraphManager(this.schema, this.appType );
+    await this.initializeGraphManager(this.schema, this.appType);
   }
 }

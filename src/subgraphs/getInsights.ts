@@ -119,4 +119,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
 
     return subGraphBuilder.compile();
   }
+  getApp(): any {
+    return this.getGraph();
+  }
 }

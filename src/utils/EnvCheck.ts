@@ -10,6 +10,7 @@ export function checkEnvironmentVariables() {
     GROQ_API_KEY,
     ANTHROPIC_API_KEY,
     CUBE_API_SERVER_URL,
+    DATA_ASSISTANT_KEY
   } = process.env;
 
   const missingApiKeys: string[] = [];
@@ -33,4 +34,8 @@ export function checkEnvironmentVariables() {
   if (!CUBE_API_SERVER_URL) {
       Logger.warn('Warning: The CUBE_API_SERVER_URL environment variable is not set. Cube.js API server integration will be disabled.');
   }
+
+  if (!DATA_ASSISTANT_KEY) {
+    Logger.warn('Warning: The DATA_ASSISTANT_KEY environment variable is not set. Generate card is not available.');
+}
 }
