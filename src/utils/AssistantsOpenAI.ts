@@ -3,32 +3,7 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import Logger from './Logger';
-
-type MessageCreationStepDetails = {
-  message_creation: {
-    message_id: string;
-  };
-};
-
-type ToolCallsStepDetails = {
-  tool_calls: Array<{
-    type: string;
-    code_interpreter?: any; // Replace 'any' with a more specific type if available
-    // Add other tool call types if needed
-  }>;
-};
-
-type RunStep = {
-  step_details: MessageCreationStepDetails | ToolCallsStepDetails;
-  thread_id: string;
-  type: 'message_creation' | 'tool_calls';
-  usage: any | null; // Replace 'any' with a more specific type if available
-};
-
-type RunState = {
-  status: string;
-  steps: RunStep[];
-};
+import { isMessageCreationStepDetails, isToolCallsStepDetails, ToolCallsStepDetails } from '../interfaces/openAi.interface';
 
 const openai = new OpenAI();
 
@@ -152,40 +127,54 @@ export const createMessage = async (
 export const streamRun = async (
   threadId: string, 
   assistantId: string,
-  onToolCallDone: (tool: any) => void,
-  onImageFileDone: (content: any, snapshot: any) => void,
-  onTextDone: (content: any, snapshot: any) => void,
-  onStreamStart: (runId: string) => void
+  onToolCallDone: (tool: any, image:any, status:string, runId: string) => void,
+  onTextDone: (content: any, status:string, runId: string) => void,
 ): Promise<void> => {
-  const run = openai.beta.threads.runs.stream(threadId, { assistant_id: assistantId }) // IDK this is such a mess we may try the non streamed version
-    //.on('toolCallDone', onToolCallDone) // This is super inconsistent, most of the time is not called and it's called empty
-    .on('imageFileDone', onImageFileDone)
-    .on('textDone', async (content: any, snapshot: any) => {
-    // Fetch the run steps before calling onTextDone
-    const runSteps = await openai.beta.threads.runs.steps.list(threadId, snapshot.run_id);
-    onStreamStart(snapshot.run_id)
-    // This fucking shitshow is because the async events from openai are completly broken, so every message, we parse the steps and handle for all their problems
-    const stepsData = runSteps.data;
-    if (stepsData.length > 1)
-      if (stepsData[1].step_details.type === 'tool_calls' && 
-        stepsData[1].step_details.tool_calls[0]?.type === 'code_interpreter') {// We check the second position and get them 1 off because at the time we read it, the tool is not finished writing and has no input or output
-        onToolCallDone(stepsData[1].step_details.tool_calls[0].code_interpreter);
-      } else if (stepsData[0].step_details.type === 'tool_calls' && // If the first step is a tool call, and has no code we return the third one
-        stepsData[0].step_details.tool_calls.length === 0 &&
-        stepsData.length > 2 &&
-        stepsData[2].step_details.type === 'tool_calls' &&
-        stepsData[2].step_details.tool_calls[0]?.type === 'code_interpreter'
-       ) { 
-        onToolCallDone(stepsData[2].step_details.tool_calls[0].code_interpreter);
-      } else if (stepsData[0].step_details.type === 'tool_calls' && // If the first step is a tool call, and has code we return it TODO: Check if we return twice, if we do, this is the problem
-        stepsData[0].step_details.tool_calls[0]?.type === 'code_interpreter'
-       ){
-        onToolCallDone(stepsData[0].step_details.tool_calls[0].code_interpreter)
-       }
 
-    // Call onTextDone with the additional runSteps information
-    onTextDone(content, snapshot);
-  });
+  const run = openai.beta.threads.runs.stream(threadId, { assistant_id: assistantId })
+    .on('connect',() => {
+      console.log('connected')
+    })
+    .on('runStepDone', async(runStep) => {
+        const stepDetails = runStep.step_details;
+        const status = await openai.beta.threads.runs.retrieve(threadId, runStep.run_id);
+        if (isMessageCreationStepDetails(stepDetails)) {
+          const messageDetails = stepDetails.message_creation;
+          const message = await openai.beta.threads.messages.retrieve(threadId, messageDetails.message_id);
+          for (const content of message.content) {
+            if (content.type === 'text') {
+              onTextDone(content.text, status.status, runStep.run_id);
+            }
+          }
+        } else {
+          if(isToolCallsStepDetails(stepDetails)) {
+            if (stepDetails.type === 'tool_calls' &&
+              stepDetails.tool_calls[0]?.type === 'code_interpreter') {
+            let imageDataBuffer: Buffer | null = null;
+
+            // Loop through the outputs array to find image outputs
+            if (stepDetails.tool_calls[0].code_interpreter.outputs && stepDetails.tool_calls[0].code_interpreter.outputs.length > 0) {
+              for (const output of stepDetails.tool_calls[0].code_interpreter.outputs) {
+                if (output.type === 'image') {
+                  const imageId = output.image.file_id;
+
+                  // Fetch the image asynchronously
+                  const response = await openai.files.content(imageId);
+                  const imageData = await response.arrayBuffer();
+                  imageDataBuffer = Buffer.from(imageData); // Assign image data to buffer
+                  break; 
+                }
+              }
+            }
+
+            // Pass both code and image data to onToolCallDone
+            onToolCallDone(stepDetails.tool_calls[0].code_interpreter, imageDataBuffer, status.status, runStep.run_id);
+            }
+          }
+        }
+    }).on('end', () => {
+      console.log('ended')
+    })
      // Here are more events if in the future we want to stream more often
       /*.on('textCreated', (text) => process.stdout.write('\nassistant > '))
       .on('textDelta', (textDelta, snapshot) => {
@@ -306,13 +295,6 @@ export const pollRun = async (
 
   throw new Error('Run timed out');
 };
-
-// Define a type guard to check if step_details is MessageCreationStepDetails
-function isMessageCreationStepDetails(
-  stepDetails: MessageCreationStepDetails | ToolCallsStepDetails
-): stepDetails is MessageCreationStepDetails {
-  return 'message_creation' in stepDetails;
-}
 
 // Function to schedule the file check
 const scheduleFileCheck = () => {

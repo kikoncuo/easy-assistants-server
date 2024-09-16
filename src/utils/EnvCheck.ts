@@ -10,6 +10,7 @@ export function checkEnvironmentVariables() {
     GROQ_API_KEY,
     ANTHROPIC_API_KEY,
     CUBE_API_SERVER_URL,
+    INSIGHT_ASSISTANT_KEY
   } = process.env;
 
   const missingApiKeys: string[] = [];
@@ -32,5 +33,9 @@ export function checkEnvironmentVariables() {
 
   if (!CUBE_API_SERVER_URL) {
       Logger.warn('Warning: The CUBE_API_SERVER_URL environment variable is not set. Cube.js API server integration will be disabled.');
+  }
+
+  if (!INSIGHT_ASSISTANT_KEY) {
+    Logger.warn('Warning: The INSIGHT_ASSISTANT_KEY environment variable is not set. Insight assistant integration will be disabled.');
   }
 }
