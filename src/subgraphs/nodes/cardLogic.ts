@@ -481,8 +481,22 @@ export async function getResults(task: string, sessionToken: string, databaseId:
   return insights
 }
 
-export async function getRelevantTables(task: string, schema: any): Promise<{ relevantTables: any[] }> {
+export async function getRelevantTables(task: string, schema: any, stateTables: any[], continued: boolean, stateResult: string): Promise<{ relevantTables: any[] }> {
   const model = createStructuredResponseAgent(getFasterModel(), [TableIdentifyingTool]);
+
+  let continuedPrompt = "";
+  if (continued) {
+    continuedPrompt = `
+      This is a continuation of a previous task. These are the tables that you selected for the previous task:
+      ${JSON.stringify(stateTables, null, 2)}
+
+      The result of the previous task was: ${stateResult}
+
+      To understand the new task, you should consider the previous task's result.
+      If the new task involves adding or removing tables, Then you should certainly consider these state tables with the new task.
+      Evaluate whether these state tables are sufficient for the task or if additional tables from the schema are needed.
+    `;
+  }
 
   const message = await model.invoke([
     new HumanMessage(`
@@ -490,8 +504,15 @@ export async function getRelevantTables(task: string, schema: any): Promise<{ re
 
         And the following schema: ${JSON.stringify(schema, null, 2)}
 
-        Please identify the most relevant tables for this task using the identifyRelevantTables function.
+        ${continuedPrompt}
 
+        Please identify the most relevant tables for this task using the identifyRelevantTables function.
+        If state tables are provided, explain whether they are sufficient or why additional tables are needed.
+        Include ALL relevant tables in your response:
+        1. If this is a continued task, include all previously selected tables that are still relevant and give them status "previous".
+        2. Add any new tables from the schema that are relevant to the current task and give them status "current".
+        
+        Explain your reasoning for including each table and any changes from the previous selection.
       `)
   ]);
 

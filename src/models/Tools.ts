@@ -674,9 +674,13 @@ export const TableIdentifyingTool: ToolDefinition = {
               name: {
                 type: "string",
                 description: "The name of the table."
+              },
+              status: {
+                type: "string",
+                description: "The status of the table, previous or current."
               }
             },
-            required: ["id", "name"]
+            required: ["id", "name", "status"]
           }
         },
       },
