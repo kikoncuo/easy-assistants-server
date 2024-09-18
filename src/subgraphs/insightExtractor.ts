@@ -6,22 +6,26 @@ import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
-import { createThread, createMessage, streamRun, parseAndUploadTables, pollRun, saveOpenAIImage, uploadTables } from '../utils/AssistantsOpenAI';
+import { createThread, createMessage, streamRun, uploadTables } from '../utils/AssistantsOpenAI';
 import OpenAI from 'openai';
 import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
+import { ConfigurationManager } from '../utils/ConfigurationManager';
+import { PostgresSaver } from '../checkpoint/postgres';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
 interface InsightExtractorState extends BaseState {
   task: string;
-  queryResult: any;
+  queryResult: any[];
   fieldDetails: Record<number, any>; 
   isPossible: string;
   relevantTables: any[];
   plan: any[];
   codeInterpreterThreadId: string; 
   runId: string; 
+  continued: boolean;
+  result: string;
   finalResult: string; 
 }
 
@@ -39,8 +43,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         default: () => '',
       },
       queryResult: {
-        value: (x: any, y?: any) => (y ? y : x),
-        default: () => null,
+        value: (x: any[], y?: any[]) => (y ? y : x),
+        default: () => [],
       },
       finalResult: {
         value: (x: string, y?: string) => (y ? y : x),
@@ -69,7 +73,15 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       runId: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
-      }
+      },
+      continued: {
+        value: (x: boolean, y?: boolean) => (y ? y : x),
+        default: () => false,
+      },
+      result: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
     };
     super(graphState);
     this.database = databaseId;
@@ -95,20 +107,26 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   }
 
   private async identifyRelevantTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const { relevantTables } = await getRelevantTables(state.task, this.schema);
-    if (relevantTables && relevantTables.length > 0) {
+    const { relevantTables } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
+    const changeNeeded = relevantTables.filter(table => table.status === 'current').length === 0;
+    if (relevantTables && relevantTables.length > 0 && !changeNeeded) {
       this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
+    } else if (relevantTables && relevantTables.length > 0 && changeNeeded) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables are already retrieved", data: {relevantTables: relevantTables} }));
     } else {
       this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
     }
     Logger.log('relevantTables',relevantTables)
-    return { ...state, relevantTables };
+    const tablesNeeded = changeNeeded ? 'yes' : 'no';
+    Logger.log('tablesNeeded', tablesNeeded)
+    return { ...state, isPossible: tablesNeeded, relevantTables };
   }
 
   private async getTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const queryResults = [];
 
-    for (const table of state.relevantTables) {
+    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
+    Logger.log('tablesToQuery', tablesToQuery)
+    for (const table of tablesToQuery) {
         const questionData = {
             datasetQuery: {
                 database: this.database,
@@ -122,14 +140,16 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
         let retry = true;
         let tableResult;
+        let retryCount = 0;
 
         while (retry) {
             try {
                 tableResult = await getDatasetQuery(this.companyName, this.sessionToken, questionData);
 
                 if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
-                    Logger.log(`Query for table ${table.name} failed, retrying...`);
-                    this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retrying...` }));
+                  retryCount++;  
+                  Logger.log(`Query for table ${table.name} failed, retry attempt ${retryCount}`);
+                    this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
                 } else {
                     retry = false; // Exit retry loop if no failure
                     this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
@@ -148,10 +168,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
             delete field.id
             delete field.name
           });
-          queryResults.push({ name: table.name, rows: tableResult.data.rows, fields: fields });
+          state.queryResult.push({ name: table.name, rows: tableResult.data.rows, fields: fields });
         }
     }
-    return { ...state, queryResult: queryResults };
+    return { ...state, queryResult: state.queryResult };
 }
 
 
@@ -253,16 +273,32 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     const openai = new OpenAI();
     const activityManager = new ActivityManager(openai);
 
+    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
+
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
+      
       codeInterpreterThreadId = await createThread();
 
-      const csvs = await this.getDatasetAsCSV(state.relevantTables, this.sessionToken, this.database, this.companyName);
+      const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
 
       const attachments = await uploadTables(csvs);
     
       await createMessage(codeInterpreterThreadId, JSON.stringify(state.plan), attachments);
+    
     } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
-      await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
+      
+      if(state.continued && tablesToQuery.length > 0) {
+        
+        const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
+        
+        const attachments = await uploadTables(csvs);
+        
+        await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), attachments);
+     
+      } else {
+        
+        await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
+      }
     }
     
     if(!process.env.INSIGHT_ASSISTANT_KEY) {
@@ -287,6 +323,9 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         activityManager.updateActivity();
         this.sendImageAndTextToFrontend(content, "Text", status, runId);
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
+        if(status === 'completed') {
+          state.result = content.value;
+        }
       }
     );
 
@@ -299,6 +338,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     // );
 
     activityManager.stopMonitoring();
+    state.continued = true;
+    Logger.log('continued', state.continued)
 
     return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
   } 
@@ -331,24 +372,12 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   
     this.functions[0]('tool', data);
   }
-  
-  private async sendRunIdAndCodeInterpreterThreadIdToFrontend( runId: string, codeInterpreterThreadId: string): Promise<void> {
-    const getRunIdandCodeInterpreterThreadId = [ {
-      function_name: 'getRunIdandCodeInterpreterThreadId',
-      arguments: {
-        runId: runId,
-        codeInterpreterThreadId: codeInterpreterThreadId
-      }
-    },
-    ];
-
-    this.functions[0]('tool', getRunIdandCodeInterpreterThreadId);
-  } 
 
   private async getDatasetAsCSV(relevantTables:any[], sessionToken: string, databaseID:number, companyName:string): Promise<any> {
     const csvs: { [tableName: string]: string } = {};
     for(const table of relevantTables) {
       let retry = true;
+      let retryCount = 0;
       let csv;
       const payload = {
         query: JSON.stringify({
@@ -366,8 +395,9 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         try {
             csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
-              Logger.log(`CSV for table ${table.name} failed, retrying...`);
-              this.functions[0]('info', createNodeResponse('error', { message: `Table ${table.name} couldn't be retrieved for network issues, retrying...` }));
+              retryCount++;  
+              Logger.log(`CSV for table ${table.name} failed, retry attempt ${retryCount}`);
+              this.functions[0]('info', createNodeResponse('error', { message: `Table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
             } else {
               retry = false; // Exit retry loop if no failure
               this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved table ${table.name}`, data: {csv: table.name} }));
@@ -384,7 +414,8 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
   getGraph(): CompiledStateGraph<InsightExtractorState> {
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
-  
+    const clientConfig = ConfigurationManager.getConfig(this.companyName);
+
     graphBuilder
       .addNode('select_tables', this.identifyRelevantTablesNode.bind(this))
       .addNode('get_tables', this.getTablesNode.bind(this))
@@ -392,19 +423,37 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
       .addEdge(START, "select_tables")
       .addConditionalEdges('select_tables', (state) => { // Now if there is a threadId from openai, we will go there directly
-        if (state.codeInterpreterThreadId !== '') {
+        if (state.codeInterpreterThreadId !== '' && state.isPossible === 'yes') {
           return 'generate_python_code';
         } 
-        if (state.relevantTables.length >= 1) {
+        if (state.relevantTables.length >= 1 && state.isPossible === 'no') {
           return 'get_tables';
         } else {
             return END;
         }
       })
-      .addEdge('get_tables', 'plan_execution')
+      .addConditionalEdges('get_tables', (state) => {
+        if (state.continued === true) {
+          return 'generate_python_code';
+        } else {
+          return 'plan_execution';
+        }
+      })
       .addEdge('plan_execution', 'generate_python_code') 
       .addEdge("generate_python_code", END)
-    return graphBuilder.compile();
+    
+      
+      const poolConfig = {
+        host: clientConfig.PG_HOST,
+        port: Number(clientConfig.PG_PORT),
+        user: clientConfig.PG_USER,
+        password: clientConfig.PG_PASSWORD,
+        database: clientConfig.PG_DATABASE,
+      };
+      
+      const postgresSaver = new PostgresSaver(poolConfig);
+
+    return graphBuilder.compile({ checkpointer: postgresSaver });
   }
 
   getApp(): any {

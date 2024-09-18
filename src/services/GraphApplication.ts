@@ -103,7 +103,7 @@ export class GraphApplication {
     if (thread_id) {
       config.configurable = { thread_id }
     } 
-    await this.graphManager.getApp().invoke({ task: task }, config); 
+    await this.graphManager.getApp().invoke({ task: task, thread_id: thread_id }, config); 
   }
 
   public async initialize(): Promise<void> {

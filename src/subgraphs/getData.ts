@@ -200,7 +200,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private async getReasoningNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const result = await getReasoning( state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
 
-    this.functions[0]('info', createNodeResponse('data', { message: "Result insights and explanation prepared", data: { cardId: state.cardId } }));
     const getDatasetQuery = [
       {
         function_name: 'getDatasetQuery',
