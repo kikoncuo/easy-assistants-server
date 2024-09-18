@@ -111,17 +111,18 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
     const {needsSemanticUpdate, semanticTask} = await checkUpdateSemanticLayer(state.task, this.companyName);
     if (needsSemanticUpdate) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Successfully identified required semantic layer updates" }));
+      this.functions[0]('info', createNodeResponse('error', 
+        { message: `To complete this task, the semantic layer needs to be updated with the following field: ${semanticTask}. Please reach out to support for assistance.`}
+      ));
     } else {
       this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer does not need updates" }));
     }
-    return { ...state, needsSemanticUpdate, semanticTask };
-  }
-
-  private async handleEditCubeGraph(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const { schema, result } = await handleEditCubeGraph(state.semanticTask, state.sessionToken, this.functions, this.database, this.companyName);
-    this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer edited to include required fields missing for query", data: { result } }));
-    return { ...state, schema };
+    return { 
+      ...state, 
+      needsSemanticUpdate, 
+      semanticTask, 
+      finalResult: needsSemanticUpdate ? "The semantic layer needs an update to complete the task" : state.finalResult
+    };
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
@@ -227,13 +228,12 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
       .addNode('evaluate_examples', this.evaluateExamplesNode.bind(this))
       .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
-      .addNode('edit_cube_graph', this.handleEditCubeGraph.bind(this))
       .addNode('create_card', this.createCardNode.bind(this))
       .addNode('execute_query', this.executeQueryNode.bind(this))
       .addNode('getReasoning', this.getReasoningNode.bind(this))
       .addEdge(START, 'fetch_schema')
-      .addEdge('fetch_schema', 'evaluate_fields')
       .addEdge('fetch_schema', 'evaluate_examples')
+      .addEdge('evaluate_examples', 'evaluate_fields')
       .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
         if (state.isPossible === 'yes') {
           return 'create_card';
@@ -243,13 +243,12 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       })
       .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
         if (state.needsSemanticUpdate) {
-          return 'edit_cube_graph';
+          return END;
         } else {
           return 'create_card';
         }
       })
-      .addEdge('edit_cube_graph', 'create_card')
-      .addEdge('evaluate_examples', 'create_card')
+      //.addEdge('evaluate_examples', 'create_card')
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
           return END;
