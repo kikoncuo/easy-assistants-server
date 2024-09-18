@@ -577,8 +577,11 @@ export const GetSourcesTool: ToolDefinition = {
           description: "Whether a semantic layer update is needed for the task."
         },
         semanticTask: {
-          type: "string",
-          description: "Specific measure or dimension to create on a model of the semantic layer if needed."
+          type: "array",
+          description: "List of field names to be added to the model of the semantic layer if needed.",
+          items: {
+            type: "string"
+          }
         }
       },
       required: ["needsSemanticUpdate"]
