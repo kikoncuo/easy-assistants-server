@@ -166,7 +166,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         queryAttempts: state.queryAttempts + 1,
       };
     } else {
-      this.functions[0]('info', createNodeResponse('data', { message: `Metabase card created with ID ${result.cardId}`, data: { cardId: result.cardId } }));
       return {
         ...state,
         cardId: result.cardId!,
@@ -181,8 +180,12 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     
     if ('error' in result) {
       const stopExecution = result.error.includes("Can't find join path");
-      
-      this.functions[0]('info', createNodeResponse('error', { message: result.error }));
+      if(stopExecution) {
+        this.functions[0]('info', createNodeResponse('error', { message: "Stopping execution", data: {finalError: true}}));
+      } else {
+        this.functions[0]('info', createNodeResponse('error', { message: result.error }));
+      }
+
       return {
         ...state,
         feedbackMessage: result.error,
