@@ -166,6 +166,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         queryAttempts: state.queryAttempts + 1,
       };
     } else {
+      this.functions[0]('info', createNodeResponse('data', { message: "Omniloy card created successfully", data: { cardId: result.cardId } }));
       return {
         ...state,
         cardId: result.cardId!,
@@ -183,7 +184,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       if(stopExecution) {
         this.functions[0]('info', createNodeResponse('error', { message: "Stopping execution", data: {finalError: true}}));
       } else {
-        this.functions[0]('info', createNodeResponse('error', { message: result.error }));
+        this.functions[0]('info', createNodeResponse('data', { message: result.error }));
       }
 
       return {
