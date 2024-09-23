@@ -2,6 +2,7 @@
 import WebSocket from 'ws';
 import Logger from '../src/utils/Logger';
 import dotenv from 'dotenv';
+import { schema } from '../experimental/schema';
 dotenv.config();
 
 
@@ -13,7 +14,7 @@ function connectToServer() {
   
   ws.on('open', () => {
     Logger.log('Connected to server');
-    ws?.send(JSON.stringify({ type: 'configure', configData: [2, "blank_street"], appType: 'insights' }));
+    ws?.send(JSON.stringify({ type: 'configure', configData: [9, "blank_street"], appType: 'insights', schema: schema }));
     promptUserInput();
 
    /*ws?.send(JSON.stringify({ 

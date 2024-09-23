@@ -1,7 +1,7 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { getRelevantTables } from './nodes/cardLogic';
-import { authenticate, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
+import { getExampleRelatedCards, getRelevantCards, getRelevantTables } from './nodes/cardLogic';
+import { authenticate, getCard, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
@@ -12,6 +12,7 @@ import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
 import { PostgresSaver } from '../checkpoint/postgres';
+import { similaritySearch } from '../utils/EmbeddingUtils';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
@@ -20,12 +21,14 @@ interface InsightExtractorState extends BaseState {
   queryResult: any[];
   fieldDetails: Record<number, any>; 
   isPossible: string;
-  relevantTables: any[];
+  relevantCards: any[];
+  cardIds: number[];
   plan: any[];
   codeInterpreterThreadId: string; 
   runId: string; 
   continued: boolean;
   result: string;
+  feedbackMessage: string;
   finalResult: string; 
 }
 
@@ -58,7 +61,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      relevantTables: {
+      relevantCards: {
         value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
@@ -81,6 +84,14 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       result: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
+      },
+      feedbackMessage: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      },
+      cardIds: {
+        value: (x: number[], y?: number[]) => (y ? y : x),
+        default: () => [],
       },
     };
     super(graphState);
@@ -106,83 +117,59 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     }
   }
 
-  private async identifyRelevantTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const { relevantTables } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
-    const changeNeeded = relevantTables.filter(table => table.status === 'current').length === 0;
-    if (relevantTables && relevantTables.length > 0 && !changeNeeded) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
-    } else if (relevantTables && relevantTables.length > 0 && changeNeeded) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables are already retrieved", data: {relevantTables: relevantTables} }));
-    } else {
-      this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
+  private async selectCardsNode(state: InsightExtractorState): Promise<InsightExtractorState> {
+    let ids = [];
+    let cards = [];
+    const filter = { databaseID: this.database };
+    const similaritySearchWithScoreResults = await similaritySearch(this.companyName, state.task, 3, filter);
+    for (const [doc, score] of similaritySearchWithScoreResults) {
+      Logger.log(
+        `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
+          doc.metadata
+        )}]`
+      );
+      cards.push({ id: doc.metadata.id, name: doc.pageContent, status: 'current' });
+      ids.push(doc.metadata.id);
     }
-    Logger.log('relevantTables',relevantTables)
-    const tablesNeeded = changeNeeded ? 'yes' : 'no';
-    Logger.log('tablesNeeded', tablesNeeded)
-    return { ...state, isPossible: tablesNeeded, relevantTables };
+    const { relevantCards } = await getRelevantCards(state.task, cards, state.relevantCards, state.continued, state.result);
+    Logger.log('relevantCards', relevantCards)
+    ids = ids.filter(id => relevantCards.some(card => card.id === id));
+    if(ids.length < 1) {
+      this.functions[0]('info', createNodeResponse('error', { message: "No cards found for the task" }));
+      return { ...state, relevantCards: [] };
+    } else {
+      this.functions[0]('info', createNodeResponse('data', { message: "Relevant cards related to the task have been identified", data: { relevantCardIds: ids } }));
+      const tablesNeeded = 'no';
+       Logger.log('changeNeeded', tablesNeeded)
+      return { ...state, isPossible: tablesNeeded, cardIds: ids };
+    }
   }
 
-  private async getTablesNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-
-    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
-    Logger.log('tablesToQuery', tablesToQuery)
-    for (const table of tablesToQuery) {
-        const questionData = {
-            datasetQuery: {
-                database: this.database,
-                type: "query",
-                query: {
-                    "source-table": table.id,
-                    "limit": 10
-                }
-            }
-        };
-
-        let retry = true;
-        let tableResult;
-        let retryCount = 0;
-
-        while (retry) {
-            try {
-                tableResult = await getDatasetQuery(this.companyName, this.sessionToken, questionData);
-
-                if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
-                  retryCount++;  
-                  Logger.log(`Query for table ${table.name} failed, retry attempt ${retryCount}`);
-                    this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
-                } else {
-                    retry = false; // Exit retry loop if no failure
-                    this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
-                }
-
-            } catch (error) {
-                Logger.error(`Error querying table ${table.name}:`, error);
-                retry = false; // Exit retry loop in case of an error
-            }
+  private async getCardsNode(state: InsightExtractorState): Promise<InsightExtractorState> {
+    const ids = state.cardIds;
+    if (ids && ids.length > 0) {
+      for(const id of ids) {
+        const card = await getCard(this.companyName, this.sessionToken, id);
+        if (card) {
+          state.queryResult.push({ name: card.name, result: card.result_metadata, dataset_query: card.dataset_query });
+          state.relevantCards.push({ name: card.name, result: card.result_metadata, dataset_query: card.dataset_query, status: 'current' });
         }
-
-        if (tableResult && tableResult.data) {
-          const filteredSchema = this.schema.filter((schema) => schema.id === table.id);
-          const fields = filteredSchema.map((i: any) => i.fields).flat(1);
-          fields.forEach((field: any) => {
-            delete field.id
-            delete field.name
-          });
-          state.queryResult.push({ name: table.name, rows: tableResult.data.rows, fields: fields });
-        }
+      }
+      this.functions[0]('info', createNodeResponse('data', { message: "Example cards related to the task have been identified", data: { exampleCardIds: ids } }));
+    } else {
+      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task"}));
     }
-    return { ...state, queryResult: state.queryResult };
-}
-
+    return { ...state };
+  }
 
   private async plannerNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const tables = state.queryResult.map((table: any) => ({
-        tableName: table.name,
-        rows: table.rows,
-        fields: table.fields
+    const cards = state.queryResult.map((card: any) => ({
+        cardName: card.name,
+        result: card.result,
+        dataset_query: card.dataset_query
       }));
   
-      const formattedTables = JSON.stringify(tables)
+    const formattedCards = JSON.stringify(cards)
     
     const model = createStructuredResponseAgent(getStrongestModel(), [GeneratePlanTool]);
 
@@ -190,14 +177,17 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       new HumanMessage(`
         Given the following task: "${state.task}"
         
-        You are provided with several tables. Each table contains its name, 10 rows of data, and fields array which will contain the fieldName of the field, description of the field and additional details of the field which can be very useful for the query.
+        You are provided with several cards. Each card contains:
         
-        For each table, you will receive:
-        tableName: The name of the table.
-        rows: The actual data in the table.
-        fields: The fields of the table.
+        1. cardName: The name of the card
+        2. result: An array of objects describing the fields in the result, including:
+          - fieldName: The name of the column (e.g., "itemName", "sum").
+          - description: A brief description of the column (e.g., "Name of the item", "Sum of TotalWasted").
+          - base_type: The data type of the column (e.g., "type/Text", "type/Float").
+          - fingerprint: Statistical information about the field's values
+        3. dataset_query: The query used to generate the card's data
         
-        table data: ${formattedTables}
+        Card data: ${formattedCards}
   
         Create a detailed step-by-step plan to extract insights based on the task above. Your plan should be an array of steps, where each step includes:
 
@@ -208,7 +198,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         5. Expected Insight: Describe the insight or information you expect to gain from this step.
   
         IMPORTANT: This plan will be used to generate Python code for each step. Ensure that each step is clear, concise, and can be translated into a single Python script.
-        IMPORTANT: Choose columns that actually exist in the table and avoid columns that do not exist.
+        IMPORTANT: Choose columns that actually exist in the card and avoid columns that do not exist.
         IMPORTANT: The plan should be returned as a JSON array of step objects.
   
         Here's an example of how the plan should be structured:
@@ -273,13 +263,13 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     const openai = new OpenAI();
     const activityManager = new ActivityManager(openai);
 
-    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
+    const cardsToQuery = state.relevantCards.filter(card => card.status === 'current');
 
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
       
       codeInterpreterThreadId = await createThread();
 
-      const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
+      const csvs = await this.getDatasetAsCSV(cardsToQuery, this.sessionToken, this.database, this.companyName);
 
       const attachments = await uploadTables(csvs);
     
@@ -287,9 +277,9 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     
     } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
       
-      if(state.continued && tablesToQuery.length > 0) {
+      if(state.continued && cardsToQuery.length > 0) {
         
-        const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
+        const csvs = await this.getDatasetAsCSV(cardsToQuery, this.sessionToken, this.database, this.companyName);
         
         const attachments = await uploadTables(csvs);
         
@@ -373,41 +363,33 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     this.functions[0]('tool', data);
   }
 
-  private async getDatasetAsCSV(relevantTables:any[], sessionToken: string, databaseID:number, companyName:string): Promise<any> {
-    const csvs: { [tableName: string]: string } = {};
-    for(const table of relevantTables) {
+  private async getDatasetAsCSV(relevantCards:any[], sessionToken: string, databaseID:number, companyName:string): Promise<any> {
+    const csvs: { [cardName: string]: string } = {};
+    for(const card of relevantCards) {
       let retry = true;
       let retryCount = 0;
       let csv;
+      const query = card.dataset_query
       const payload = {
-        query: JSON.stringify({
-          database: databaseID,
-          query: { "source-table": table.id },
-          type: "query",
-          middleware: {
-            "js-int-to-string?": true,
-            "userland-query?": true,
-            "add-default-userland-constraints?": true
-          }
-        })
+        query: JSON.stringify(query)
       };
       while (retry) {
         try {
             csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               retryCount++;  
-              Logger.log(`CSV for table ${table.name} failed, retry attempt ${retryCount}`);
-              this.functions[0]('info', createNodeResponse('error', { message: `Table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
+              Logger.log(`CSV for card ${card.name} failed, retry attempt ${retryCount}`);
+              this.functions[0]('info', createNodeResponse('error', { message: `Card ${card.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
             } else {
               retry = false; // Exit retry loop if no failure
-              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved table ${table.name}`, data: {csv: table.name} }));
+              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved card ${card.name}`, data: {csv: card.name} }));
             }
           } catch (error) {
-            console.error(`Error fetching CSV for table ${table.name}:`, error);
+            console.error(`Error fetching CSV for card ${card.name}:`, error);
           retry = false; // Exit retry loop in case of an error
         }
       }
-        csvs[table.name] = csv;
+        csvs[card.name] = csv;
     }
     return csvs;
   }
@@ -417,22 +399,22 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     const clientConfig = ConfigurationManager.getConfig(this.companyName);
 
     graphBuilder
-      .addNode('select_tables', this.identifyRelevantTablesNode.bind(this))
-      .addNode('get_tables', this.getTablesNode.bind(this))
+      .addNode("select_cards", this.selectCardsNode.bind(this))
+      .addNode("get_cards", this.getCardsNode.bind(this))
       .addNode("plan_execution", this.plannerNode.bind(this))
       .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
-      .addEdge(START, "select_tables")
-      .addConditionalEdges('select_tables', (state) => { // Now if there is a threadId from openai, we will go there directly
+      .addEdge(START, "select_cards")
+      .addConditionalEdges('select_cards', (state) => { // Now if there is a threadId from openai, we will go there directly
         if (state.codeInterpreterThreadId !== '' && state.isPossible === 'yes') {
           return 'generate_python_code';
         } 
-        if (state.relevantTables.length >= 1 && state.isPossible === 'no') {
-          return 'get_tables';
+        if (state.cardIds.length >= 1 && state.isPossible === 'no') {
+          return 'get_cards';
         } else {
             return END;
         }
       })
-      .addConditionalEdges('get_tables', (state) => {
+      .addConditionalEdges('get_cards', (state) => {
         if (state.continued === true) {
           return 'generate_python_code';
         } else {
@@ -443,17 +425,17 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       .addEdge("generate_python_code", END)
     
       
-      const poolConfig = {
-        host: clientConfig.PG_HOST,
-        port: Number(clientConfig.PG_PORT),
-        user: clientConfig.PG_USER,
-        password: clientConfig.PG_PASSWORD,
-        database: clientConfig.PG_DATABASE,
-      };
+      // const poolConfig = {
+      //   host: clientConfig.PG_HOST,
+      //   port: Number(clientConfig.PG_PORT),
+      //   user: clientConfig.PG_USER,
+      //   password: clientConfig.PG_PASSWORD,
+      //   database: clientConfig.PG_DATABASE,
+      // };
       
-      const postgresSaver = new PostgresSaver(poolConfig);
+      // const postgresSaver = new PostgresSaver(poolConfig);
 
-    return graphBuilder.compile({ checkpointer: postgresSaver });
+    return graphBuilder.compile();
   }
 
   getApp(): any {

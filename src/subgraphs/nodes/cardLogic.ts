@@ -1,7 +1,7 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool} from '../../models/Tools';
+import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool} from '../../models/Tools';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
@@ -521,4 +521,47 @@ export async function getRelevantTables(task: string, schema: any, stateTables: 
   Logger.log('Table selection reasoning:', reasoning);
 
   return { relevantTables };
+};
+
+
+export async function getRelevantCards(task: string, cards: any[], stateCards: any[], continued: boolean, stateResult: string): Promise<{ relevantCards: any[] }> {
+  const model = createStructuredResponseAgent(getFasterModel(), [CardIdentifyingTool]);
+
+  let continuedPrompt = "";
+  if (continued) {
+    continuedPrompt = `
+      This is a continuation of a previous task. These are the cards that you selected for the previous task:
+      ${JSON.stringify(stateCards, null, 2)}
+
+      The result of the previous task was: ${stateResult}
+
+      To understand the new task, you should consider the previous task's result.
+      If the new task involves adding or removing cards, Then you should certainly consider these state cards with the new task.
+      Evaluate whether these state cards are sufficient for the task or if additional cards from the schema are needed.
+    `;
+  }
+
+  const message = await model.invoke([
+    new HumanMessage(`
+        Given the task: "${task}"
+
+        And the following cards: ${JSON.stringify(cards, null, 2)}
+
+        ${continuedPrompt}
+
+        Please identify the most relevant cards for this task using the identifyRelevantCards function.
+        If state cards are provided, explain whether they are sufficient or why additional cards are needed.
+        Include ALL relevant cards in your response:
+        1. If this is a continued task, include all previously selected cards that are still relevant and give them status "previous".
+        2. Add any new cards from the schema that are relevant to the current task and give them status "current".
+        
+        Explain your reasoning for including each card and any changes from the previous selection.
+      `)
+  ]);
+
+  const { relevantCards, reasoning } = message.lc_kwargs.tool_calls[0].args;
+
+  Logger.log('Card selection reasoning:', reasoning);
+
+  return { relevantCards };
 };
