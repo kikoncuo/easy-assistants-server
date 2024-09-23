@@ -696,7 +696,7 @@ export const GeneratePlanTool: ToolDefinition = {
   type: "function",
   function: {
     name: "generatePlan",
-    description: "Generates a detailed step-by-step plan for extracting insights from the table data based on the given task.",
+    description: "Generates a detailed step-by-step plan for extracting insights from the card data based on the given task.",
     parameters: {
       type: "object",
       properties: {
@@ -733,6 +733,47 @@ export const GeneratePlanTool: ToolDefinition = {
         }
       },
       required: ["plan"]
+    }
+  }
+};
+
+
+export const CardIdentifyingTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "identifyRelevantCards",
+    description: "Identify the most relevant cards for the given task, considering relationships between cards and choosing only the necessary cards to answer the task efficiently.",
+    parameters: {
+      type: "object",
+      properties: {
+        reasoning: {
+          type: "string",
+          description: "A brief explanation of why these cards were chosen and how they relate to the task. Always mention the name of the card explicitly."
+        },
+        relevantCards: {
+          type: "array",
+          description: "An array of objects representing the relevant cards. (Do not use fields, datapoints, or variables, only cards)",
+          items: {
+            type: "object",
+            properties: {
+              id: {
+                type: "integer",
+                description: "The numeric ID of the card."
+              },
+              name: {
+                type: "string",
+                description: "The name of the card."
+              },
+              status: {
+                type: "string",
+                description: "The status of the card, previous or current."
+              }
+            },
+            required: ["id", "name", "status"]
+          }
+        },
+      },
+      required: ["relevantCards", "reasoning"]
     }
   }
 };
