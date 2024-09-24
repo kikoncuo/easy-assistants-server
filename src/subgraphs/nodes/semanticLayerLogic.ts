@@ -1,6 +1,6 @@
 import { HumanMessage } from "@langchain/core/messages";
 import { anthropicSonnet, createStructuredResponseAgent } from "../../models/Models";
-import { GetDataSuggestionsTool, GetSourcesTool, InsightsSuggestionsTool } from "../../models/Tools";
+import { GetSourcesTool, GetSuggestionsTool } from "../../models/Tools";
 import Logger from "../../utils/Logger";
 import { EditCubeGraph } from "../editCubes";
 import { getSchema } from "../../utils/MetabaseAPI";
@@ -61,13 +61,14 @@ export async function handleEditCubeGraph(semanticTask: string, sessionToken: st
   };
 }
 
-export async function getSuggestionss(
+
+export async function getSuggestions(
   schema: any[],
-  suggestionType: string
 ): Promise<{ getDataSuggestions: string[]; insightsSuggestions: string[] }> {
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), [suggestionType === 'insights' ? InsightsSuggestionsTool : GetDataSuggestionsTool]);
+  const model = createStructuredResponseAgent(anthropicSonnet(), [GetSuggestionsTool]);
 
+  // Mejorar el prompt con más contexto y claridad
   const message = await model.invoke([
     new HumanMessage(`
       You are an AI tasked with generating suggestions for questions or prompts that users can ask about the following data schema:
@@ -75,10 +76,10 @@ export async function getSuggestionss(
       
       The data schema represents tables and fields related to various business or data contexts. Your job is to:
       
-      1. Identify possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
+      1. Identify only four possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
          Examples might include querying sales, product information, or performance metrics.
       
-      2. Identify insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
+      2. Identify only four insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
 
       Provide your suggestions in two arrays: 'getDataSuggestions' for direct data queries and 'insightsSuggestions' for deeper analysis or insights.
     `),
@@ -95,53 +96,5 @@ export async function getSuggestionss(
   return {
     getDataSuggestions,
     insightsSuggestions
-  };
-
-}
-
-export async function getSuggestions(
-  schema: any[],
-  suggestionType: string
-): Promise<{ suggestions: string[]}> {
-
-  const model = createStructuredResponseAgent(
-    anthropicSonnet(), 
-    [suggestionType === 'insights' ? InsightsSuggestionsTool : GetDataSuggestionsTool]
-  );
-
-  const prompt = suggestionType === 'insights' 
-    ? `
-      You are an AI tasked with generating insight-related suggestions for questions or prompts that users can ask based on the following data schema:
-      ${JSON.stringify(schema)}.
-      
-      The schema represents tables and fields related to various business or data contexts. Your job is to:
-      
-      1. Identify only four insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
-      
-      Provide your suggestions in an array of strings.
-    `
-    : `
-      You are an AI tasked with generating data-related suggestions for questions or prompts that users can ask based on the following data schema:
-      ${JSON.stringify(schema)}.
-      
-      The schema represents tables and fields related to various business or data contexts. Your job is to:
-      
-      1. Identify only four possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
-         Examples might include querying sales, product information, or performance metrics.
-      
-      Provide your suggestions in an array of strings.
-    `;
-
-  const message = await model.invoke([
-    new HumanMessage(prompt),
-  ]);
-
-  const args = message.lc_kwargs.tool_calls[0].args;
-  const suggestions = args.suggestions;
-
-  Logger.log('suggestions', suggestions.join('\n'));
-
-  return {
-    suggestions
   };
 }
