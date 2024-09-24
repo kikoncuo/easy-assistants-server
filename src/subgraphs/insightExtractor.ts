@@ -1,7 +1,7 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { getExampleRelatedCards, getRelevantCards, getRelevantTables } from './nodes/cardLogic';
-import { authenticate, getCard, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
+import { getRelevantCards } from './nodes/cardLogic';
+import { authenticate, getCard, getDatasetAsCSV } from '../utils/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
@@ -121,7 +121,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     let ids = [];
     let cards = [];
     const filter = { databaseID: this.database };
-    const similaritySearchWithScoreResults = await similaritySearch(this.companyName, state.task, 3, filter);
+    const similaritySearchWithScoreResults = await similaritySearch(this.companyName, state.task, 10, filter);
     for (const [doc, score] of similaritySearchWithScoreResults) {
       Logger.log(
         `* [SIM=${score.toFixed(3)}] ${doc.pageContent} [${JSON.stringify(
