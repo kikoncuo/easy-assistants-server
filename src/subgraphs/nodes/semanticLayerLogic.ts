@@ -1,22 +1,21 @@
 import { HumanMessage } from "@langchain/core/messages";
 import { anthropicSonnet, createStructuredResponseAgent } from "../../models/Models";
-import { GetSourcesTool } from "../../models/Tools";
+import { GetDataSuggestionsTool, GetSourcesTool, InsightsSuggestionsTool } from "../../models/Tools";
 import Logger from "../../utils/Logger";
 import { EditCubeGraph } from "../editCubes";
-import { getSchema, syncDatabaseSchema } from "../../utils/MetabaseAPI";
+import { getSchema } from "../../utils/MetabaseAPI";
 import { getModelsData } from "../../utils/DataStructure";
-import { NodeStatus, createNodeResponse } from "../../utils/NodeResponseUtils";
 
 export async function checkUpdateSemanticLayer(
-    task: string,
-    company_name: string,
-  ): Promise<{ needsSemanticUpdate: boolean; semanticTask: string }> {
-    const cubeModels = await getModelsData(company_name);
-  
-    const model = createStructuredResponseAgent(anthropicSonnet(), [GetSourcesTool]); 
-  
-    const message = await model.invoke([
-      new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
+  task: string,
+  company_name: string,
+): Promise<{ needsSemanticUpdate: boolean; semanticTask: string }> {
+  const cubeModels = await getModelsData(company_name);
+
+  const model = createStructuredResponseAgent(anthropicSonnet(), [GetSourcesTool]);
+
+  const message = await model.invoke([
+    new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
           and determine if a new measure or dimension has to be created on the semantic layer.
   
           First, review the following CubeJS model descriptions to know the curent dimensions and measures available:
@@ -27,38 +26,122 @@ export async function checkUpdateSemanticLayer(
           I you think a new value in the semantic layer is 100% required for this task, because it can't be calculated with the existing data, specify what measure or dimension should be created on the semantic layer.
           As example, if the user request the top 5 products and we don't have a definition for 'topProducts' or it cannot be calculated using existing measures, dimensions and filters, ask to create it.
           `),
-    ]);
-  
-    const args = message.lc_kwargs.tool_calls[0].args;
-  
-    const needsSemanticUpdate = args.needsSemanticUpdate;
-    const semanticTask = args.semanticTask || '';
-  
-    Logger.log('\nneedsSemanticUpdate', needsSemanticUpdate);
-    Logger.log('\nsemanticTask', semanticTask);
-  
-    //If needsSemanticUpdate we will interact with the user to await if he want to proceed with the update or not. If not, we will put the state needsSemanticUpdate false to continue the normal procedure.
-  
-    return {
-      needsSemanticUpdate: needsSemanticUpdate,
-      semanticTask: needsSemanticUpdate ? semanticTask : ''
-    };
-  
-  }
+  ]);
 
-  export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{schema: any[], result: string}> {
-    const editCubeGraph = new EditCubeGraph(company_name, sessionToken, databaseId, functions);
-    const result = await editCubeGraph.getGraph().invoke({
-      task: semanticTask,
-    });
-    const schema = await getSchema(company_name, sessionToken, databaseId);
-    
-    Logger.log(`Edit cube graph result: ${result.finalResult}`);
-    //TODO: Inform frontend user that the result is OK.
-    
-    return {
-      schema,
-      result
-    };
-  }
-  
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const needsSemanticUpdate = args.needsSemanticUpdate;
+  const semanticTask = args.semanticTask || '';
+
+  Logger.log('\nneedsSemanticUpdate', needsSemanticUpdate);
+  Logger.log('\nsemanticTask', semanticTask);
+
+  //If needsSemanticUpdate we will interact with the user to await if he want to proceed with the update or not. If not, we will put the state needsSemanticUpdate false to continue the normal procedure.
+
+  return {
+    needsSemanticUpdate: needsSemanticUpdate,
+    semanticTask: needsSemanticUpdate ? semanticTask : ''
+  };
+
+}
+
+export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{ schema: any[], result: string }> {
+  const editCubeGraph = new EditCubeGraph(company_name, sessionToken, databaseId, functions);
+  const result = await editCubeGraph.getGraph().invoke({
+    task: semanticTask,
+  });
+  const schema = await getSchema(company_name, sessionToken, databaseId);
+
+  Logger.log(`Edit cube graph result: ${result.finalResult}`);
+  //TODO: Inform frontend user that the result is OK.
+
+  return {
+    schema,
+    result
+  };
+}
+
+export async function getSuggestionss(
+  schema: any[],
+  suggestionType: string
+): Promise<{ getDataSuggestions: string[]; insightsSuggestions: string[] }> {
+
+  const model = createStructuredResponseAgent(anthropicSonnet(), [suggestionType === 'insights' ? InsightsSuggestionsTool : GetDataSuggestionsTool]);
+
+  const message = await model.invoke([
+    new HumanMessage(`
+      You are an AI tasked with generating suggestions for questions or prompts that users can ask about the following data schema:
+      ${JSON.stringify(schema)}.
+      
+      The data schema represents tables and fields related to various business or data contexts. Your job is to:
+      
+      1. Identify possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
+         Examples might include querying sales, product information, or performance metrics.
+      
+      2. Identify insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
+
+      Provide your suggestions in two arrays: 'getDataSuggestions' for direct data queries and 'insightsSuggestions' for deeper analysis or insights.
+    `),
+  ]);
+
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const getDataSuggestions = args.getDataSuggestions;
+  const insightsSuggestions = args.insightsSuggestions;
+
+  Logger.log('\getDataSuggestions', getDataSuggestions.join(','));
+  Logger.log('\insightsSuggestions', insightsSuggestions.join(','));
+
+  return {
+    getDataSuggestions,
+    insightsSuggestions
+  };
+
+}
+
+export async function getSuggestions(
+  schema: any[],
+  suggestionType: string
+): Promise<{ suggestions: string[]}> {
+
+  const model = createStructuredResponseAgent(
+    anthropicSonnet(), 
+    [suggestionType === 'insights' ? InsightsSuggestionsTool : GetDataSuggestionsTool]
+  );
+
+  const prompt = suggestionType === 'insights' 
+    ? `
+      You are an AI tasked with generating insight-related suggestions for questions or prompts that users can ask based on the following data schema:
+      ${JSON.stringify(schema)}.
+      
+      The schema represents tables and fields related to various business or data contexts. Your job is to:
+      
+      1. Identify only four insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
+      
+      Provide your suggestions in an array of strings.
+    `
+    : `
+      You are an AI tasked with generating data-related suggestions for questions or prompts that users can ask based on the following data schema:
+      ${JSON.stringify(schema)}.
+      
+      The schema represents tables and fields related to various business or data contexts. Your job is to:
+      
+      1. Identify only four possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
+         Examples might include querying sales, product information, or performance metrics.
+      
+      Provide your suggestions in an array of strings.
+    `;
+
+  const message = await model.invoke([
+    new HumanMessage(prompt),
+  ]);
+
+  const args = message.lc_kwargs.tool_calls[0].args;
+  const suggestions = args.suggestions;
+
+  Logger.log('suggestions', suggestions.join('\n'));
+
+  return {
+    suggestions
+  };
+}
