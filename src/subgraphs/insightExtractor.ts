@@ -22,7 +22,7 @@ interface InsightExtractorState extends BaseState {
   fieldDetails: Record<number, any>; 
   isPossible: string;
   relevantCards: any[];
-  cardIds: number[];
+  cardIds: any[];
   plan: any[];
   codeInterpreterThreadId: string; 
   runId: string; 
@@ -90,7 +90,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         default: () => '',
       },
       cardIds: {
-        value: (x: number[], y?: number[]) => (y ? y : x),
+        value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
     };
@@ -129,30 +129,43 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         )}]`
       );
       cards.push({ id: doc.metadata.id, name: doc.pageContent, status: 'current' });
-      ids.push(doc.metadata.id);
     }
-    const { relevantCards } = await getRelevantCards(state.task, cards, state.relevantCards, state.continued, state.result);
-    Logger.log('relevantCards', relevantCards)
-    ids = ids.filter(id => relevantCards.some(card => card.id === id));
+    cards = cards.map(card => {
+      const matchingCard = state.cardIds.find(cardIdObj => cardIdObj.id === card.id && cardIdObj.name === card.name);
+      if (matchingCard) {
+        return { ...card, status: 'previous' }; 
+      }
+      return card; 
+    })
+    const { relevantCards } = await getRelevantCards(state.task, cards, state.cardIds, state.continued, state.result);
+    const changeNeeded = relevantCards.filter(card => card.status === 'current').length === 0;
+    ids = relevantCards
     if(ids.length < 1) {
       this.functions[0]('info', createNodeResponse('error', { message: "No cards found for the task" }));
       return { ...state, relevantCards: [] };
     } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant cards related to the task have been identified", data: { relevantCardIds: ids } }));
-      const tablesNeeded = 'no';
+      this.functions[0]('info', createNodeResponse('data', { message: "Relevant cards related to the task have been identified" }));
+      const tablesNeeded = changeNeeded ? 'yes' : 'no';
        Logger.log('changeNeeded', tablesNeeded)
       return { ...state, isPossible: tablesNeeded, cardIds: ids };
     }
   }
 
   private async getCardsNode(state: InsightExtractorState): Promise<InsightExtractorState> {
-    const ids = state.cardIds;
+    let ids = state.cardIds;
+    ids = ids.filter(id => id.status === 'current');
+    if( state.continued) {
+      state.relevantCards = state.relevantCards.map(card => ({
+        ...card,
+        status: 'previous'
+      }));
+    }
     if (ids && ids.length > 0) {
       for(const id of ids) {
-        const card = await getCard(this.companyName, this.sessionToken, id);
+        const card = await getCard(this.companyName, this.sessionToken, id.id);
         if (card) {
           state.queryResult.push({ name: card.name, result: card.result_metadata, dataset_query: card.dataset_query });
-          state.relevantCards.push({ name: card.name, result: card.result_metadata, dataset_query: card.dataset_query, status: 'current' });
+          state.relevantCards.push({ name: card.name, result: card.result_metadata, dataset_query: card.dataset_query, status: id.status });
         }
       }
       this.functions[0]('info', createNodeResponse('data', { message: "Example cards related to the task have been identified", data: { exampleCardIds: ids } }));
@@ -315,7 +328,15 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
         if(status === 'completed') {
           state.result = content.value;
+          state.relevantCards = state.relevantCards.map(card => ({
+            ...card,
+            status: 'previous'
+          }));
         }
+      },
+      (error) => {
+        Logger.error('Error in streamRun:', error);
+        this.functions[0]('info', createNodeResponse('error', { message: "There was an error with the AI models. Please contact with Omniloy support team.", data: { error: error } }));
       }
     );
 
@@ -331,7 +352,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     state.continued = true;
     Logger.log('continued', state.continued)
 
-    return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
+    return {...state, codeInterpreterThreadId: codeInterpreterThreadId, relevantCards: state.relevantCards};
   } 
 
   private async sendImageAndTextToFrontend(value: string | Buffer, type: string, status: string, runId: string, codeInterpreterThreadId?: string): Promise<void> {
@@ -379,7 +400,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               retryCount++;  
               Logger.log(`CSV for card ${card.name} failed, retry attempt ${retryCount}`);
-              this.functions[0]('info', createNodeResponse('error', { message: `Card ${card.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
+              this.functions[0]('info', createNodeResponse('data', { message: `Card ${card.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
             } else {
               retry = false; // Exit retry loop if no failure
               this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved card ${card.name}`, data: {csv: card.name} }));
@@ -425,17 +446,17 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       .addEdge("generate_python_code", END)
     
       
-      // const poolConfig = {
-      //   host: clientConfig.PG_HOST,
-      //   port: Number(clientConfig.PG_PORT),
-      //   user: clientConfig.PG_USER,
-      //   password: clientConfig.PG_PASSWORD,
-      //   database: clientConfig.PG_DATABASE,
-      // };
+      const poolConfig = {
+        host: clientConfig.PG_HOST,
+        port: Number(clientConfig.PG_PORT),
+        user: clientConfig.PG_USER,
+        password: clientConfig.PG_PASSWORD,
+        database: clientConfig.PG_DATABASE,
+      };
       
-      // const postgresSaver = new PostgresSaver(poolConfig);
+      const postgresSaver = new PostgresSaver(poolConfig);
 
-    return graphBuilder.compile();
+    return graphBuilder.compile({ checkpointer: postgresSaver });
   }
 
   getApp(): any {
