@@ -129,13 +129,16 @@ export const streamRun = async (
   assistantId: string,
   onToolCallDone: (tool: any, image:any, status:string, runId: string) => void,
   onTextDone: (content: any, status:string, runId: string) => void,
+  onError: (error: any) => void,
 ): Promise<void> => {
 
+  try {
   const run = openai.beta.threads.runs.stream(threadId, { assistant_id: assistantId })
     .on('connect',() => {
       console.log('connected')
     })
     .on('runStepDone', async(runStep) => {
+      try {
         const stepDetails = runStep.step_details;
         const status = await openai.beta.threads.runs.retrieve(threadId, runStep.run_id);
         if (isMessageCreationStepDetails(stepDetails)) {
@@ -146,13 +149,10 @@ export const streamRun = async (
               onTextDone(content.text, status.status, runStep.run_id);
             }
           }
-        } else {
-          if(isToolCallsStepDetails(stepDetails)) {
-            if (stepDetails.type === 'tool_calls' &&
-              stepDetails.tool_calls[0]?.type === 'code_interpreter') {
+        } else if (isToolCallsStepDetails(stepDetails)) {
+          if (stepDetails.type === 'tool_calls' && stepDetails.tool_calls[0]?.type === 'code_interpreter') {
             let imageDataBuffer: Buffer | null = null;
 
-            // Loop through the outputs array to find image outputs
             if (stepDetails.tool_calls[0].code_interpreter.outputs && stepDetails.tool_calls[0].code_interpreter.outputs.length > 0) {
               for (const output of stepDetails.tool_calls[0].code_interpreter.outputs) {
                 if (output.type === 'image') {
@@ -171,10 +171,19 @@ export const streamRun = async (
             onToolCallDone(stepDetails.tool_calls[0].code_interpreter, imageDataBuffer, status.status, runStep.run_id);
             }
           }
+        } catch (error) {
+          console.error('Error during runStep processing:', error);
         }
-    }).on('end', () => {
-      console.log('ended')
-    })
+      }).on('end', () => {
+        console.log('ended');
+      }).on('error', (error) => {
+        // Handle errors from the stream here
+        console.error('Stream encountered an error:', error);
+        onError(error);
+      });
+  } catch (error) {
+    console.error('Error initializing run stream:', error);
+  }
      // Here are more events if in the future we want to stream more often
       /*.on('textCreated', (text) => process.stdout.write('\nassistant > '))
       .on('textDelta', (textDelta, snapshot) => {
