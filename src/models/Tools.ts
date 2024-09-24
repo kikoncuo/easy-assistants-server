@@ -778,46 +778,30 @@ export const CardIdentifyingTool: ToolDefinition = {
   }
 };
 
-export const GetDataSuggestionsTool: ToolDefinition = {
+export const GetSuggestionsTool: ToolDefinition = {
   type: "function",
   function: {
-    name: "getDataSuggestions", 
-    description: "Provides suggestions of data-related questions or prompts the user can ask based on the provided data schema.",
+    name: "getSuggestions",
+    description: "Provides suggestions of questions or prompts the user can ask based on the provided data schema.",
     parameters: {
       type: "object",
       properties: {
-        suggestions: {
+        getDataSuggestions: {
           type: "array",
-          description: "Array of strings containing data-related prompts or questions the user can ask.",
+          description: "Array of strings suggesting data-related prompts the user can ask about.",
           items: {
-            type: "string",
-            description: "A specific data-related question or prompt relevant to the data schema."
+            type: "string"
           }
         },
-      },
-      required: ["suggestions"]
-    }
-  }
-};
-
-export const InsightsSuggestionsTool: ToolDefinition = {
-  type: "function",
-  function: {
-    name: "getInsightsSuggestions",
-    description: "Provides suggestions of insight-related questions or prompts the user can ask to derive meaningful insights from the provided data schema.",
-    parameters: {
-      type: "object",
-      properties: {
-        suggestions: {
+        insightsSuggestions: {
           type: "array",
-          description: "Array of strings containing insight-related prompts or questions the user can ask.",
+          description: "Array of strings suggesting insight-related prompts the user can ask about.",
           items: {
-            type: "string",
-            description: "A specific insight-related question or prompt relevant to deriving insights from the data schema."
+            type: "string"
           }
-        },
+        }
       },
-      required: ["suggestions"]
+      required: ["getDataSuggestions", "InsightsSuggestions"]
     }
   }
 };

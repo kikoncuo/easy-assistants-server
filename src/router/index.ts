@@ -161,7 +161,6 @@ export class Router {
           WebSocketService.queryUser(type, functions, this.ws),
       ],
       data.schema, 
-      data.appType
     );
     const result = await suggestionsGraph.getGraph().invoke({});
     WebSocketService.outputHandler('createSuggestions', result, this.ws);
