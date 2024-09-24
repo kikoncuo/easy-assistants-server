@@ -239,14 +239,16 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addEdge('fetch_schema', 'evaluate_examples')
       .addEdge('evaluate_examples', 'evaluate_fields')
       .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
-        if (state.isPossible === 'yes') {
+        if (state.isPossible !== 'no') {
           return 'create_card';
         } else {
           return 'check_update_semantic_layer';
         }
       })
-      .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
-        if (state.needsSemanticUpdate) {
+      .addConditionalEdges('check_update_semantic_layer', (state: DataRecoveryState) => {
+        if (state.queryAttempts > 3 && state.isPossible !== 'yes') {
+          return 'evaluate_fields'
+        } else if (state.needsSemanticUpdate) {
           return END;
         } else {
           return 'create_card';
@@ -255,7 +257,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       //.addEdge('evaluate_examples', 'create_card')
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
-          return END;
+          return 'check_update_semantic_layer';
         } else if (!state.cardId) {
           return 'create_card';
         } else {
@@ -264,7 +266,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       })
       .addConditionalEdges('execute_query', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3 || state.stopExecution) {
-          return END;
+          return 'check_update_semantic_layer'
         } else if (state.queryResult && !("error" in state.queryResult)) {
           return 'getReasoning';
         } else {
