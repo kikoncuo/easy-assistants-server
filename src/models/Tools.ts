@@ -777,3 +777,49 @@ export const CardIdentifyingTool: ToolDefinition = {
     }
   }
 };
+
+export const GetSuggestionsTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSuggestions",
+    description: "Provides suggestions of questions or prompts the user can ask based on the provided data schema.",
+    parameters: {
+      type: "object",
+      properties: {
+        getDataSuggestions: {
+          type: "array",
+          description: "Array of strings suggesting data-related prompts the user can ask about.",
+          items: {
+            type: "string"
+          }
+        },
+        insightsSuggestions: {
+          type: "array",
+          description: "Array of strings suggesting insight-related prompts the user can ask about.",
+          items: {
+            type: "string"
+          }
+        }
+      },
+      required: ["getDataSuggestions", "InsightsSuggestions"]
+    }
+  }
+};
+
+export const GetSuggestionsForAskedQuestionTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSuggestionsForAskedQuestion",
+    description: "Provides suggestions of questions or prompts the user can ask based on the provided data schema and task.",
+    parameters: {
+      type: "object",
+      properties: {
+        suggestion: {
+          type: "string",
+          description: "Suggesting data-related prompt the user can ask about based on the provided task.",
+        }
+      },
+      required: ["suggestion"]
+    }
+  }
+};

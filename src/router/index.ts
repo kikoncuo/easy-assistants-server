@@ -7,6 +7,7 @@ import { CreateCubeGraph } from '../subgraphs/createCube';
 import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
 import Logger from '../utils/Logger';
 import { cancelRun } from '../utils/Stream';
+import { SuggestionsGraph } from '../subgraphs/getSuggestions';
 
 export class Router {
   private graphApps: Map<string, GraphApplication> = new Map();
@@ -43,6 +44,9 @@ export class Router {
         break;
       case 'toolResponse':
         // this is handled by the graph application itself
+        break;
+      case 'getSuggestions':
+        this.handleGetSuggestions(data);
         break;
       default:
         Logger.error(`Unknown message type: ${data.type}`);
@@ -147,6 +151,19 @@ export class Router {
       companyName: data.data.companyName,
     });
     WebSocketService.outputHandler('createCubes', result.cubes, this.ws);
+  }
+
+  private async handleGetSuggestions(data: any) {
+    Logger.log('Creating suggestions');
+    const suggestionsGraph = new SuggestionsGraph(
+      [
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+          WebSocketService.queryUser(type, functions, this.ws),
+      ],
+      data.schema, 
+    );
+    const result = await suggestionsGraph.getGraph().invoke({});
+    WebSocketService.outputHandler('createSuggestions', result, this.ws);
   }
 
   private async handleStopStreaming(data: any) {

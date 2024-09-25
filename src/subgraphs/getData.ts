@@ -2,7 +2,7 @@ import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
-import { checkUpdateSemanticLayer, handleEditCubeGraph } from './nodes/semanticLayerLogic';
+import { checkUpdateSemanticLayer, getSuggestionForAskedQuestion, handleEditCubeGraph } from './nodes/semanticLayerLogic';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 
 interface DataRecoveryState extends BaseState {
@@ -15,11 +15,11 @@ interface DataRecoveryState extends BaseState {
   schema: any[];
   cardId: number;
   queryResult: any;
-  fieldDetails: Record<number, any>; 
+  fieldDetails: Record<number, any>;
   exampleRelatedCards: string;
   stopExecution: boolean;
   needsSemanticUpdate: boolean;
-  semanticTask: string; 
+  semanticTask: string;
   isPossible: string;
 }
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
@@ -41,7 +41,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      finalResult: {  
+      finalResult: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
@@ -65,15 +65,15 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: any, y?: any) => (y ? y : x),
         default: () => null,
       },
-      fieldDetails: {  
+      fieldDetails: {
         value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
         default: () => ({}),
       },
-      exampleRelatedCards: {  
+      exampleRelatedCards: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      stopExecution: {  
+      stopExecution: {
         value: (x: boolean, y?: boolean) => (y ? y : x),
         default: () => false,
       },
@@ -100,7 +100,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
 
     if (schema) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: {numTables: schema.length} }));
+      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: { numTables: schema.length } }));
     } else {
       this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
     }
@@ -109,18 +109,19 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const {needsSemanticUpdate, semanticTask} = await checkUpdateSemanticLayer(state.task, this.companyName);
+    const { needsSemanticUpdate, semanticTask } = await checkUpdateSemanticLayer(state.task, this.companyName);
     if (needsSemanticUpdate) {
-      this.functions[0]('info', createNodeResponse('error', 
-        { message: `To complete this task, the semantic layer needs to be updated with the following field: ${semanticTask}. Please reach out to support for assistance.`}
+      const { suggestion } = await getSuggestionForAskedQuestion(state.schema, state.task);
+      this.functions[0]('info', createNodeResponse('error',
+        { message: `To complete this task, the semantic layer needs to be updated with the following field: ${semanticTask}. Please reach out to support for assistance. \nHere is a suggestion related to your original query: ${suggestion}` }
       ));
     } else {
       this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer does not need updates" }));
     }
-    return { 
-      ...state, 
-      needsSemanticUpdate, 
-      semanticTask, 
+    return {
+      ...state,
+      needsSemanticUpdate,
+      semanticTask,
       finalResult: needsSemanticUpdate ? "The semantic layer needs an update to complete the task" : state.finalResult
     };
   }
@@ -140,18 +141,18 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     if (ids) {
       this.functions[0]('info', createNodeResponse('data', { message: "Example cards related to the task have been identified", data: { exampleCardIds: ids } }));
     } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task"}));
+      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task" }));
     }
     return { ...state, exampleRelatedCards };
   }
 
   private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const queryAttempts =  (state.queryAttempts || 0) + 1;
+    const queryAttempts = (state.queryAttempts || 0) + 1;
     if (queryAttempts > 3) {
       Logger.log("Unable to generate a suitable query after 3 attempts.")
       return {
         ...state,
-        queryAttempts, 
+        queryAttempts,
         finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
       }
     }
@@ -178,11 +179,11 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
   private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
     const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
-    
+
     if ('error' in result) {
       const stopExecution = result.error.includes("Can't find join path");
-      if(stopExecution) {
-        this.functions[0]('info', createNodeResponse('error', { message: "Stopping execution", data: {finalError: true}}));
+      if (stopExecution) {
+        this.functions[0]('info', createNodeResponse('error', { message: "Stopping execution", data: { finalError: true } }));
       } else {
         this.functions[0]('info', createNodeResponse('data', { message: result.error }));
       }
@@ -203,7 +204,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async getReasoningNode(state: DataRecoveryState): Promise<DataRecoveryState> {
-    const result = await getReasoning( state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
+    const result = await getReasoning(state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
 
     const getDatasetQuery = [
       {
@@ -239,16 +240,14 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addEdge('fetch_schema', 'evaluate_examples')
       .addEdge('evaluate_examples', 'evaluate_fields')
       .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
-        if (state.isPossible !== 'no') {
+        if (state.isPossible === 'yes') {
           return 'create_card';
         } else {
           return 'check_update_semantic_layer';
         }
       })
-      .addConditionalEdges('check_update_semantic_layer', (state: DataRecoveryState) => {
-        if (state.queryAttempts > 3 && state.isPossible !== 'yes') {
-          return 'evaluate_fields'
-        } else if (state.needsSemanticUpdate) {
+      .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
+        if (state.needsSemanticUpdate) {
           return END;
         } else {
           return 'create_card';
@@ -257,7 +256,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       //.addEdge('evaluate_examples', 'create_card')
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
-          return 'check_update_semantic_layer';
+          return END;
         } else if (!state.cardId) {
           return 'create_card';
         } else {
@@ -266,7 +265,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       })
       .addConditionalEdges('execute_query', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3 || state.stopExecution) {
-          return 'check_update_semantic_layer'
+          return END;
         } else if (state.queryResult && !("error" in state.queryResult)) {
           return 'getReasoning';
         } else {
@@ -275,9 +274,9 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       })
       .addEdge('getReasoning', END);
 
-    return subGraphBuilder.compile();
+      return subGraphBuilder.compile();
   }
-  
+
   getApp(): any {
     return this.getGraph();
   }
