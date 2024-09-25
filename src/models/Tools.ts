@@ -696,7 +696,7 @@ export const GeneratePlanTool: ToolDefinition = {
   type: "function",
   function: {
     name: "generatePlan",
-    description: "Generates a detailed step-by-step plan for extracting insights from the card data based on the given task.",
+    description: "Generates a detailed step-by-step plan for extracting insights from the table data based on the given task.",
     parameters: {
       type: "object",
       properties: {

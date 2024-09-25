@@ -3,6 +3,7 @@ import { getFasterModel, createPlanner } from '../models/Models';
 import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
+import { InsightDatasetGraph } from '../subgraphs/insightDataset';
 import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
@@ -30,7 +31,7 @@ export class GraphApplication {
       systemPrompt: dataSystemPrompt
     },
     insights: {
-      subgraphs: [{ name: 'getInsights', Graph: InsightExtractorGraph }],
+      subgraphs: [{ name: 'getInsights', Graph: InsightDatasetGraph }],
       systemPrompt: insightsSystemPrompt
     },
     // Add more app types here as needed
@@ -57,9 +58,9 @@ export class GraphApplication {
   private async initializeGraphManager( schema: any[], appType?: string): Promise<void> {
 
     if (appType === 'insights') {
-      const insightExtractorGraph = new InsightExtractorGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
-      await insightExtractorGraph.initialize();
-      this.graphManager = insightExtractorGraph;
+      const insightDatasetGraph = new InsightDatasetGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
+      await insightDatasetGraph.initialize();
+      this.graphManager = insightDatasetGraph;
     } else {
       const fasterModel = getFasterModel();
       const planner = createPlanner(fasterModel);
