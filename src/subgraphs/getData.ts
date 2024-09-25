@@ -97,11 +97,11 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Retrieving schema" }));
+
     const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
 
-    if (schema) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Schema successfully retrieved", data: { numTables: schema.length } }));
-    } else {
+    if (!schema) {
       this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
     }
 
@@ -109,15 +109,16 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Checking if modifications are required in the semantic layer" }));
+
     const { needsSemanticUpdate, semanticTask } = await checkUpdateSemanticLayer(state.task, this.companyName);
     if (needsSemanticUpdate) {
       const { suggestion } = await getSuggestionForAskedQuestion(state.schema, state.task);
       this.functions[0]('info', createNodeResponse('error',
         { message: `To complete this task, the semantic layer needs to be updated with the following field: ${semanticTask}. Please reach out to support for assistance. \nHere is a suggestion related to your original query: ${suggestion}` }
       ));
-    } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Semantic layer does not need updates" }));
-    }
+    } 
+
     return {
       ...state,
       needsSemanticUpdate,
@@ -127,26 +128,30 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Identifying appropriate fields for the query" }));
+    
     const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
-    if (fieldDetails) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Appropriate fields identified for query", data: { fieldDetails } }));
-    } else {
+    
+    if (!fieldDetails) {
       this.functions[0]('info', createNodeResponse('error', { message: "No appropriate fields were found for this query" }));
     }
     return { ...state, fieldDetails, isPossible };
   }
 
   private async evaluateExamplesNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Identifying example cards related to the task" }));
+
     const { exampleRelatedCards, ids } = await getExampleRelatedCards(state.task, state.sessionToken, this.database, this.companyName, state.feedbackMessage);
-    if (ids) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Example cards related to the task have been identified", data: { exampleCardIds: ids } }));
-    } else {
+    
+    if (!ids) {
       this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task" }));
     }
     return { ...state, exampleRelatedCards };
   }
 
   private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Creating Omniloy card" }));
+
     const queryAttempts = (state.queryAttempts || 0) + 1;
     if (queryAttempts > 3) {
       Logger.log("Unable to generate a suitable query after 3 attempts.")
@@ -167,7 +172,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         queryAttempts: state.queryAttempts + 1,
       };
     } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Omniloy card created successfully", data: { cardId: result.cardId } }));
       return {
         ...state,
         cardId: result.cardId!,
@@ -178,6 +182,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   }
 
   private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Executing query", data: { cardId: state.cardId } }));
     const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
 
     if ('error' in result) {
@@ -195,7 +200,6 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         stopExecution: stopExecution,
       };
     } else {
-      this.functions[0]('info', createNodeResponse('data', { message: "Query executed successfully", data: { cardId: state.cardId } }));
       return {
         ...state,
         queryResult: result.queryResult,
