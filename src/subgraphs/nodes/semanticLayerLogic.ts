@@ -1,6 +1,6 @@
 import { HumanMessage } from "@langchain/core/messages";
 import { anthropicSonnet, createStructuredResponseAgent } from "../../models/Models";
-import { GetSourcesTool, GetSuggestionsTool } from "../../models/Tools";
+import { GetSourcesTool, GetSuggestionsForAskedQuestionTool, GetSuggestionsTool } from "../../models/Tools";
 import Logger from "../../utils/Logger";
 import { EditCubeGraph } from "../editCubes";
 import { getSchema } from "../../utils/MetabaseAPI";
@@ -98,3 +98,35 @@ export async function getSuggestions(
     insightsSuggestions
   };
 }
+
+export async function getSuggestionForAskedQuestion(
+  schema: any[],
+  task: string
+): Promise<{ suggestion: string}> {
+
+  const model = createStructuredResponseAgent(anthropicSonnet(), [GetSuggestionsForAskedQuestionTool]);
+  const message = await model.invoke([
+    new HumanMessage(`
+      You are an AI assistant that receives both a user question (referred to as 'task') and a data schema ('schema'). Sometimes, when you are unable to fulfill the user's request due to missing or inaccessible data, your job is to generate an alternative query suggestion based on the task and schema.
+  
+      Your responsibilities are:
+  
+      1. Analyze the provided schema: ${JSON.stringify(schema)}. The schema represents tables and fields related to various business or data contexts (such as sales, product information, or performance metrics).
+     
+      2. Based on the user’s task  ${task}  (question) and schema, suggest one alternative query in the form of a string (suggestion) that could retrieve relevant information, even if the original query cannot be executed. The alternative query must return data that can always be represented either as a chart or a table. For example, if the user is asking for detailed sales data that isn't available, suggest querying general sales trends or related metrics instead.
+  
+      Return the alternative query in a string format: "suggestion: [your query suggestion here]".
+  
+      Ensure that the suggestion can be represented in a chart or table.
+    `),
+  ]);
+  
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const suggestion = args.suggestion;
+
+  return {
+    suggestion
+  };
+}
+

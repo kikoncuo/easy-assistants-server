@@ -805,3 +805,21 @@ export const GetSuggestionsTool: ToolDefinition = {
     }
   }
 };
+
+export const GetSuggestionsForAskedQuestionTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getSuggestionsForAskedQuestion",
+    description: "Provides suggestions of questions or prompts the user can ask based on the provided data schema and task.",
+    parameters: {
+      type: "object",
+      properties: {
+        suggestion: {
+          type: "string",
+          description: "Suggesting data-related prompt the user can ask about based on the provided task.",
+        }
+      },
+      required: ["suggestion"]
+    }
+  }
+};
