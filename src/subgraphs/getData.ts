@@ -223,6 +223,13 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     this.functions[0]('tool', getDatasetQuery);
 
+    if (state.isPossible === 'maybe') {
+      const { suggestion } = await getSuggestionForAskedQuestion(state.schema, state.task);
+      this.functions[0]('info', createNodeResponse('error',
+        { message: `This information may not be accurate. Please review it or try again using the following suggestion: ${suggestion}` }
+      ));
+    }
+
     return {
       ...state,
       finalResult: state.queryAttempts > 1 ? result.finalResult + " Is this what you were looking for?" : result.finalResult,
