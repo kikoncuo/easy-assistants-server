@@ -267,8 +267,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
 
   private async codeInterpreterNode(state: InsightDatasetState): Promise<InsightDatasetState> {
     let codeInterpreterThreadId = state.codeInterpreterThreadId;
-    const openai = new OpenAI();
-    const activityManager = new ActivityManager(openai);
+
     if(state.continued) {
         state.relevantTables = state.relevantTables.map(table => ({
           ...table,
@@ -313,7 +312,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       codeInterpreterThreadId,
       assistantId,
       async (tool, imageData, status, runId) => {
-        activityManager.updateActivity();
+
         Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
         if(imageData) {
           this.sendImageAndTextToFrontend(imageData, "Image", status, runId, codeInterpreterThreadId);
@@ -321,7 +320,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         this.sendImageAndTextToFrontend(tool.input, "Code", status, runId, codeInterpreterThreadId);
       },
       (content, status, runId) => {
-        activityManager.updateActivity();
+
         this.sendImageAndTextToFrontend(content, "Text", status, runId);
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
         if(status === 'completed') {
@@ -342,7 +341,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     //   (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
     // );
 
-    activityManager.stopMonitoring();
+
     state.continued = true;
     Logger.log('continued', state.continued)
 
@@ -388,13 +387,8 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       const payload = {
         query: JSON.stringify({
             database: databaseID,
-            query: { "source-table": table.id },
-            type: "query",
-            middleware: {
-              "js-int-to-string?": true,
-              "userland-query?": true,
-              "add-default-userland-constraints?": true
-            }
+            query: { "source-table": table.id, limit: 10000 },
+            type: "query"
           })
       };
       while (retry) {
