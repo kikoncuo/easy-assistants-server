@@ -8,7 +8,6 @@ import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
 import { createThread, createMessage, streamRun, uploadTables } from '../utils/AssistantsOpenAI';
 import OpenAI from 'openai';
-import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
 import { PostgresSaver } from '../checkpoint/postgres';
@@ -273,8 +272,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
 
   private async codeInterpreterNode(state: InsightExtractorState): Promise<InsightExtractorState> {
     let codeInterpreterThreadId = state.codeInterpreterThreadId;
-    const openai = new OpenAI();
-    const activityManager = new ActivityManager(openai);
 
     const cardsToQuery = state.relevantCards.filter(card => card.status === 'current');
 
@@ -315,7 +312,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       codeInterpreterThreadId,
       assistantId,
       async (tool, imageData, status, runId) => {
-        activityManager.updateActivity();
         Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
         if(imageData) {
           this.sendImageAndTextToFrontend(imageData, "Image", status, runId, codeInterpreterThreadId);
@@ -323,7 +319,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         this.sendImageAndTextToFrontend(tool.input, "Code", status, runId, codeInterpreterThreadId);
       },
       (content, status, runId) => {
-        activityManager.updateActivity();
         this.sendImageAndTextToFrontend(content, "Text", status, runId);
         Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
         if(status === 'completed') {
@@ -348,7 +343,6 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     //   (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
     // );
 
-    activityManager.stopMonitoring();
     state.continued = true;
     Logger.log('continued', state.continued)
 

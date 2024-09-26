@@ -7,8 +7,6 @@ import { createStructuredResponseAgent, getStrongestModel } from '../models/Mode
 import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
 import { createThread, createMessage, streamRun, uploadTables } from '../utils/AssistantsOpenAI';
-import OpenAI from 'openai';
-import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
 import { PostgresSaver } from '../checkpoint/postgres';
