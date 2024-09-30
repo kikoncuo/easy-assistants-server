@@ -8,6 +8,7 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
 import { StructuredToolInterface } from '@langchain/core/tools';
+import Logger from '../utils/Logger';
 
 
 const redirectSchema = z
@@ -43,12 +44,12 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
 }
 
 // Helper functions:
-function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
+function createPlanner(llm: BaseChatModel): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(redirectSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
 
-function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
+function createSolver(llm: BaseChatModel): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(solverSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
@@ -60,6 +61,18 @@ function createStructuredResponseAgent(llm: BaseChatModel, structuredResponseSch
     bindedLLM = llm.bindTools(structuredResponseSchema);
   } else { // TODO: Remove this when we test the new version of langchain with all models
     bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(structuredResponseSchema) : llm;
+  }
+  return bindedLLM as BaseChatModel;
+}
+
+function createToolsAgent(llm: BaseChatModel, tools: (ToolDefinition | Record<string, unknown> | StructuredToolInterface<any>)[], strict = false): BaseChatModel {
+  let bindedLLM;
+
+  if (llm.bindTools) {
+    bindedLLM = llm.bindTools(tools, { strict: strict } as any);
+  } else { // TODO: Remove this when we test the new version of langchain with all models
+    Logger.error('This model does not support tools');
+    return llm;
   }
   return bindedLLM as BaseChatModel;
 }
@@ -151,4 +164,5 @@ export {
   createPlanner,
   createSolver,
   createStructuredResponseAgent,
+  createToolsAgent,
 };

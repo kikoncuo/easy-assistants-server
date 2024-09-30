@@ -4,7 +4,7 @@ import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
 import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { InsightDatasetGraph } from '../subgraphs/insightDataset';
-import { CreateDashboardGraph } from '../subgraphs/createDashboard';
+//import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
   name: string;
@@ -26,7 +26,7 @@ export class GraphApplication {
     default: {
       subgraphs: [
         { name: 'dataAgent', Graph: DataRecoveryGraph },
-        { name: 'createDashboard', Graph: CreateDashboardGraph }
+        //{ name: 'createDashboard', Graph: CreateDashboardGraph }
       ],
       systemPrompt: dataSystemPrompt
     },

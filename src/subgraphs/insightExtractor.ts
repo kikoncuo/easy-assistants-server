@@ -2,8 +2,8 @@ import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { getRelevantCards } from './nodes/cardLogic';
 import { authenticate, getCard, getDatasetAsCSV } from '../utils/MetabaseAPI';
-import { HumanMessage } from '@langchain/core/messages';
-import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
+import { BaseMessageChunk, HumanMessage } from '@langchain/core/messages';
+import { createStructuredResponseAgent, createToolsAgent, getStrongestModel } from '../models/Models';
 import Logger from '../utils/Logger';
 import { GeneratePlanTool } from '../models/Tools';
 import { createThread, createMessage, streamRun, uploadTables } from '../utils/AssistantsOpenAI';
@@ -11,8 +11,11 @@ import OpenAI from 'openai';
 import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
-import { PostgresSaver } from '../checkpoint/postgres';
+//import { PostgresSaver } from '../checkpoint/postgres';
+import { MemorySaver } from '@langchain/langgraph';
 import { similaritySearch } from '../utils/EmbeddingUtils';
+import { BaseLanguageModelCallOptions } from '@langchain/core/language_models/base';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
@@ -184,7 +187,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
   
     const formattedCards = JSON.stringify(cards)
     
-    const model = createStructuredResponseAgent(getStrongestModel(), [GeneratePlanTool]);
+    const model = createToolsAgent(getStrongestModel(), [GeneratePlanTool]);
 
     const message = await model.invoke([
       new HumanMessage(`
@@ -415,7 +418,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
     return csvs;
   }
 
-  getGraph(): CompiledStateGraph<InsightExtractorState> {
+  getGraph(): any {
     const graphBuilder = new StateGraph<InsightExtractorState>({ channels: this.channels });
     const clientConfig = ConfigurationManager.getConfig(this.companyName);
 
@@ -454,9 +457,10 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
         database: clientConfig.PG_DATABASE,
       };
       
-      const postgresSaver = new PostgresSaver(poolConfig);
+      //const postgresSaver = new PostgresSaver(poolConfig);
+      const memory = new MemorySaver();
 
-    return graphBuilder.compile({ checkpointer: postgresSaver });
+    return graphBuilder.compile({ checkpointer: memory });
   }
 
   getApp(): any {

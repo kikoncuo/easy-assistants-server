@@ -1,10 +1,11 @@
-import pg from "pg";
+/*import pg from "pg";
 import { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
   Checkpoint,
 } from "@langchain/langgraph";
 import Logger from '../utils/Logger';
+import { PendingWrite } from "@langchain/langgraph-checkpoint";
 
 export interface CheckpointTuple {
   config: RunnableConfig;
@@ -20,6 +21,9 @@ export interface CheckpointMetadata {
 }
 
 export class PostgresSaver extends BaseCheckpointSaver {
+  putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
   private pool: pg.Pool;
 
   constructor(poolConfig: pg.PoolConfig) {
@@ -33,6 +37,14 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
     let query: string;
     let values: any[];
+
+    // Update the CheckpointMetadata interface
+    interface CheckpointMetadata {
+      source: "input" | "loop" | "update";
+      step: number;
+      writes: Record<string, unknown> | null;
+      parents: string[];
+    }
 
     if (checkpoint_id !== undefined) {
       query = `SELECT * FROM postcheckpoints WHERE thread_id = $1 AND checkpoint_id = $2`;
@@ -179,3 +191,4 @@ export class PostgresSaver extends BaseCheckpointSaver {
     await this.pool.end();
   }
 }
+  */

@@ -1,4 +1,4 @@
-import { AbstractGraph, BaseState } from './baseGraph';
+/*import { AbstractGraph, BaseState } from './baseGraph';
 import { createStructuredResponseAgent, anthropicSonnet, groqChatLlama, getFasterModel, getStrongestModel } from '../models/Models';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { HumanMessage } from '@langchain/core/messages';
@@ -441,6 +441,9 @@ async function updateAndTestSemanticLayer(state: EditCubeState, sessionToken: st
 
 
 export class EditCubeGraph extends AbstractGraph<EditCubeState> {
+  getApp() {
+    throw new Error('Method not implemented.');
+  }
   private functions: Function[];
   private companyName: string;
   private sessionToken: string;
@@ -468,7 +471,7 @@ export class EditCubeGraph extends AbstractGraph<EditCubeState> {
     this.database = database;
   }
 
-  getGraph(): CompiledStateGraph<EditCubeState> {
+  getGraph(): any {
     const subGraphBuilder = new StateGraph<EditCubeState>({ channels: this.channels });
 
     subGraphBuilder
@@ -481,3 +484,4 @@ export class EditCubeGraph extends AbstractGraph<EditCubeState> {
     return subGraphBuilder.compile();
   }
 }
+*/

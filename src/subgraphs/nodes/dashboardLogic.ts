@@ -1,4 +1,4 @@
-import { createDashboard } from '../../utils/MetabaseAPI';
+/*import { createDashboard } from '../../utils/MetabaseAPI';
 import { addDocuments } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
 import { getFasterModel, createStructuredResponseAgent } from '../../models/Models';
@@ -158,4 +158,4 @@ export async function createMetabaseDashboard(
     Logger.error('Error during dashboard creation:', error);
     return { error: 'Error during dashboard creation' };
   }
-}
+}*/

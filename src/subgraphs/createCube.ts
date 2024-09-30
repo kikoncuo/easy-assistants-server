@@ -16,6 +16,9 @@ interface CreateCubeState extends BaseState {
 }
 
 export class CreateCubeGraph extends AbstractGraph<CreateCubeState> {
+  getApp() {
+    throw new Error('Method not implemented.');
+  }
   private functions: Function[];
 
   constructor(functions: Function[]) {
@@ -164,7 +167,7 @@ export class CreateCubeGraph extends AbstractGraph<CreateCubeState> {
     }
   }
 
-  getGraph(): CompiledStateGraph<CreateCubeState> {
+  getGraph(): any {
     const subGraphBuilder = new StateGraph<CreateCubeState>({ channels: this.channels });
 
     subGraphBuilder

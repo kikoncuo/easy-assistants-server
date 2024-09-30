@@ -1,4 +1,4 @@
-import { AbstractGraph, BaseState } from './baseGraph';
+/*import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import Logger from '../utils/Logger';
 import { addFilters, fetchSchema, getResults, identifyRelevantSources } from './nodes/cardLogic';
@@ -12,6 +12,9 @@ interface InsightState extends BaseState {
 }
 
 export class InsightGraph extends AbstractGraph<InsightState> {
+  getApp() {
+    throw new Error('Method not implemented.');
+  }
   private databaseId: number;
   private functions: Function[];
   private companyName: string;
@@ -97,7 +100,7 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     };
   }
 
-  getGraph(): CompiledStateGraph<InsightState> {
+  getGraph(): any {
     const subGraphBuilder = new StateGraph<InsightState>({ channels: this.channels });
 
     subGraphBuilder
@@ -120,3 +123,4 @@ export class InsightGraph extends AbstractGraph<InsightState> {
     return subGraphBuilder.compile();
   }
 }
+*/

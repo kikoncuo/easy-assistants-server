@@ -46,7 +46,7 @@ export class SuggestionsGraph extends AbstractGraph<SuggestionsState> {
      };
   }
 
-  getGraph(): CompiledStateGraph<SuggestionsState> {
+  getGraph(): any {
     const graphBuilder = new StateGraph<SuggestionsState>({ channels: this.channels });
 
     graphBuilder

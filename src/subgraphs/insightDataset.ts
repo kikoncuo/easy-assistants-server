@@ -11,7 +11,9 @@ import OpenAI from 'openai';
 import { ActivityManager } from '../utils/ActivityManager';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
-import { PostgresSaver } from '../checkpoint/postgres';
+//import { PostgresSaver } from '../checkpoint/postgres';
+import { MemorySaver } from '@langchain/langgraph';
+
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
@@ -418,7 +420,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     return csvs;
   }
 
-  getGraph(): CompiledStateGraph<InsightDatasetState> {
+  getGraph(): any {
     const graphBuilder = new StateGraph<InsightDatasetState>({ channels: this.channels });
     const clientConfig = ConfigurationManager.getConfig(this.companyName);
 
@@ -457,9 +459,10 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         database: clientConfig.PG_DATABASE,
       };
       
-      const postgresSaver = new PostgresSaver(poolConfig);
+      //const postgresSaver = new PostgresSaver(poolConfig);
+      const memory = new MemorySaver();
 
-    return graphBuilder.compile({ checkpointer: postgresSaver });
+    return graphBuilder.compile({ checkpointer: memory });
   }
 
   getApp(): any {

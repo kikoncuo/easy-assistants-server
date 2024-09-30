@@ -2,7 +2,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { anthropicSonnet, createStructuredResponseAgent } from "../../models/Models";
 import { GetSourcesTool, GetSuggestionsForAskedQuestionTool, GetSuggestionsTool } from "../../models/Tools";
 import Logger from "../../utils/Logger";
-import { EditCubeGraph } from "../editCubes";
+//import { EditCubeGraph } from "../editCubes";
 import { getSchema } from "../../utils/MetabaseAPI";
 import { getModelsData } from "../../utils/DataStructure";
 
@@ -45,7 +45,7 @@ export async function checkUpdateSemanticLayer(
 
 }
 
-export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{ schema: any[], result: string }> {
+/*export async function handleEditCubeGraph(semanticTask: string, sessionToken: string, functions: Function[], databaseId: number, company_name: string): Promise<{ schema: any[], result: string }> {
   const editCubeGraph = new EditCubeGraph(company_name, sessionToken, databaseId, functions);
   const result = await editCubeGraph.getGraph().invoke({
     task: semanticTask,
@@ -59,7 +59,7 @@ export async function handleEditCubeGraph(semanticTask: string, sessionToken: st
     schema,
     result
   };
-}
+}*/
 
 
 export async function getSuggestions(

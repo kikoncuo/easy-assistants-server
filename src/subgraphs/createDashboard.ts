@@ -1,4 +1,4 @@
-import { AbstractGraph, BaseState } from './baseGraph';
+/*import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { 
   createCardDescriptions, 
@@ -21,6 +21,9 @@ interface DashboardCreationState extends BaseState {
 }
 
 export class CreateDashboardGraph extends AbstractGraph<DashboardCreationState> {
+  getApp() {
+    throw new Error('Method not implemented.');
+  }
   private functions: Function[];
   private databaseId: number;
 
@@ -136,3 +139,4 @@ export class CreateDashboardGraph extends AbstractGraph<DashboardCreationState> 
     return subGraphBuilder.compile();
   }
 }
+  */
