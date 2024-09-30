@@ -209,13 +209,14 @@ if (queryResult.length === 0) {
   
       This is the query created for the card: ${metabaseQuery?.dataset_query ? (metabaseQuery.dataset_query.query ?? metabaseQuery.dataset_query) : 'No query available'}, 
       
-      This query does not return values. 
+      The query is not returning values. Analyze the details of the relevant fields to explain why. 
       
       The details of the relevant fields are: ${JSON.stringify(fieldDetails)}
 
       Analyze details of the relevant fields to explain why there is no data. 
-      Reference the contents of those fields. 
+      Reference the contents of these fields.
       
+      Provide a short and direct answer.
       IE: There are no results because the field 'Date' has data ranging from 2024-01-11 to 2024-08-13. 
 
       The current date is ${new Date()}
@@ -241,16 +242,26 @@ if (queryResult.length === 0) {
   ]);
 }
 
-const args = message.lc_kwargs.tool_calls[0].args;
+console.log({message})
+if (message.lc_kwargs.tool_calls.length > 0) {
+  const args = message.lc_kwargs.tool_calls[0].args;
 
-const reasoning = args.reasoning;
-const sources = args.sources;
+  const reasoning = args.reasoning;
+  const sources = args.sources;
 
-return {
-  finalResult: resultString, // we reassign here the truncated result
-  reasoning: reasoning,
-  sources: sources
-};
+  return {
+    finalResult: resultString, // we reassign here the truncated result
+    reasoning: reasoning,
+    sources: sources
+  };
+} else {
+  return {
+    finalResult: resultString, // we reassign here the truncated result
+    reasoning: message.content.toString(),
+    sources: []
+  };
+}
+
 }
 
 export async function identifyRelevantSources(task: string, sessionToken: string, databaseId: number, schema: any[], companyName:string): Promise<any[]> {
