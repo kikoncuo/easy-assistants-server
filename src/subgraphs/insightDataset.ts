@@ -279,7 +279,20 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
 
       const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
 
-      const attachments = await uploadTables(csvs);
+      const attachmentsandCsvs = await uploadTables(csvs);
+      const attachments = attachmentsandCsvs.attachments;
+      const csvFiles = attachmentsandCsvs.csvs;
+
+      const getCsv = [
+        {
+          function_name: 'getCsv',
+          arguments: {
+            generatedCsv: csvs,
+            generatedFiles: csvFiles
+          }
+        },
+      ];
+      this.functions[0]('tool', getCsv);
     
       await createMessage(codeInterpreterThreadId, JSON.stringify(state.plan), attachments);
     
@@ -289,7 +302,20 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         
         const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
         
-        const attachments = await uploadTables(csvs);
+        const attachmentsandCsvs = await uploadTables(csvs);
+        const attachments = attachmentsandCsvs.attachments;
+        const csvFiles = attachmentsandCsvs.csvs;
+
+        const getCsv = [
+          {
+            function_name: 'getCsv',
+            arguments: {
+              generatedCsv: csvs,
+              generatedFiles: csvFiles
+            }
+          },
+        ];
+        this.functions[0]('tool', getCsv);
         
         await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), attachments);
      

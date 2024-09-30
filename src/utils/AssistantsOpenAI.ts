@@ -59,9 +59,9 @@ export const parseAndUploadTables = async (data: any): Promise<OpenAI.Beta.Threa
   return attachments;
 };
 
-export const uploadTables = async (data: { [tableName: string]: string }): Promise<OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[]> => {
+export const uploadTables = async (data: { [tableName: string]: string }): Promise<{ attachments: OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[], csvs: any[] }> => {
   const attachments: OpenAI.Beta.Threads.Messages.MessageCreateParams.Attachment[] = [];
-
+  const csvs = [];
   for (const [tableName, csvContent] of Object.entries(data)) {
     if (!csvContent) {
       Logger.warn(`Skipping table with missing CSV content: ${tableName}`);
@@ -80,9 +80,14 @@ export const uploadTables = async (data: { [tableName: string]: string }): Promi
     };
     
     attachments.push(attachment);
+    const attachmentWithTableName = {
+      ...attachment,
+      tableName: tableName
+    }
+    csvs.push(attachmentWithTableName);
   }
 
-  return attachments;
+  return {attachments, csvs};
 };
 
 
