@@ -78,7 +78,7 @@ export class Router {
     // Create a Promise for the GraphApplication initialization
     const graphAppPromise = (async () => {
       const graphApp = new GraphApplication(
-        (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
+        (type: string, message: Array<{ function_name: string; arguments: any }> | string) => WebSocketService.outputHandler(type, message, this.ws),
         (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
           WebSocketService.queryUser(type, functions, this.ws),
         data.configData,

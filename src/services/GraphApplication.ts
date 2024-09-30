@@ -59,7 +59,7 @@ export class GraphApplication {
   private async initializeGraphManager( schema: any[], appType?: string): Promise<void> {
 
     if (appType === 'insights') {
-      const insightDatasetGraph = new InsightDatasetGraphV3(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
+      const insightDatasetGraph = new InsightDatasetGraph(+this.clientData[0], [this.clientAgentFunction, this.outputHandler], this.clientData[1], schema);
       await insightDatasetGraph.initialize();
       this.graphManager = insightDatasetGraph;
     } else {
@@ -86,7 +86,7 @@ export class GraphApplication {
       subgraphs[subgraphConfig.name] = {
         agentSubGraph: new subgraphConfig.Graph(
           +this.clientData[0],
-          [this.clientAgentFunction],
+          [this.clientAgentFunction, this.outputHandler],
           this.clientData[1],
           this.schema
         ),
