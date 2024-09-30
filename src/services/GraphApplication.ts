@@ -2,9 +2,10 @@ import { GraphManager } from './GraphManager';
 import { getFasterModel, createPlanner } from '../models/Models';
 import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
-import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
+// import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { InsightDatasetGraph } from '../subgraphs/insightDataset';
-import { CreateDashboardGraph } from '../subgraphs/createDashboard';
+import {InsightDatasetGraphV3} from '../subgraphs/getInisghtsV3';
+// import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
   name: string;
@@ -26,12 +27,12 @@ export class GraphApplication {
     default: {
       subgraphs: [
         { name: 'dataAgent', Graph: DataRecoveryGraph },
-        { name: 'createDashboard', Graph: CreateDashboardGraph }
+        // { name: 'createDashboard', Graph: CreateDashboardGraph }
       ],
       systemPrompt: dataSystemPrompt
     },
     insights: {
-      subgraphs: [{ name: 'getInsights', Graph: InsightDatasetGraph }],
+      subgraphs: [{ name: 'getInsights', Graph: InsightDatasetGraphV3 }],
       systemPrompt: insightsSystemPrompt
     },
     // Add more app types here as needed
@@ -58,7 +59,7 @@ export class GraphApplication {
   private async initializeGraphManager( schema: any[], appType?: string): Promise<void> {
 
     if (appType === 'insights') {
-      const insightDatasetGraph = new InsightDatasetGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
+      const insightDatasetGraph = new InsightDatasetGraphV3(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
       await insightDatasetGraph.initialize();
       this.graphManager = insightDatasetGraph;
     } else {

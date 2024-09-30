@@ -1,7 +1,7 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
 import { HumanMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool, GetRewriteTask} from '../../models/Tools';
+import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool, GetSuggestionsForAskedQuestionTool, GetRewriteTask} from '../../models/Tools';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
@@ -522,7 +522,7 @@ export async function getResults(task: string, sessionToken: string, databaseId:
   return insights
 }
 
-export async function getRelevantTables(task: string, schema: any, stateTables: any[], continued: boolean, stateResult: string): Promise<{ relevantTables: any[] }> {
+export async function getRelevantTables(task: string, schema: any, stateTables: any[], continued: boolean, stateResult: string): Promise<{ relevantTables: any[], isPossible: boolean }> {
   const model = createStructuredResponseAgent(getFasterModel(), [TableIdentifyingTool]);
 
   let continuedPrompt = "";
@@ -547,21 +547,29 @@ export async function getRelevantTables(task: string, schema: any, stateTables: 
 
         ${continuedPrompt}
 
-        Please identify the most relevant tables for this task using the identifyRelevantTables function.
-        If state tables are provided, explain whether they are sufficient or why additional tables are needed.
+        Please analyze the schema and the task to:
+        1. Identify the most relevant tables for this task by analyzing all the fields from each table in the schema.
+        2. Analyze the fields within each relevant table and explain how they relate to the task.
+        3. If state tables are provided, explain whether they are sufficient or why additional tables are needed.
+        4. Assess whether the task is possible with the available data.
+        5. If the task is not possible, don't include any tables in your response.
+
         Include ALL relevant tables in your response:
         1. If this is a continued task, include all previously selected tables that are still relevant and give them status "previous".
         2. Add any new tables from the schema that are relevant to the current task and give them status "current".
         
-        Explain your reasoning for including each table and any changes from the previous selection.
+        Explain your reasoning for including each table, any changes from the previous selection, and how the fields within and across tables work together to address the task.
+
+        Additionally, provide:
+        1. An assessment of whether the task is possible with the available data (isPossible: true/false)
       `)
   ]);
 
-  const { relevantTables, reasoning } = message.lc_kwargs.tool_calls[0].args;
+  const { relevantTables, reasoning, isPossible } = message.lc_kwargs.tool_calls[0].args;
 
   Logger.log('Table selection reasoning:', reasoning);
 
-  return { relevantTables };
+  return { relevantTables, isPossible };
 };
 
 
@@ -606,3 +614,27 @@ export async function getRelevantCards(task: string, cards: any[], stateCards: a
 
   return { relevantCards };
 };
+
+export async function getSuggestionForTask(
+  schema: any[],
+  task: string
+): Promise<{ suggestion: string}> {
+
+  const model = createStructuredResponseAgent(getStrongestModel(), [GetSuggestionsForAskedQuestionTool]);
+  const message = await model.invoke([
+    new HumanMessage(`
+      You are given a schema that describes the tables and fields in the database. 
+      Your task is to suggest a question or prompt that the user can ask about the provided schema.
+
+      The schema is: ${JSON.stringify(schema)}.
+    `),
+  ]);
+  
+  const args = message.lc_kwargs.tool_calls[0].args;
+
+  const suggestion = args.suggestion;
+
+  return {
+    suggestion
+  };
+}

@@ -90,9 +90,10 @@ export class GraphManager {
       database: clientConfig.PG_DATABASE,
     };
     
-    const postgresSaver = new PostgresSaver(poolConfig);
+    // const postgresSaver = new PostgresSaver(poolConfig);
+    const memory = new MemorySaver();
 
-    return workflow.compile({ checkpointer: postgresSaver });
+    return workflow.compile({ checkpointer: memory });
   }
 
   getApp(): any {
