@@ -1,6 +1,6 @@
 import { AbstractGraph, BaseState } from './baseGraph';
-import { CompiledStateGraph, END, MemorySaver, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { getRelevantTables } from './nodes/cardLogic';
+import { END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
+import { getRelevantTables, getSuggestionForTask } from './nodes/cardLogic';
 import { authenticate, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
 import { HumanMessage } from '@langchain/core/messages';
 import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
@@ -10,10 +10,11 @@ import { createThread, createMessage, streamRun, uploadTables } from '../utils/A
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
 import { PostgresSaver } from '../checkpoint/postgres';
+import { MemorySaver } from '@langchain/langgraph';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
-interface InsightDatasetState extends BaseState {
+interface InsightDatasetStateV3 extends BaseState {
   task: string;
   queryResult: any[];
   fieldDetails: Record<number, any>; 
@@ -27,7 +28,7 @@ interface InsightDatasetState extends BaseState {
   finalResult: string; 
 }
 
-export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
+export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> {
   private database: number;
   private companyName: string;
   private functions: Function[];
@@ -35,7 +36,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
   private sessionToken: string;
 
   constructor(databaseId: number, functions: Function[], companyName: string, schema: any[]) {
-    const graphState: StateGraphArgs<InsightDatasetState>['channels'] = {
+    const graphState: StateGraphArgs<InsightDatasetStateV3>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
@@ -104,15 +105,17 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     }
   }
 
-  private async identifyRelevantTablesNode(state: InsightDatasetState): Promise<InsightDatasetState> {
+  private async identifyRelevantTablesNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
     if(state.continued) {
         return {...state, isPossible: 'yes'};
     }
-    const { relevantTables } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
+    const { relevantTables, isPossible } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
+    Logger.log('Table selection isPossible:', isPossible);
+    Logger.log('Table selection relevantTables:', relevantTables)
     const changeNeeded = relevantTables.filter(table => table.status === 'current').length === 0;
-    if (relevantTables && relevantTables.length > 0 && !changeNeeded) {
+    if (relevantTables && relevantTables.length > 0 && !changeNeeded && isPossible) {
       this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
-    } else if (relevantTables && relevantTables.length > 0 && changeNeeded) {
+    } else if (relevantTables && relevantTables.length > 0 && changeNeeded && isPossible) {
       this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables are already retrieved", data: {relevantTables: relevantTables} }));
     } else {
         this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
@@ -124,7 +127,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
   }
 
 
-  private async getTablesNode(state: InsightDatasetState): Promise<InsightDatasetState> {
+  private async getTablesNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
     const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
     Logger.log('tablesToQuery', tablesToQuery)
     for (const table of tablesToQuery) {
@@ -139,15 +142,22 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
             }
         };
         let retry = true;
+        let maxRetryCount = 3;
         let tableResult;
         let retryCount = 0;
-        while (retry) {
+        while (retry && retryCount < maxRetryCount) {
             try {
                 tableResult = await getDatasetQuery(this.companyName, this.sessionToken, questionData);
                 if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
                   retryCount++;  
                   Logger.log(`Query for table ${table.name} failed, retry attempt ${retryCount}`);
                     this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
+                    if (retryCount >= maxRetryCount) {
+                        retry = false; // Exit retry loop if max retry count is reached
+                        this.functions[0]('error', createNodeResponse('error', { 
+                            message: `Failed to retrieve data for table ${table.name} after ${retryCount} attempts.` 
+                        }));
+                    } 
                 } else {
                     retry = false; // Exit retry loop if no failure
                     this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
@@ -168,9 +178,15 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         }
     }
     return { ...state, queryResult: state.queryResult };
-}
+  }
 
-  private async plannerNode(state: InsightDatasetState): Promise<InsightDatasetState> {
+  private async plannerNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
+
+    if(state.queryResult.length === 0) {
+        const { suggestion } = await getSuggestionForTask(this.schema, state.task);
+        console.log('Suggestion', suggestion);
+    }
+
     const tables = state.queryResult.map((table: any) => ({
         tableName: table.name,
         rows: table.rows,
@@ -178,7 +194,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       }));
   
     const formattedTables = JSON.stringify(tables)
-    
+
     const model = createStructuredResponseAgent(getStrongestModel(), [GeneratePlanTool]);
 
     const message = await model.invoke([
@@ -193,17 +209,33 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         fields: The fields of the table.
         
         table data: ${formattedTables}
-  
-        Create a detailed step-by-step plan to extract insights based on the task above. Your plan should be an array of steps, where each step includes:
+
+        Your task is to analyze the given task and table data to create a detailed step-by-step plan for extracting valuable insights. Follow these guidelines:
+
+            1. Analyze the task to identify key objectives and determine how to extract valuable insights from the table data.
+            2. Examine the table data to determine the optimal way to retrieve the required information.
+            3. Create a detailed step-by-step plan to extract insights based on the task and the table data. Your plan should demonstrate:
+                a. Data Structure Awareness:
+                    Leverage your understanding of the table data.
+                    Determine the optimal way to retrieve required data based on existing tables and fields.
+                b. Defining Data Requirements:
+                    Identify necessary data fields (e.g., order_date, order_id, order_total).
+                    Outline required metrics (e.g., order counts, total values).
+                c. Analysis Plan:
+                    Propose appropriate analytical methods (e.g., time series analysis, cohort analysis).
+                    Consider potential challenges and data limitations.
+        
+        Your plan should be an array of steps, where each step includes:
 
         1. Step Name: A brief, descriptive name for the step.
-        2. Description: A detailed description of what this step should accomplish.
-        3. Transformations: Detail any data transformations required for this step (e.g., aggregations, filtering, or calculations).
-        4. Visualization: If applicable, suggest an appropriate visualization (e.g., bar chart, scatter plot, line chart) for this step.
-        5. Expected Insight: Describe the insight or information you expect to gain from this step.
+        2. Description: A detailed description of what this step should accomplish, including any exploratory operations if needed.
+        3. Data Requirements: List the specific data fields and tables required for this step.
+        4. Transformations: Detail any data transformations required for this step (e.g., aggregations, filtering, or calculations).
+        5. Visualization: If applicable, suggest an appropriate visualization (e.g., bar chart, scatter plot, line chart) for this step.
+        6. Expected Insight: Describe the insight or information you expect to gain from this step.
   
         IMPORTANT: This plan will be used to generate Python code for each step. Ensure that each step is clear, concise, and can be translated into a single Python script.
-        IMPORTANT: Choose columns that actually exist in the table and avoid columns that do not exist.
+        IMPORTANT: Choose fields that actually exist in the table and avoid fields that do not exist.
         IMPORTANT: The plan should be returned as a JSON array of step objects.
   
         Here's an example of how the plan should be structured:
@@ -212,9 +244,13 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
           {
             "stepName": "Identify Underperforming Products",
             "description": "Calculate the sales performance of each product over the past month and compare it to the previous month to identify underperforming products.",
+            "dataRequirements": [
+                "orders table: order_id, order_date, product_id, quantity, price"
+            ],
             "transformations": [
               "Aggregate TotalSold by ProductId for the current month and the previous month",
-              "Calculate the percentage change in TotalSold for each product"
+              "Calculate the percentage change in TotalSold for each product",
+              "If product categories are not available, perform text search on product names for relevant keywords"
             ],
             "visualization": "Bar chart showing the percentage change in sales for each product",
             "expectedInsight": "Identify the top 5 products with the largest decrease in sales"
@@ -222,6 +258,9 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
           {
             "stepName": "Analyze Time-based Patterns",
             "description": "Examine sales patterns across different days of the week and times of day to identify potential factors affecting product performance.",
+            "dataRequirements": [
+                "orders table: order_id, order_date, product_id, quantity, price"
+            ],
             "transformations": [
               "Aggregate TotalSold by DayOfWeek and hour of day",
               "Calculate average sales for each product by day and hour"
@@ -232,11 +271,16 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         ]
   
         Please provide a similar plan tailored to the given task and data.
+
+        Additionally, provide:
+        1. An assessment of whether the plan is possible with the available table data (isPossible: true/false)
+        2. If the plan is not possible to execute with the available data, suggest an alternative task message that can generate a plan that is possible with the available table data.
       `)
     ]);
 
-    const { plan } = message.lc_kwargs.tool_calls[0].args;
-
+    const { plan, isPossible, task } = message.lc_kwargs.tool_calls[0].args;
+    Logger.log('isPossible from PlanNode', isPossible);
+    Logger.log('task from PlanNode', task);
 
     const userResponses = [];
 
@@ -263,7 +307,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     return {...state, plan: plan}
   }
 
-  private async codeInterpreterNode(state: InsightDatasetState): Promise<InsightDatasetState> {
+  private async codeInterpreterNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
     let codeInterpreterThreadId = state.codeInterpreterThreadId;
 
     if(state.continued) {
@@ -301,7 +345,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       if(state.continued && tablesToQuery.length > 0) {
         
         const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
-        
+        console.log('csvs', csvs)
         const attachmentsandCsvs = await uploadTables(csvs);
         const attachments = attachmentsandCsvs.attachments;
         const csvFiles = attachmentsandCsvs.csvs;
@@ -405,8 +449,10 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     const csvs: { [tableName: string]: string } = {};
     for(const table of relevantTables) {
       let retry = true;
+      let maxRetryCount = 3;
       let retryCount = 0;
       let csv;
+      let error: boolean = false;
     //   const query = table.dataset_query
       const payload = {
         query: JSON.stringify({
@@ -415,20 +461,28 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
             type: "query"
           })
       };
-      while (retry) {
+      while (retry && retryCount < maxRetryCount) {
         try {
             csv = await getDatasetAsCSV(companyName, payload, sessionToken);
             if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
               retryCount++;  
               Logger.log(`CSV for table ${table.name} failed, retry attempt ${retryCount}`);
               this.functions[0]('info', createNodeResponse('data', { message: `Table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
+              if (retryCount >= maxRetryCount) {
+                retry = false; // Exit retry loop if max retry count is reached
+                this.functions[0]('error', createNodeResponse('error', { 
+                  message: `Failed to retrieve CSV for table ${table.name} after ${retryCount} attempts.` 
+                }));
+                error = true;
+              }
             } else {
               retry = false; // Exit retry loop if no failure
               this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved table ${table.name}`, data: {csv: table.name} }));
             }
           } catch (error) {
             console.error(`Error fetching CSV for table ${table.name}:`, error);
-          retry = false; // Exit retry loop in case of an error
+            retry = false; // Exit retry loop in case of an error
+            error = true;
         }
       }
         csvs[table.name] = csv;
@@ -437,7 +491,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
   }
 
   getGraph(): any {
-    const graphBuilder = new StateGraph<InsightDatasetState>({ channels: this.channels });
+    const graphBuilder = new StateGraph<InsightDatasetStateV3>({ channels: this.channels });
     const clientConfig = ConfigurationManager.getConfig(this.companyName);
 
     graphBuilder

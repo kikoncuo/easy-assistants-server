@@ -2,7 +2,7 @@ import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
 import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning, rewriteTask } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
-import { checkUpdateSemanticLayer, getSuggestionForAskedQuestion, handleEditCubeGraph } from './nodes/semanticLayerLogic';
+import { checkUpdateSemanticLayer, getSuggestionForAskedQuestion } from './nodes/semanticLayerLogic';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 
 interface DataRecoveryState extends BaseState {
@@ -247,7 +247,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     };
   }
 
-  getGraph(): CompiledStateGraph<DataRecoveryState> {
+  getGraph(): any {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder

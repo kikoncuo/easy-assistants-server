@@ -686,8 +686,12 @@ export const TableIdentifyingTool: ToolDefinition = {
             required: ["id", "name", "status"]
           }
         },
+        isPossible: {
+          type: "boolean",
+          description: "Whether the task is possible with the available data."
+        }
       },
-      required: ["relevantTables", "reasoning"]
+      required: ["relevantTables", "reasoning", "isPossible"]
     }
   }
 };
@@ -714,6 +718,11 @@ export const GeneratePlanTool: ToolDefinition = {
                 type: "string",
                 description: "A detailed description of what this step should accomplish"
               },
+              dataRequirements: {
+                type: "array",
+                items: { type: "string" },
+                description: "An array of specific data fields and tables required for this step"
+              },
               transformations: {
                 type: "array",
                 items: { type: "string" },
@@ -728,11 +737,19 @@ export const GeneratePlanTool: ToolDefinition = {
                 description: "The insight or information expected to be gained from this step"
               }
             },
-            required: ["stepName", "description", "transformations", "expectedInsight"]
+            required: ["stepName", "description", "dataRequirements", "transformations", "expectedInsight"]
           }
+        },
+        isPossible: {
+          type: "boolean",
+          description: "Whether the plan is possible with the available table data."
+        },
+        task: {
+          type: "string",
+          description: "An example task message that is possible to execute with the available table data."
         }
       },
-      required: ["plan"]
+      required: ["plan", "isPossible"]
     }
   }
 };
