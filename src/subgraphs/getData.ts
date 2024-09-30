@@ -1,6 +1,6 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
+import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning, rewriteTask } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
 import { checkUpdateSemanticLayer, getSuggestionForAskedQuestion, handleEditCubeGraph } from './nodes/semanticLayerLogic';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
@@ -106,6 +106,17 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     }
 
     return { ...state, sessionToken, schema };
+  }
+
+  private async rewriteTask(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Generating task" }));
+
+    const { newTask } = await rewriteTask(state.task, state.schema, state.fieldDetails);
+
+    return {
+      ...state, 
+      task: newTask
+     };
   }
 
   private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
@@ -241,6 +252,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
 
     subGraphBuilder
       .addNode('fetch_schema', this.fetchSchemaNode.bind(this))
+      .addNode('rewrite_task', this.rewriteTask.bind(this))
       .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
       .addNode('evaluate_examples', this.evaluateExamplesNode.bind(this))
       .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
@@ -250,7 +262,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addEdge(START, 'fetch_schema')
       .addEdge('fetch_schema', 'evaluate_examples')
       .addEdge('evaluate_examples', 'evaluate_fields')
-      .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
+      .addEdge('evaluate_fields', 'rewrite_task')
+      .addConditionalEdges('rewrite_task', (state: { isPossible: string }) => {
         if (state.isPossible === 'yes') {
           return 'create_card';
         } else {
