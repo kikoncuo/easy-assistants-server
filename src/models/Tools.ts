@@ -823,3 +823,21 @@ export const GetSuggestionsForAskedQuestionTool: ToolDefinition = {
     }
   }
 };
+
+export const GetRewriteTask: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "getRewriteTask",
+    description: "Takes a general user task and rewrites it using the structure of the data schema to generate a more specific prompt.",
+    parameters: {
+      type: "object",
+      properties: {
+        task: {
+          type: "string",
+          description: "User's original task rewritted with more detail based on the schema.",
+        }
+      },
+      required: ["task"]
+    }
+  }
+};
