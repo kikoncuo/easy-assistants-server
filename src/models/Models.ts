@@ -65,7 +65,7 @@ function createStructuredResponseAgent(llm: BaseChatModel, structuredResponseSch
   return bindedLLM as BaseChatModel;
 }
 
-function createToolsAgent(llm: BaseChatModel, tools: (ToolDefinition | Record<string, unknown> | StructuredToolInterface<any>)[], strict = false): BaseChatModel {
+function createToolsAgent(llm: BaseChatModel, tools: (ToolDefinition | Record<string, unknown> | StructuredToolInterface<any>)[], strict :boolean = false): BaseChatModel {
   let bindedLLM;
 
   if (llm.bindTools) {
