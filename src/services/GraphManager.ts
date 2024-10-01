@@ -3,36 +3,34 @@ import { Message, TaskState } from '../models/TaskState';
 import { Graph } from '../models/Graph';
 import { getPlanNode, getAgentNode, getRouteEdge, getSolveNode, getDirectResponseNode, getSubGraphAgentNode } from './WorkflowHandler';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import dotenv from 'dotenv';
-//import { SupabaseSaver } from '../checkpoint/supabase'; TODO: enable this when we have supabase memory storage redes
-dotenv.config();
-
-const { MEMORY_STORAGE_SUPABASE_URL, MEMORY_STORAGE_SUPABASE_KEY} = process.env;
+//import { PostgresSaver } from '../checkpoint/postgres';
+import { ConfigurationManager } from '../utils/ConfigurationManager';
 
 export class GraphManager {
   planNode: (state: TaskState) => Promise<TaskState>;
-  agents: { [key: string]: { agent: BaseChatModel, agentPrompt: string, toolFunction: Function } };
   agentSubgraphs: { [key: string]: { agentSubGraph: any } };
   solveNode: (state: TaskState) => Promise<Partial<TaskState>>;
   directResponseNode: (state: TaskState) => Promise<Partial<TaskState>>;
   graph: Graph<any, any>;
 
   constructor(
+    companyName: string,
     planModel: BaseChatModel,
-    agents: { [key: string]: { agent: BaseChatModel, agentPrompt: string, toolFunction: Function } },
-    agentSubgraphs: { [key: string]: { agentSubGraph: any} },
+    systemPrompt: string,
+    agentSubgraphs: { [key: string]: { agentSubGraph: any } },
     solveModel: BaseChatModel,
     outputHandler: Function,
   ) {
-    this.planNode = getPlanNode(planModel, outputHandler);
-    this.agents = agents;
+    const clientConfig = ConfigurationManager.getConfig(companyName);
+
+    this.planNode = getPlanNode(planModel, outputHandler, systemPrompt);
     this.agentSubgraphs = agentSubgraphs;
     this.solveNode = getSolveNode(solveModel, outputHandler);
     this.directResponseNode = getDirectResponseNode(outputHandler);
-    this.graph = this._constructGraph();
+    this.graph = this._constructGraph(clientConfig);
   }
 
-  _constructGraph(): Graph<any, any> {
+  _constructGraph(clientConfig: any): Graph<any, any> {
     const planExecuteState: StateGraphArgs<TaskState>["channels"] = {
       task: {
         value: (left?: string, right?: string) => right ?? left ?? "",
@@ -44,6 +42,10 @@ export class GraphManager {
       agentDescription: {
         value: (x?: string, y?: string) => y ?? x ?? "",
         default: () => "",
+      },
+      cardId: {
+        value: (x?: number, y?: number) => y ?? x ?? 0,
+        default: () => 0,
       },
       result: {
         value: (x?: string, y?: string) => y ?? x ?? "",
@@ -74,27 +76,24 @@ export class GraphManager {
     .addEdge('solve', END)
     .addEdge('direct', END);
 
-    for (const [name, { agent, agentPrompt, toolFunction}] of Object.entries(this.agents)) {
-      const agentNode = getAgentNode(agent, agentPrompt, toolFunction);  
-      workflow.addNode(name, agentNode);
-      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
-    }
-
     for (const [name, { agentSubGraph }] of Object.entries(this.agentSubgraphs)) {
       const agentNode = getSubGraphAgentNode(agentSubGraph);  
       workflow.addNode(name, agentNode);
-      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is due to a langraph bug
+      workflow.addConditionalEdges(name as any, getRouteEdge()); // TODO: As any here is debido a un bug de langraph
     }
-    /* Memory is disabled for now
-    if(!MEMORY_STORAGE_SUPABASE_URL || !MEMORY_STORAGE_SUPABASE_KEY) {
-      throw new Error
-    }
+
+    const poolConfig = {
+      host: clientConfig.PG_HOST,
+      port: Number(clientConfig.PG_PORT),
+      user: clientConfig.PG_USER,
+      password: clientConfig.PG_PASSWORD,
+      database: clientConfig.PG_DATABASE,
+    };
     
-    const memory = new SupabaseSaver(MEMORY_STORAGE_SUPABASE_URL,MEMORY_STORAGE_SUPABASE_KEY);
-    // const memory = new MemorySaver();
-    */
+    //const postgresSaver = new PostgresSaver(poolConfig);
     const memory = new MemorySaver();
-    return workflow.compile( { checkpointer: memory });
+
+    return workflow.compile({ checkpointer: memory });
   }
 
   getApp(): any {

@@ -1,0 +1,175 @@
+import { WebSocket } from 'ws';
+import { GraphApplication } from '../services/GraphApplication';
+import { WebSocketService } from '../services/WebSocketService';
+//import { SemanticLayerGraph } from '../subgraphs/createSemanticLayer'; // Enable this when fixed
+//import { EditCubeGraph } from '../subgraphs/editCubes';
+import { CreateCubeGraph } from '../subgraphs/createCube'; 
+import { addDocuments, deleteDocuments } from '../utils/EmbeddingUtils';
+import Logger from '../utils/Logger';
+import { cancelRun } from '../utils/Stream';
+import { SuggestionsGraph } from '../subgraphs/getSuggestions';
+
+export class Router {
+  private graphApps: Map<string, GraphApplication> = new Map();
+
+  constructor(private ws: WebSocket) {}
+
+  async handleMessage(message: string) {
+    const data = JSON.parse(message);
+
+    switch (data.type) {
+      case 'query':
+        await this.handleQuery(data);
+        break;
+      case 'configure':
+        this.handleConfigure(data);
+        break;
+      /*case 'createSemanticLayer':
+        await this.handleCreateSemanticLayer(data);
+        break;*/
+      /*case 'editSemanticLayer':
+        await this.handleEditSemanticLayer(data);
+        break;*/
+      case 'createCubes': // Add this case
+        await this.handleCreateCubes(data);
+      break;
+      case 'addDocuments':
+        await this.handleAddDocuments(data);
+        break;
+      case 'deleteDocuments':
+        await this.handleDeleteDocuments(data);
+        break;
+      case 'stopStreaming':
+        await this.handleStopStreaming(data);
+        break;
+      case 'toolResponse':
+        // this is handled by the graph application itself
+        break;
+      case 'getSuggestions':
+        this.handleGetSuggestions(data);
+        break;
+      default:
+        Logger.error(`Unknown message type: ${data.type}`);
+    }
+  }
+
+  private async handleQuery(data: any) {
+    Logger.log('Processing task:', data.task);
+  
+    const graphAppPromise = this.graphApps.get(data.appType || 'default');
+  
+    if (graphAppPromise) {
+      try {
+        // Await the GraphApplication initialization if it's still pending
+        const graphApp = await graphAppPromise;
+        await graphApp.processTask(data.task, data.thread_id);
+      } catch (error) {
+        Logger.error(`Error processing task for type: ${data.appType}`, error);
+      }
+    } else {
+      Logger.error(`GraphApp not found for type: ${data.appType}`);
+    }
+  }
+  
+
+  private async handleConfigure(data: any) {
+    Logger.log('Configuring new graph application', data.appType || 'default');
+  
+    // Create a Promise for the GraphApplication initialization
+    const graphAppPromise = (async () => {
+      const graphApp = new GraphApplication(
+        (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+          WebSocketService.queryUser(type, functions, this.ws),
+        data.configData,
+        data.appType || 'default',
+        data.schema || []
+      );
+      await graphApp.initialize();
+      return graphApp;
+    })();
+  
+    // Store the Promise in the map immediately
+    this.graphApps.set(data.appType || 'default', graphAppPromise as unknown as GraphApplication);
+  
+    // Log and resolve after initialization
+    const graphApp = await graphAppPromise;
+  }
+  
+
+  /*private async handleCreateSemanticLayer(data: any) {
+    Logger.log('Creating semantic layer');
+    const semanticLayerGraph = new SemanticLayerGraph(data.prefixes, data.pgConnectionString, data.company_name);
+    const result = await semanticLayerGraph
+      .getGraph()
+      .invoke({ task: "Create a semantic layer for the company's data" });
+    WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
+  }*/
+
+  /*private async handleEditSemanticLayer(data: any) {
+    Logger.log('Started process for editing semantic layer');
+    const editCubeGraph = new EditCubeGraph(data.company_name, [
+      (type: string, message: string) => WebSocketService.outputHandler(type, message, this.ws),
+    ]);
+    const result = await editCubeGraph.getGraph().invoke({
+      task: data.task,
+    });
+    WebSocketService.outputHandler('semanticLayer', result.finalResult, this.ws);
+  }*/
+
+  private async handleAddDocuments(data: any) {
+    try {
+      Logger.log('Adding documents');
+      const { company_name, pageContents, metadata, docId } = data.data;
+      const result = await addDocuments(company_name, pageContents, metadata, docId);
+      WebSocketService.outputHandler('addDocuments', 'Documents added successfully', this.ws);
+    } catch (error) {
+      Logger.error('Error adding documents:', error);
+      WebSocketService.outputHandler('addDocuments', 'Error adding documents', this.ws);
+    }
+  }
+
+  private async handleDeleteDocuments(data: any) {
+    try {
+      Logger.log('Deleting documents');
+      const { company_name, ids } = data.data;
+      await deleteDocuments(company_name, ids);
+      WebSocketService.outputHandler('deleteDocuments', 'Documents deleted successfully', this.ws);
+    } catch (error) {
+      Logger.error('Error deleting documents:', error);
+      WebSocketService.outputHandler('deleteDocuments', 'Error deleting documents', this.ws);
+    }
+  }
+
+  private async handleCreateCubes(data: any) {
+    Logger.log('Creating CubeJS cubes');
+    const createCubeGraph = new CreateCubeGraph([
+      (type: string, message: any) => WebSocketService.outputHandler(type, message, this.ws),
+    ]);
+    const result = await createCubeGraph.getGraph().invoke({
+      databaseId: data.data.databaseId,
+      companyName: data.data.companyName,
+    });
+    WebSocketService.outputHandler('createCubes', result.cubes, this.ws);
+  }
+
+  private async handleGetSuggestions(data: any) {
+    Logger.log('Creating suggestions');
+    const suggestionsGraph = new SuggestionsGraph(
+      [
+        (type: string, functions: Array<{ function_name: string; arguments: any }>) =>
+          WebSocketService.queryUser(type, functions, this.ws),
+      ],
+      data.schema, 
+    );
+    const result = await suggestionsGraph.getGraph().invoke({});
+    WebSocketService.outputHandler('createSuggestions', result, this.ws);
+  }
+
+  private async handleStopStreaming(data: any) {
+    Logger.log('Stopping streaming');
+    const result = await cancelRun(data.data.codeInterpreterThreadId, data.data.runId);
+    const resultString = result ? 'Stream stopped successfully' : 'Stream already stopped';
+    WebSocketService.outputHandler('stopStreaming', resultString, this.ws);
+  }
+}

@@ -40,11 +40,17 @@ export class WebSocketService {
             Logger.log(`Received response for ${toolResponse.function_name}: ${toolResponse.response}`);
             responses[toolResponse.function_name] = toolResponse.response.trim();
           } else {
+            ws.off('message', messageHandler); 
             Logger.error("Unexpected toolResponse format: ", toolResponse);
+            throw new Error("Unexpected toolResponse format: ", toolResponse);
           }
           if (Object.keys(responses).length === functions.length) {
             ws.off('message', messageHandler); 
             resolve(responses);
+          } else {
+            ws.off('message', messageHandler); 
+            Logger.error('We received a different number of responses than tools were provided');
+            throw new Error('We received a different number of responses than tools were provided');
           }
         }
       };

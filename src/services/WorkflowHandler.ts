@@ -34,7 +34,7 @@ function stringifyMessages(messages: Message[]): string[][] {
 
 // nodes
 
-export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function) {
+export function getPlanNode(plannerModel: BaseChatModel, outputHandler: Function, systemPrompt: string) {
   async function plan(state: TaskState): Promise<TaskState> {
     try {
       const task = state.task;
@@ -98,11 +98,6 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
         ...lastMessage.additionalData,
         functions, 
       };
-
-      // we gotta clear this
-      if (state.directResponse) {
-        state.directResponse = null;
-      }
       
       const updatedLastMessage = {
         ...lastMessage,
@@ -126,16 +121,15 @@ export function getAgentNode(model: BaseChatModel, agentPrompt: string, toolFunc
 export function getSubGraphAgentNode(graph: any) { // TODO: update graph to be a StateGraph with subtype state of the subgraph
   async function agentNode(state: TaskState): Promise<Partial<TaskState>> {
     try {
-      const result = ((await graph.getGraph().invoke({task:state.agentDescription.toString()})) as any).finalResult;   
+      const result = ((await graph.getGraph().invoke({task:state.agentDescription.toString()})) as any)  
       Logger.log(
-        `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result)}`,
+        `Agent executed step ${state.agentName} with input ${state.agentDescription}, results: ${JSON.stringify(result.finalResult)}`,
       );
 
-
-      return { result: result, agentName: ""};
+      return { result: result.finalResult, agentName: "", cardId: result.cardId};
     } catch (error) {
       Logger.warn('Error in agent execution:', error);
-      return { result: 'Error in agent execution, please try again or contact support.' };
+      return { result: 'Error in agent execution, please try again or contact support.' + error, agentName: ""};
     }
   }
   return agentNode;
@@ -146,9 +140,8 @@ export function getDirectResponseNode(outputHandler: Function) {
     if (state.directResponse) {
       const directResponse = state.directResponse;
       outputHandler('directResponse', directResponse);
-      state.directResponse = null; 
       Logger.log('Direct response:', directResponse);
-      return { result: directResponse };
+      return { result: directResponse, directResponse: null };
     } else {
       Logger.warn('No direct response available in state.');
       return { result: 'No direct response available.' };
@@ -160,9 +153,9 @@ export function getDirectResponseNode(outputHandler: Function) {
 
 export function getSolveNode(solverModel: BaseChatModel, outputHandler: Function) { 
   async function solve(state: TaskState): Promise<Partial<TaskState>> {
-
-      const finalResult = await solverModel.invoke(['human', 'Rewrite this in a concise manner:' + state.result]);
-      outputHandler('result', finalResult.content);
+    Logger.log('Invoking solver model', state.result);
+    const finalResult = await solverModel.invoke(['human', 'My user is seeing this content, give a super concise summary or relevant comment which will be directly read by the user without mentioning specific tecnologies like SQL or CubeJS. If there is an error try to explain it. IE: If it\'s an error with join cubes x and y, explain that the sources X and Y need to be joined in the OmniAI layer. If there is no error, do not mention anything about possible issue or problems.\nContent:' + state.result]);
+    outputHandler('result', finalResult.content);
       Logger.log('Final response:', finalResult.content)
       
       const stateMessage = state.messages

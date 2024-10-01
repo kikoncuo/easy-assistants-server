@@ -8,7 +8,7 @@ export interface BaseState {
 
 // Define a generic graph interface
 interface IGraph<T extends BaseState> {
-  getGraph: () => CompiledStateGraph<T>;
+  getGraph: () => any;
 }
 
 // Define a generic abstract class
@@ -19,6 +19,8 @@ export abstract class AbstractGraph<T extends BaseState> implements IGraph<T> {
     this.channels = channels;
   }
 
-  abstract getGraph(): CompiledStateGraph<T>;
+  abstract getGraph(): any;
+
+  abstract getApp(): any 
 }
 

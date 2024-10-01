@@ -32,7 +32,7 @@ let ws: WebSocket | null = null;
 
 export function connectToServer(): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    ws = new WebSocket('ws://localhost:8080');
+    ws = new WebSocket('ws://localhost:8090');
 
     ws.on('open', () => {
       Logger.log('Connected to server');
@@ -186,22 +186,4 @@ export function insertRecommendations(tableString:string, recommendations:any) {
 
   // Join the updated tables back into a single string
   return updatedTables.join('\n\n');
-}
-
-export function extractCubeNames(content:any) {
-  const cubeRegex = /cube\s*\(`([^`]+)`/g;
-  const cubeNames = [];
-  let match;
-
-  while ((match = cubeRegex.exec(content)) !== null) {
-      cubeNames.push(match[1]);
-  }
-
-  return cubeNames;
-}
-
-export function separateCubes(input:string) {
-  const cubeDefinitions = input.split(/cube\(/).slice(1);
-  const cubes = cubeDefinitions.map(cubeDef => 'cube(' + cubeDef.trim());
-  return cubes;
 }

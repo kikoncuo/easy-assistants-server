@@ -4,13 +4,16 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatGroq } from '@langchain/groq';
 import { ChatAnthropic } from '@langchain/anthropic';
-import { BaseChatModel, type BaseChatModelParams } from "@langchain/core/language_models/chat_models";
+import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BaseLanguageModelCallOptions, ToolDefinition } from '@langchain/core/language_models/base';
 import { z } from 'zod';
+import { StructuredToolInterface } from '@langchain/core/tools';
+import Logger from '../utils/Logger';
+
 
 const redirectSchema = z
   .object({
-    description: z.string().min(1).max(1000).optional().describe('A concise yet detaileddescription of what the agent should do'),
+    description: z.string().min(1).max(1000).optional().describe('A concise yet detailed description of what the agent should do'),
     agentName: z
       .string()
       .min(1)
@@ -41,18 +44,36 @@ export interface ChatToolsCallOptions extends BaseLanguageModelCallOptions {
 }
 
 // Helper functions:
-function createPlanner(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
+function createPlanner(llm: BaseChatModel): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(redirectSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
 
-function createSolver(llm: BaseChatModel<ChatToolsCallOptions>): BaseChatModel {
+function createSolver(llm: BaseChatModel): BaseChatModel {
   const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(solverSchema) : llm;
   return bindedLLM as BaseChatModel;
 }
 
-function createStructuredResponseAgent(llm: BaseChatModel<ChatToolsCallOptions>, structuredResponseSchema: z.ZodSchema): BaseChatModel {
-  const bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(structuredResponseSchema) : llm;
+function createStructuredResponseAgent(llm: BaseChatModel, structuredResponseSchema: (ToolDefinition | Record<string, unknown> | StructuredToolInterface<any>)[]): BaseChatModel {
+  let bindedLLM;
+
+  if (llm.bindTools) {
+    bindedLLM = llm.bindTools(structuredResponseSchema);
+  } else { // TODO: Remove this when we test the new version of langchain with all models
+    bindedLLM = llm.withStructuredOutput ? llm.withStructuredOutput(structuredResponseSchema) : llm;
+  }
+  return bindedLLM as BaseChatModel;
+}
+
+function createToolsAgent(llm: BaseChatModel, tools: (ToolDefinition | Record<string, unknown> | StructuredToolInterface<any>)[], strict :boolean = false): BaseChatModel {
+  let bindedLLM;
+
+  if (llm.bindTools) {
+    bindedLLM = llm.bindTools(tools, { strict: strict } as any);
+  } else { // TODO: Remove this when we test the new version of langchain with all models
+    Logger.error('This model does not support tools');
+    return llm;
+  }
   return bindedLLM as BaseChatModel;
 }
 
@@ -76,7 +97,7 @@ function getStrongestModel(): BaseChatModel { // TODO: Fix the type error here a
 
 function getFasterModel(): BaseChatModel {
   return new ChatOpenAI({
-    modelName: 'gpt-3.5-turbo',
+    modelName: 'gpt-4o-mini',
     streaming: false,
     temperature: 0,
   });
@@ -143,4 +164,5 @@ export {
   createPlanner,
   createSolver,
   createStructuredResponseAgent,
+  createToolsAgent,
 };

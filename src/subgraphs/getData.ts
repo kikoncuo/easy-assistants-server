@@ -1,395 +1,81 @@
 import { AbstractGraph, BaseState } from './baseGraph';
-import { createStructuredResponseAgent, anthropicSonnet, groqChatLlama } from '../models/Models';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { HumanMessage } from '@langchain/core/messages';
-import { z } from 'zod';
+import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
-import { executeQuery, getModelsData, getSQLQuery } from '../utils/DataStructure';
-import { EditCubeGraph } from './editCubes';
+import { checkUpdateSemanticLayer, getSuggestionForAskedQuestion } from './nodes/semanticLayerLogic';
+import { createNodeResponse } from '../utils/NodeResponseUtils';
 
-// Define a specific state type
 interface DataRecoveryState extends BaseState {
-  examples: string[];
-  cubeQuery: string;
-  explanation: string;
-  description: string[];
-  title: string;
-  resultStatus: 'correct' | 'maybe' | 'incorrect';
-  feedbackMessage: string | null;
+  task: string;
+  metabaseQuery: any;
+  feedbackMessage: string;
   finalResult: string;
-  displayType: string;
-  resultExecution: string;
+  queryAttempts: number;
+  sessionToken: string;
+  schema: any[];
+  cardId: number;
+  queryResult: any;
+  fieldDetails: Record<number, any>;
+  exampleRelatedCards: string;
+  stopExecution: boolean;
   needsSemanticUpdate: boolean;
-  semanticTask: string; // Nueva propiedad para la tarea semántica
+  semanticTask: string;
+  isPossible: string;
 }
-
-async function getModels(company_name: string): Promise<string[]> {
-  return await getModelsData(company_name);
-}
-
-function filterModels(models: string[], sources: string[]): string[] {
-  const parsedModels = models.map(model => JSON.parse(model));
-  const filteredModels = parsedModels.filter(model => {
-    return sources.includes(model.name);
-  });
-  return filteredModels.map(model => JSON.stringify(model));
-}
-
-// Node function to recover sources
-async function recoverSources(
-  state: DataRecoveryState,
-  company_name: string
-): Promise<DataRecoveryState> {
-  const cubeModels = await getModels(company_name);
-
-  const getSources = z.object({
-    sources: z.array(z.string()).describe('Array with the names of the sources'),
-    isPossible: z
-      .string()
-      .describe(
-        '"true" if the data recovery is possible based on the sources provided, "maybe" if you need more examples of the tables, false if you don\'t think the question is answerable',
-      ),
-    needsSemanticUpdate: z
-      .boolean()
-      .describe('Whether a semantic layer update is needed for the task.'),
-    semanticTask: z
-      .string()
-      .optional()
-      .describe('Specific measure or dimension to create on the semantic layer if needed.'),
-  });
-
-  const model = createStructuredResponseAgent(anthropicSonnet(), getSources);
-
-  const message = await model.invoke([
-    new HumanMessage(`You are tasked with identifying relevant data sources for a given request. Your goal is to analyze the provided model descriptions and examples,
-        and determine which data sources could be useful in addressing the request.
-
-        First, review the following CubeJS model descriptions to know the dimensions and measures available:
-        ${cubeModels.join('\n')}
-        Now, consider the following request:
-        ${state.task}
-        
-        Keep in mind that multiple data sources may be relevant to a single request.
-        If a data source seems even slightly relevant to the request, include it in your list.
-        
-        Also, if you think a new value in the semantic layer is 100% required for this task, specify what measure or dimension should be created on the semantic layer.
-        As example, if the user request the top 5 products and we don't have a definition for 'topProducts' or it cannot be calculated using existing measures, dimensions and filters, ask to create it.
-        `),
-  ]);
-
-  const sources = (message as any).sources;
-  const isPossible = (message as any).isPossible;
-  const needsSemanticUpdate = (message as any).needsSemanticUpdate;
-  const semanticTask = (message as any).semanticTask || '';
-
-  Logger.log('\nisPossible', isPossible);
-  Logger.log('\nsources', sources);
-  Logger.log('\nneedsSemanticUpdate', needsSemanticUpdate);
-  Logger.log('\nsemanticTask', semanticTask);
-
-  const updatedState = {
-    ...state,
-    examples: sources,
-    needsSemanticUpdate: needsSemanticUpdate,
-    semanticTask: needsSemanticUpdate ? semanticTask : '',
-  };
-
-  if (isPossible === 'false') {
-    updatedState.finalResult = "It wasn't possible to resolve the query with the available data.";
-    return updatedState;
-  }
-
-  return updatedState;
-}
-
-// Node function to create Cube query
-async function createCubeQuery(state: DataRecoveryState, company_name: string): Promise<DataRecoveryState> {
-  const getCubeQuery = z.object({
-    assumptions: z
-      .string()
-      .optional()
-      .describe(
-        "Assumptions we made about what the user said vs how we built the query. The assumptions need to be understood by a non technical person who doesn't know the details of the database.",
-      ),
-    cubeQuery: z.string() // TODO: Time dimensions don't work yet we need to fix this and add it to the example
-      .describe(`Cube query that returns a table which satisfies the task.
-        Provide insightful queries, avoid simple logic unless asked to, the results of your queries will be evaluated by business and marketing experts.
-        Query structure example with all available options:
-        {
-          "dimensions": [
-            "cube1.param1",
-            "cube1.param2",
-            "cube2.param1"
-          ],
-          "measures": [
-            cube1.param5,
-            cube4.param2,
-            cube3.param1,
-          ],
-          "filters": [
-            {
-              "member": "cube6.param1",
-              "operator": "beforeDate",
-              "values": ["2023-12-31"]
-            }
-          ],
-          "segments": [
-            "cube1.segment1"
-          ],
-          "order": [
-            ["cube1.param1", "desc"]
-          ]
-        }
-        `),
-    description: z.string().describe('Task simple description, in a simple phrase.'),
-    title: z
-      .string()
-      .describe(
-        'Task title, IE: create a chart for my top 5 beans based on price, the title returned should be `Top 5 Whole Bean/Teas Products by Price`. ',
-      ),
-    displayType: z
-      .enum(['table', 'barChart', 'doghnutChart', 'lineChart', 'dataPoint'])
-      .describe('Type of display for the query result. It can be either table, barChart, doghnutChart, lineChart, or dataPoint.'),
-  });
-  
-  const cubeModels = await getModels(company_name);
-  const filteredCubeModels = filterModels(cubeModels, state.examples);
-
-  const model = createStructuredResponseAgent(anthropicSonnet(), getCubeQuery);
-  const messageContent = `Based on the following sources
-        ${filteredCubeModels}
-        please provide a Cube query that returns a table that satisfies the following task:
-        ${state.task}
-        For displayType charts (barChart, doghnutChart, lineChart), the query should only return 2 columns, one for labels and one for values.
-        For tables, the query should include a date column.
-
-       ${state.feedbackMessage ? `Previous attempt resulted in an error: ${state.feedbackMessage}\nPlease adjust the query to avoid this error` : ''}`;
-       
-
-  const message = await model.invoke(messageContent);
-  const cubeQuery = (message as any).cubeQuery;
-  const assumptions = (message as any).assumptions;
-  const description = (message as any).description;
-  const title = (message as any).title;
-  const displayType = (message as any).displayType;
-
-  Logger.log('cubeQuery', cubeQuery);
-  Logger.log('assumptions', assumptions);
-
-  //const resultExecution = await executeQueries([cubeQuery]);
-
-  return {
-    ...state,
-    cubeQuery: cubeQuery,
-    explanation: assumptions,
-    description: description,
-    title: title,
-    displayType: displayType,
-    //resultExecution: resultExecution
-  };
-}
-
-// Node function to evaluate result
-async function evaluateResult(
-  state: DataRecoveryState,
-  functions: Function[],
-  company_name: string
-): Promise<DataRecoveryState> {
-  
-
-  try {
-    const getFeedback = z.object({
-      resultStatus: z.enum(['correct', 'maybe', 'incorrect']).describe('Evaluation of the query result'),
-      feedbackMessage: z
-        .string()
-        .optional()
-        .describe('Feedback message if the query was incorrect or needs further exploration.'),
-    });
-
-    const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
-
-    const resultExecution = await executeQuery(state.cubeQuery, company_name); //await functions[0]('tool', getCubeQuery);
-
-    console.log('\n\nresultExecution', JSON.parse(resultExecution).data);
-    // log the first 10 results
-
-    const message = await model.invoke([
-      new HumanMessage(`Based on the following user request:
-                ${state.task}
-
-                with the following context:
-                This query is for a business analyst to help them understand the data and make informed decisions.
-                The visualization aspect of the query is not important, only the data.
-
-                Given the following Cube query,
-                ${state.cubeQuery}
-
-                Which returned the following results (we only show the first 10 results):
-                ${JSON.stringify(JSON.parse(resultExecution).data.slice(0, 10))}
-
-                Evaluate the Cube query result:
-                - 'correct' if the results from the query look correct, solve the task, and are consistent and logical.
-                - 'maybe' if you're not sure and need more information or exploration, for example, if the results are empty or incomplete.
-                - 'incorrect' if the results look incorrect, don't solve the task, or are inconsistent or illogical.
-                Provide a feedback message for 'maybe' or 'incorrect' results, explaining what needs further exploration or how to improve the query.
-            `),
-    ]);
-    
-    const resultStatus = (message as any).resultStatus;
-    const feedbackMessage = (message as any).feedbackMessage || '';
-
-    Logger.log('resultStatus', resultStatus);
-    Logger.log('feedbackMessage', feedbackMessage);
-
-    const getCubeQuery = [
-      {
-        function_name: "getCubeQuery",
-        arguments: {
-          sqlQuery: state.cubeQuery,
-          data: resultExecution,
-          explanation: state.explanation,
-          description: state.description,
-          title: state.title,
-          displayType: state.displayType,
-        },
-      }
-    ]
-    if (resultStatus === 'correct' || resultStatus === 'maybe') { // TODO: Create a working path for maybe, right now it enters an infinite loop if data is empty
-      functions[0]('tool', getCubeQuery);
-    }
-
-    return {
-      ...state,
-      resultStatus: resultStatus,
-      feedbackMessage: feedbackMessage,
-      finalResult: state.explanation,
-    };
-  } catch (error) {
-    Logger.error('Error evaluating Cube query results:', error);
-    return {
-      ...state,
-      resultStatus: 'incorrect',
-      feedbackMessage: 'An error occurred while evaluating the Cube query results.',
-    };
-  }
-}
-
-async function returnSqlDescription(
-  state: DataRecoveryState,
-  functions: Function[],
-  company_name: string
-): Promise<DataRecoveryState> {
-  
-
-  try {
-    const getFeedback = z.object({
-      description: z.string().describe('Description on how the SQL query is solving the initial task'),
-    });
-
-    const sqlQuery = await getSQLQuery(company_name, state.cubeQuery);
-
-    const model = createStructuredResponseAgent(anthropicSonnet(), getFeedback);
-    const message = await model.invoke([
-      new HumanMessage(`Based on the following user request 
-                ${state.task},
-                the SQL query to solve the task is 
-                ${sqlQuery}.
-                
-                Describe how the SQL has solved the initial request.
-            `),
-    ]);
-    
-    const description = (message as any).description;
-
-    Logger.log('description', description);
-
-    const getSqlDescription = [
-      {
-        function_name: "getSqlDescription",
-        arguments: {
-          sqlQuery: sqlQuery,
-          description: description,
-          explanation: state.explanation,
-        },
-      }
-    ]
-
-    functions[0]('tool', getSqlDescription);
-
-    return {
-      ...state,
-      description: description
-    };
-  } catch (error) {
-    Logger.error('Error getting SQL query:', error);
-    return {
-      ...state
-    };
-  }
-}
-
-async function handleEditCubeGraph(state: DataRecoveryState, functions: Function[], company_name: string): Promise<DataRecoveryState> {
-  const editCubeGraph = new EditCubeGraph(company_name, functions);
-  const result = await editCubeGraph.getGraph().invoke({
-    task: state.semanticTask,
-  });
-  Logger.log(`Edit cube graph result: ${result}`);
-  return {
-    ...state,
-    ...result,
-  };
-}
-
-// DataRecoveryGraph Class
 export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
   private functions: Function[];
-  private company_name: string;
+  private database: number;
+  private companyName: string;
 
-  constructor(company_name: string, functions: Function[]) {
+  constructor(database: number, functions: Function[], companyName: string) {
     const graphState: StateGraphArgs<DataRecoveryState>['channels'] = {
       task: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      examples: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
-        default: () => [],
-      },
-      cubeQuery: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      explanation: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      resultStatus: {
-        value: (x: 'correct' | 'maybe' | 'incorrect', y?: 'correct' | 'maybe' | 'incorrect') => (y ? y : x),
-        default: () => 'incorrect',
+      metabaseQuery: {
+        value: (x: any, y?: any) => (y ? y : x),
+        default: () => null,
       },
       feedbackMessage: {
-        value: (x: string | null, y?: string | null) => (y ? y : x),
-        default: () => null,
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
       },
       finalResult: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      title: {
+      queryAttempts: {
+        value: (x: number, y?: number) => (y !== undefined ? y : x),
+        default: () => 0,
+      },
+      sessionToken: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
-      displayType: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
-      },
-      description: {
-        value: (x: string[], y?: string[]) => (y ? y : x),
+      schema: {
+        value: (x: any[], y?: any[]) => (y ? y : x),
         default: () => [],
       },
-      resultExecution: {
+      cardId: {
+        value: (x: number, y?: number) => (y !== undefined ? y : x),
+        default: () => 0,
+      },
+      queryResult: {
+        value: (x: any, y?: any) => (y ? y : x),
+        default: () => null,
+      },
+      fieldDetails: {
+        value: (x: Record<number, any>, y?: Record<number, any>) => (y ? y : x),
+        default: () => ({}),
+      },
+      exampleRelatedCards: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
+      },
+      stopExecution: {
+        value: (x: boolean, y?: boolean) => (y ? y : x),
+        default: () => false,
       },
       needsSemanticUpdate: {
         value: (x: boolean, y?: boolean) => (y ? y : x),
@@ -399,41 +85,203 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
       },
+      isPossible: {
+        value: (x: string, y?: string) => (y ? y : x),
+        default: () => '',
+      }
     };
     super(graphState);
     this.functions = functions;
-    this.company_name = company_name;
+    this.database = database;
+    this.companyName = companyName;
   }
 
-  getGraph(): CompiledStateGraph<DataRecoveryState> {
+  private async fetchSchemaNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Retrieving schema" }));
+
+    const { sessionToken, schema } = await fetchSchema(this.companyName, this.database);
+
+    if (!schema) {
+      this.functions[0]('info', createNodeResponse('error', { message: "Schema could not be retrieved" }));
+    }
+
+    return { ...state, sessionToken, schema };
+  }
+
+  private async checkUpdateSemanticLayer(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Checking if modifications are required in the semantic layer" }));
+
+    const { needsSemanticUpdate, semanticTask } = await checkUpdateSemanticLayer(state.task, this.companyName);
+    if (needsSemanticUpdate) {
+      const { suggestion } = await getSuggestionForAskedQuestion(state.schema, state.task);
+      this.functions[0]('info', createNodeResponse('error',
+        { message: `To complete this task, the semantic layer needs to be updated with the following field: ${semanticTask}. Please reach out to support for assistance. \nHere is a suggestion related to your original query: ${suggestion}` }
+      ));
+    } 
+
+    return {
+      ...state,
+      needsSemanticUpdate,
+      semanticTask,
+      finalResult: needsSemanticUpdate ? "The semantic layer needs an update to complete the task" : state.finalResult
+    };
+  }
+
+  private async evaluateFieldsNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Identifying appropriate fields for the query" }));
+    
+    const { fieldDetails, isPossible } = await getFieldDetails(state.task, state.sessionToken, state.schema, this.companyName);
+    
+    if (!fieldDetails) {
+      this.functions[0]('info', createNodeResponse('error', { message: "No appropriate fields were found for this query" }));
+    }
+    return { ...state, fieldDetails, isPossible };
+  }
+
+  private async evaluateExamplesNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Identifying example cards related to the task" }));
+
+    const { exampleRelatedCards, ids } = await getExampleRelatedCards(state.task, state.sessionToken, this.database, this.companyName, state.feedbackMessage);
+    
+    if (!ids) {
+      this.functions[0]('info', createNodeResponse('data', { message: "Using fallback example cards for task" }));
+    }
+    return { ...state, exampleRelatedCards };
+  }
+
+  private async createCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Creating Omniloy card" }));
+
+    const queryAttempts = (state.queryAttempts || 0) + 1;
+    if (queryAttempts > 3) {
+      Logger.log("Unable to generate a suitable query after 3 attempts.")
+      return {
+        ...state,
+        queryAttempts,
+        finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
+      }
+    }
+    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, state.exampleRelatedCards, this.companyName, state.feedbackMessage, state.metabaseQuery);
+
+    if ('error' in result) {
+      this.functions[0]('info', createNodeResponse('error', { message: result.error }));
+      return {
+        ...state,
+        feedbackMessage: result.error,
+        metabaseQuery: result.metabaseQuery,
+        queryAttempts: state.queryAttempts + 1,
+      };
+    } else {
+      return {
+        ...state,
+        cardId: result.cardId!,
+        metabaseQuery: result.metabaseQuery,
+        queryAttempts: state.queryAttempts + 1,
+      };
+    }
+  }
+
+  private async executeQueryNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[0]('info', createNodeResponse('data', { message: "Executing query", data: { cardId: state.cardId } }));
+    const result = await executeMetabaseQuery(state.sessionToken, state.cardId, state.metabaseQuery, this.companyName);
+
+    if ('error' in result) {
+      const stopExecution = result.error.includes("Can't find join path");
+      if (stopExecution) {
+        this.functions[0]('info', createNodeResponse('error', { message: "Stopping execution", data: { finalError: true } }));
+      } else {
+        this.functions[0]('info', createNodeResponse('data', { message: result.error }));
+      }
+
+      return {
+        ...state,
+        feedbackMessage: result.error,
+        metabaseQuery: result.metabaseQuery,
+        stopExecution: stopExecution,
+      };
+    } else {
+      return {
+        ...state,
+        queryResult: result.queryResult,
+      };
+    }
+  }
+
+  private async getReasoningNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    const result = await getReasoning(state.queryResult, state.task, state.metabaseQuery, state.cardId, state.fieldDetails, state.schema);
+
+    const getDatasetQuery = [
+      {
+        function_name: 'getDatasetQuery',
+        arguments: {
+          cardId: state.cardId,
+          reasoning: result.reasoning,
+          sources: result.sources
+        }
+      },
+    ];
+
+    this.functions[0]('tool', getDatasetQuery);
+
+    return {
+      ...state,
+      finalResult: state.queryAttempts > 1 ? result.finalResult + " Is this what you were looking for?" : result.finalResult,
+    };
+  }
+
+  getGraph(): any {
     const subGraphBuilder = new StateGraph<DataRecoveryState>({ channels: this.channels });
 
     subGraphBuilder
-      .addNode('recover_sources', async state => await recoverSources(state, this.company_name))
-      //.addNode('edit_cube_graph', async state => await handleEditCubeGraph(state, this.functions, this.company_name))
-      .addNode('create_cube_query', async state => await createCubeQuery(state, this.company_name))
-      .addNode('evaluate_result', async state => await evaluateResult(state, this.functions, this.company_name))
-      .addNode('return_sql_description', async state => await returnSqlDescription(state, this.functions, this.company_name))
-      .addEdge(START, 'recover_sources')
-      .addEdge('recover_sources', 'create_cube_query')
-      /*.addConditionalEdges('recover_sources', state => {
+      .addNode('fetch_schema', this.fetchSchemaNode.bind(this))
+      .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
+      .addNode('evaluate_examples', this.evaluateExamplesNode.bind(this))
+      .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
+      .addNode('create_card', this.createCardNode.bind(this))
+      .addNode('execute_query', this.executeQueryNode.bind(this))
+      .addNode('getReasoning', this.getReasoningNode.bind(this))
+      .addEdge(START, 'fetch_schema')
+      .addEdge('fetch_schema', 'evaluate_examples')
+      .addEdge('evaluate_examples', 'evaluate_fields')
+      .addConditionalEdges('evaluate_fields', (state: { isPossible: string }) => {
+        if (state.isPossible === 'yes') {
+          return 'create_card';
+        } else {
+          return 'check_update_semantic_layer';
+        }
+      })
+      .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
         if (state.needsSemanticUpdate) {
-          return 'edit_cube_graph';
+          return END;
         } else {
-          return 'create_cube_query';
+          return 'create_card';
         }
       })
-      .addEdge('edit_cube_graph', 'create_cube_query')*/
-      .addEdge('create_cube_query', 'evaluate_result')
-      .addConditionalEdges('evaluate_result', state => {
-        if (state.resultStatus === 'correct' || state.resultStatus === 'maybe') { // TODO: Create a working path for maybe, right now it enters an infinite loop if data is empty
-          return 'return_sql_description';
+      //.addEdge('evaluate_examples', 'create_card')
+      .addConditionalEdges('create_card', (state: DataRecoveryState) => {
+        if (state.queryAttempts > 3) {
+          return END;
+        } else if (!state.cardId) {
+          return 'create_card';
         } else {
-          return 'create_cube_query';
+          return 'execute_query';
         }
       })
-      .addEdge('return_sql_description', END);
+      .addConditionalEdges('execute_query', (state: DataRecoveryState) => {
+        if (state.queryAttempts > 3 || state.stopExecution) {
+          return END;
+        } else if (state.queryResult && !("error" in state.queryResult)) {
+          return 'getReasoning';
+        } else {
+          return 'create_card';
+        }
+      })
+      .addEdge('getReasoning', END);
 
-    return subGraphBuilder.compile();
+      return subGraphBuilder.compile();
+  }
+
+  getApp(): any {
+    return this.getGraph();
   }
 }
