@@ -2,9 +2,18 @@ import WebSocket from 'ws';
 import Logger from '../utils/Logger';
 
 export class WebSocketService {
-  static outputHandler(type: string, message: string, ws: WebSocket): void {
-    Logger.log("Sent message to client: ", `Type: ${type}, Message: ${message}`);
-    ws.send(JSON.stringify({ type, message }));
+  static outputHandler(
+    type: string, 
+    functions: Array<{ function_name: string; arguments: any }> | string, 
+    ws: WebSocket): void 
+  {
+    Logger.log(`Sent message to client: Type: ${type}, Message: `, functions);
+    ws.send(JSON.stringify({
+      type,
+      ...(typeof functions === 'string'
+        ? { message: functions }
+        : { functions: functions })
+    }));
   }
 
   static async queryUser(
