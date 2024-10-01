@@ -27,17 +27,19 @@ export async function rewriteTask(task: string, schema: any, fieldDetails: Recor
       Rewrite the task in a more specific and detailed manner using the schema information to ensure better results. 
 
       For example, if the user asks for general "sales data" of a product, refer to specific if available in the schema.
-      
+      Prioritize using fields that contain names over fields that contain IDs.
+
       IE: 
       User initial task: 'Show sales data for yogurts'
       Rewrited task: 'Show sales data for Greek Yogurt, Regular Yogurt, and Lactose-free Yogurts. Group the sales by quarter and generate a bar chart showing total sales in each region.'
       
       User initial task: 'Retrieve the top 5 products based on sales data'
-      Rewrited task: 'Retrieve the top 5 products based on the totalSold field from the Inventory schema. Include the productId, itemName, and totalSold values in the results.'
+      Rewrited task: 'Retrieve the top 5 products based on the totalSold field from the Inventory schema. Include the itemName, and totalSold values in the results.'
        
       User initial task: 'How much coffee we sell during the week?'
       Rewrited task: 'Retrieve the total coffee sales data by week, focusing on the totalSold and totalGrossRevenue fields from the Order schema. Include data from all locations and group the results by day to analyze daily sales trends.'
        
+      
       `)
   ]);
 
