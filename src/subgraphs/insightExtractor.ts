@@ -14,8 +14,6 @@ import { ConfigurationManager } from '../utils/ConfigurationManager';
 //import { PostgresSaver } from '../checkpoint/postgres';
 import { MemorySaver } from '@langchain/langgraph';
 import { similaritySearch } from '../utils/EmbeddingUtils';
-import { BaseLanguageModelCallOptions } from '@langchain/core/language_models/base';
-import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 type MessageType = 'Image' | 'Text' | 'Code';
 
@@ -447,17 +445,7 @@ export class InsightExtractorGraph extends AbstractGraph<InsightExtractorState> 
       })
       .addEdge('plan_execution', 'generate_python_code') 
       .addEdge("generate_python_code", END)
-    
       
-      const poolConfig = {
-        host: clientConfig.PG_HOST,
-        port: Number(clientConfig.PG_PORT),
-        user: clientConfig.PG_USER,
-        password: clientConfig.PG_PASSWORD,
-        database: clientConfig.PG_DATABASE,
-      };
-      
-      //const postgresSaver = new PostgresSaver(poolConfig);
       const memory = new MemorySaver();
 
     return graphBuilder.compile({ checkpointer: memory });

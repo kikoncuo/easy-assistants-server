@@ -823,3 +823,21 @@ export const GetSuggestionsForAskedQuestionTool: ToolDefinition = {
     }
   }
 };
+
+
+export const PlanFinishedTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "planFinished",
+    description: "Indicates that the user has finished the plan. Only use this when the plan is finished.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "boolean",
+        }
+      },
+      required: ["status"]
+    }
+  }
+};
