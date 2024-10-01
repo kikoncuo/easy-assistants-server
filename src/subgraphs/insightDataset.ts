@@ -54,7 +54,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       },
       isPossible: {
         value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
+        default: () => 'yes',
       },
       relevantTables: {
         value: (x: any[], y?: any[]) => (y ? y : x),
@@ -108,24 +108,20 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     if(state.continued) {
         return {...state, isPossible: 'yes'};
     }
-    const { relevantTables } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
-    const changeNeeded = relevantTables.filter(table => table.status === 'current').length === 0;
-    if (relevantTables && relevantTables.length > 0 && !changeNeeded) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
-    } else if (relevantTables && relevantTables.length > 0 && changeNeeded) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables are already retrieved", data: {relevantTables: relevantTables} }));
+    const { relevantTables, isPossible } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
+    
+    if (relevantTables && relevantTables.length > 0) {
+      this.functions[1]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
     } else {
-        this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
+        this.functions[1]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
     }
     Logger.log('relevantTables',relevantTables)
-    const tablesNeeded = changeNeeded ? 'yes' : 'no';
-    Logger.log('tablesNeeded', tablesNeeded)
-    return { ...state, isPossible: tablesNeeded, relevantTables };
+    return { ...state, isPossible: isPossible ? 'yes' : 'no', relevantTables };
   }
 
 
   private async getTablesNode(state: InsightDatasetState): Promise<InsightDatasetState> {
-    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
+    const tablesToQuery = state.relevantTables
     Logger.log('tablesToQuery', tablesToQuery)
     for (const table of tablesToQuery) {
         const questionData = {
@@ -147,10 +143,10 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
                 if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
                   retryCount++;  
                   Logger.log(`Query for table ${table.name} failed, retry attempt ${retryCount}`);
-                    this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
+                    this.functions[1]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
                 } else {
                     retry = false; // Exit retry loop if no failure
-                    this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
+                    this.functions[1]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
                 }
             } catch (error) {
                 Logger.error(`Error querying table ${table.name}:`, error);
@@ -266,13 +262,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
   private async codeInterpreterNode(state: InsightDatasetState): Promise<InsightDatasetState> {
     let codeInterpreterThreadId = state.codeInterpreterThreadId;
 
-    if(state.continued) {
-        state.relevantTables = state.relevantTables.map(table => ({
-          ...table,
-          status: 'previous'
-        }));
-    }
-    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
+    const tablesToQuery = state.relevantTables
     if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
       
       codeInterpreterThreadId = await createThread();
@@ -296,33 +286,8 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
     
       await createMessage(codeInterpreterThreadId, JSON.stringify(state.plan), attachments);
     
-    } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
-      
-      if(state.continued && tablesToQuery.length > 0) {
-        
-        const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
-        
-        const attachmentsandCsvs = await uploadTables(csvs);
-        const attachments = attachmentsandCsvs.attachments;
-        const csvFiles = attachmentsandCsvs.csvs;
-
-        const getCsv = [
-          {
-            function_name: 'getCsv',
-            arguments: {
-              generatedCsv: csvs,
-              generatedFiles: csvFiles
-            }
-          },
-        ];
-        this.functions[0]('tool', getCsv);
-        
-        await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), attachments);
-     
-      } else {
-        
+    } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task     
         await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
-      }
     }
     
     if(!process.env.INSIGHT_ASSISTANT_KEY) {
@@ -406,7 +371,6 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       let retry = true;
       let retryCount = 0;
       let csv;
-    //   const query = table.dataset_query
       const payload = {
         query: JSON.stringify({
             database: databaseID,
@@ -449,7 +413,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
         if (state.codeInterpreterThreadId !== '' && state.isPossible === 'yes') {
           return 'generate_python_code';
         } 
-        if (state.relevantTables.length >= 1 && state.isPossible === 'no' && state.continued === false) {
+        if (state.relevantTables.length >= 1 && state.isPossible === 'yes' && state.continued === false) {
           return 'get_tables';
         } else {
             return END;

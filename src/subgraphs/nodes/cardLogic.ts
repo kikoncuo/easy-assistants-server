@@ -1,10 +1,12 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
-import { HumanMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool, GetSuggestionsForAskedQuestionTool, GetRewriteTask} from '../../models/Tools';
-import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel } from '../../models/Models';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool, GetSuggestionsForAskedQuestionTool, GetRewriteTask, IdentifyingTablesDoneTool} from '../../models/Tools';
+import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel, createToolsAgent } from '../../models/Models';
 import Logger from '../../utils/Logger';
 import { fallbackCardExamples } from '../../utils/CardExamples';
+import { LLMResponseHandler } from '../../utils/LLMResponseHandler';
+import { InsightDatasetStateV3 } from '../getInisghtsV3';
 
 
 export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any }> {
@@ -525,42 +527,20 @@ export async function getResults(task: string, sessionToken: string, databaseId:
 }
 
 export async function getRelevantTables(task: string, schema: any, stateTables: any[], continued: boolean, stateResult: string): Promise<{ relevantTables: any[], isPossible: boolean }> {
-  const model = createStructuredResponseAgent(getFasterModel(), [TableIdentifyingTool]);
-
-  let continuedPrompt = "";
-  if (continued) {
-    continuedPrompt = `
-      This is a continuation of a previous task. These are the tables that you selected for the previous task:
-      ${JSON.stringify(stateTables, null, 2)}
-
-      The result of the previous task was: ${stateResult}
-
-      To understand the new task, you should consider the previous task's result.
-      If the new task involves adding or removing tables, Then you should certainly consider these state tables with the new task.
-      Evaluate whether these state tables are sufficient for the task or if additional tables from the schema are needed.
-    `;
-  }
-
+  const model = createToolsAgent(getFasterModel(), [TableIdentifyingTool]);
   const message = await model.invoke([
     new HumanMessage(`
         Given the task: "${task}"
 
         And the following schema: ${JSON.stringify(schema, null, 2)}
 
-        ${continuedPrompt}
-
         Please analyze the schema and the task to:
         1. Identify the most relevant tables for this task by analyzing all the fields from each table in the schema.
         2. Analyze the fields within each relevant table and explain how they relate to the task.
-        3. If state tables are provided, explain whether they are sufficient or why additional tables are needed.
         4. Assess whether the task is possible with the available data.
         5. If the task is not possible, don't include any tables in your response.
-
-        Include ALL relevant tables in your response:
-        1. If this is a continued task, include all previously selected tables that are still relevant and give them status "previous".
-        2. Add any new tables from the schema that are relevant to the current task and give them status "current".
         
-        Explain your reasoning for including each table, any changes from the previous selection, and how the fields within and across tables work together to address the task.
+        Explain your reasoning for including each table and how the fields within and across tables work together to address the task.
 
         Additionally, provide:
         1. An assessment of whether the task is possible with the available data (isPossible: true/false)
