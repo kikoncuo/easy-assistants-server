@@ -1,5 +1,5 @@
 import { HumanMessage } from "@langchain/core/messages";
-import { anthropicSonnet, createStructuredResponseAgent } from "../../models/Models";
+import { anthropicSonnet, createStructuredResponseAgent, getFasterModel } from "../../models/Models";
 import { GetSourcesTool, GetSuggestionsForAskedQuestionTool, GetSuggestionsTool } from "../../models/Tools";
 import Logger from "../../utils/Logger";
 // import { EditCubeGraph } from "../editCubes";
@@ -66,7 +66,7 @@ export async function getSuggestions(
   schema: any[],
 ): Promise<{ getDataSuggestions: string[]; insightsSuggestions: string[] }> {
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), [GetSuggestionsTool]);
+  const model = createStructuredResponseAgent(getFasterModel(), [GetSuggestionsTool]);
 
   // Mejorar el prompt con más contexto y claridad
   const message = await model.invoke([
@@ -104,7 +104,7 @@ export async function getSuggestionForAskedQuestion(
   task: string
 ): Promise<{ suggestion: string}> {
 
-  const model = createStructuredResponseAgent(anthropicSonnet(), [GetSuggestionsForAskedQuestionTool]);
+  const model = createStructuredResponseAgent(getFasterModel(), [GetSuggestionsForAskedQuestionTool]);
   const message = await model.invoke([
     new HumanMessage(`
       You are an AI assistant that receives both a user question (referred to as 'task') and a data schema ('schema'). Sometimes, when you are unable to fulfill the user's request due to missing or inaccessible data, your job is to generate an alternative query suggestion based on the task and schema.
