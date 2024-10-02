@@ -253,3 +253,49 @@ export const fallbackCardExamples = (databaseID: number) => `
         }
       }
 `;
+
+export const fallbackSQLCardExamples = (databaseID: number) => `
+**Example 1:**
+
+    **Natural Language Query:**
+    Get me the top 5 products
+
+    **Dataset query:**
+    {
+      "database": ${databaseID},
+      "type": "native",
+      "native": {
+        "query": "SELECT p.itemName, i.totalSold FROM Inventory i JOIN Product p ON i.productId = p.productId AND i.__cubeJoinField = p.__cubeJoinField WHERE i.__cubeJoinField = i.__cubeJoinField ORDER BY i.totalSold DESC LIMIT 5"
+      }
+    }
+
+**Example 2:**
+
+    **Natural Language Query:**
+    Show me the total sales by product
+
+    **Dataset query:**
+    {
+      "database": ${databaseID},
+      "type": "native",
+      "native": {
+        "query": "SELECT p.itemName, o.createdAt::DATE as date, SUM(o.totalSold) as total_sold, SUM(o.totalGrossRevenue) as total_gross_revenue FROM \"Order\" o JOIN Product p ON o.__cubeJoinField = p.__cubeJoinField JOIN Inventory i ON p.productId = i.productId AND p.__cubeJoinField = i.__cubeJoinField WHERE o.__cubeJoinField = o.__cubeJoinField GROUP BY p.itemName, o.createdAt::DATE ORDER BY o.createdAt::DATE, p.itemName"
+      }
+    }
+
+**Example 3:**
+
+    **Natural Language Query:**
+    Show the average cost of wasted products by day of the week
+
+    **Dataset query:**
+    {
+      "database": ${databaseID},
+      "type": "native",
+      "native": {
+        "query": "SELECT TO_CHAR(date, 'Day') AS day_of_week, AVG(averageCostOfWastage) AS avg_cost_of_wastage FROM Inventory WHERE __cubeJoinField = __cubeJoinField GROUP BY TO_CHAR(date, 'Day'), EXTRACT(DOW FROM date) ORDER BY EXTRACT(DOW FROM date)"
+      }
+    }
+
+
+`;
