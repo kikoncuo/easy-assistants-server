@@ -76,10 +76,10 @@ export async function getSuggestions(
       
       The data schema represents tables and fields related to various business or data contexts. Your job is to:
       
-      1. Identify only four possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
+      1. Identify two possible data-related prompts (getDataSuggestions) that would help users retrieve relevant information from this schema.
          Examples might include querying sales, product information, or performance metrics.
       
-      2. Identify only four insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
+      2. Identify two insight-related prompts (insightsSuggestions) that would help users derive meaningful insights from the data, such as trends, anomalies, or patterns.
 
       Provide your suggestions in two arrays: 'getDataSuggestions' for direct data queries and 'insightsSuggestions' for deeper analysis or insights.
     `),
