@@ -5,19 +5,7 @@ import {
   Checkpoint,
 } from "@langchain/langgraph";
 import Logger from '../utils/Logger';
-
-export interface CheckpointTuple {
-  config: RunnableConfig;
-  checkpoint: Checkpoint;
-  metadata?: CheckpointMetadata;
-  parentConfig?: RunnableConfig;
-}
-
-export interface CheckpointMetadata {
-  source: "input" | "loop" | "update";
-  step: number;
-  writes: Record<string, unknown> | null;
-}
+import { CheckpointListOptions, CheckpointMetadata, CheckpointTuple, PendingWrite } from "@langchain/langgraph-checkpoint";
 
 export class PostgresSaver extends BaseCheckpointSaver {
   private pool: pg.Pool;
@@ -127,8 +115,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   async *list(
     config: RunnableConfig,
-    limit?: number,
-    before?: RunnableConfig
+    options?: CheckpointListOptions 
   ): AsyncGenerator<CheckpointTuple> {
     let query = `
       SELECT * FROM postcheckpoints 
@@ -136,16 +123,16 @@ export class PostgresSaver extends BaseCheckpointSaver {
     `;
     const values: any[] = [config.configurable?.thread_id];
 
-    if (before?.configurable?.checkpoint_id) {
+    if (options?.before?.configurable?.checkpoint_id) {
       query += ` AND checkpoint_id < $${values.length + 1}`;
-      values.push(before.configurable.checkpoint_id);
+      values.push(options?.before.configurable.checkpoint_id);
     }
 
     query += ` ORDER BY checkpoint_id DESC`;
 
-    if (limit) {
+    if (options?.limit) {
       query += ` LIMIT $${values.length + 1}`;
-      values.push(limit);
+      values.push(options?.limit);
     }
 
     try {
@@ -173,6 +160,30 @@ export class PostgresSaver extends BaseCheckpointSaver {
     } catch (error) {
       Logger.error("Error listing checkpoints:", error);
     }
+  }
+
+  async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
+    const query = `
+      INSERT INTO postcheckpoints_writes (thread_id, checkpoint_id, task_id, writes)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (thread_id, checkpoint_id, task_id) 
+      DO UPDATE SET writes = EXCLUDED.writes
+    `;
+
+    const values = [
+      config.configurable?.thread_id,
+      config.configurable?.checkpoint_id,
+      taskId,
+      JSON.stringify(writes)  // Store the array of writes as JSON
+    ];
+    // TODO: Implement it in the future
+    // try {
+    //   await this.pool.query(query, values);
+    //   Logger.log(`Successfully stored writes for task ${taskId}`);
+    // } catch (error) {
+    //   Logger.error("Error saving writes:", error);
+    //   throw new Error("Failed to save writes in PostgresSaver");
+    // }
   }
 
   async close() {
