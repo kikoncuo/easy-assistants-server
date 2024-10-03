@@ -368,8 +368,7 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
 
     state.continued = true;
     Logger.log('continued', state.continued)
-
-    return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
+    return {...state, codeInterpreterThreadId: codeInterpreterThreadId, continued: true};
   } 
 
   private async sendImageAndTextToFrontend(value: string | Buffer, type: string, status: string, runId: string, codeInterpreterThreadId?: string): Promise<void> {
@@ -476,9 +475,9 @@ export class InsightDatasetGraph extends AbstractGraph<InsightDatasetState> {
       };
       
       const postgresSaver = new PostgresSaver(poolConfig);
-      const memory = new MemorySaver();
 
-    return graphBuilder.compile({ checkpointer: memory });
+
+    return graphBuilder.compile({ checkpointer: postgresSaver });
   }
 
   getApp(): any {

@@ -4,7 +4,7 @@ import { dataSystemPrompt, insightsSystemPrompt } from '../models/Prompts';
 import { DataRecoveryGraph } from '../subgraphs/getData';
 // import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { InsightDatasetGraph } from '../subgraphs/insightDataset';
-import {InsightDatasetGraphV3} from '../subgraphs/getInisghtsV3';
+// import {InsightDatasetGraphV3} from '../subgraphs/getInisghtsV3';
 // import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
@@ -32,7 +32,7 @@ export class GraphApplication {
       systemPrompt: dataSystemPrompt
     },
     insights: {
-      subgraphs: [{ name: 'getInsights', Graph: InsightDatasetGraphV3 }],
+      subgraphs: [{ name: 'getInsights', Graph: InsightDatasetGraph }],
       systemPrompt: insightsSystemPrompt
     },
     // Add more app types here as needed
