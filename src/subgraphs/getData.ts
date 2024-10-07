@@ -1,9 +1,11 @@
 import { AbstractGraph, BaseState } from './baseGraph';
 import { CompiledStateGraph, END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning, rewriteTask } from './nodes/cardLogic';
+import { fetchSchema, getFieldDetails, getExampleRelatedCards, createMetabaseCard, executeMetabaseQuery, getReasoning, rewriteTask, createMetabaseSQLCard } from './nodes/cardLogic';
 import Logger from '../utils/Logger';
 import { checkUpdateSemanticLayer, getSuggestionForAskedQuestion } from './nodes/semanticLayerLogic';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
+import { fallbackCardExamples, fallbackSQLCardExamples } from '../utils/CardExamples';
+import { formatExampleCards, formatExampleSQLCards } from '../utils/MetabaseAPI';
 
 interface DataRecoveryState extends BaseState {
   task: string;
@@ -16,7 +18,7 @@ interface DataRecoveryState extends BaseState {
   cardId: number;
   queryResult: any;
   fieldDetails: Record<number, any>;
-  exampleRelatedCards: string;
+  exampleRelatedCards: any[];
   stopExecution: boolean;
   needsSemanticUpdate: boolean;
   semanticTask: string;
@@ -70,8 +72,8 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         default: () => ({}),
       },
       exampleRelatedCards: {
-        value: (x: string, y?: string) => (y ? y : x),
-        default: () => '',
+        value: (x: any[], y?: any[]) => (y ? y : x),
+        default: () => [],
       },
       stopExecution: {
         value: (x: boolean, y?: boolean) => (y ? y : x),
@@ -172,7 +174,14 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
       }
     }
-    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, state.exampleRelatedCards, this.companyName, state.feedbackMessage, state.metabaseQuery);
+
+    let relatedCards = "";
+    if (state.exampleRelatedCards) {
+      relatedCards = formatExampleCards(state.exampleRelatedCards)
+    } else {
+      relatedCards = fallbackCardExamples(this.database);
+    }
+    const result = await createMetabaseCard(state.task, state.sessionToken, state.schema, state.fieldDetails, relatedCards, this.companyName, state.feedbackMessage, state.metabaseQuery);
 
     if ('error' in result) {
       this.functions[1]('info', createNodeResponse('error', { message: result.error }));
@@ -187,6 +196,46 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
         ...state,
         cardId: result.cardId!,
         metabaseQuery: result.metabaseQuery,
+        queryAttempts: state.queryAttempts + 1,
+      };
+    }
+  }
+
+  private async createSQLCardNode(state: DataRecoveryState): Promise<DataRecoveryState> {
+    this.functions[1]('info', createNodeResponse('data', { message: "Creating Omniloy SQL card" }));
+
+    const queryAttempts = (state.queryAttempts || 0) + 1;
+    if (queryAttempts > 3) {
+      Logger.log("Unable to generate a suitable query after 3 attempts.")
+      return {
+        ...state,
+        queryAttempts,
+        finalResult: "Unable to generate a suitable query after 3 attempts. Here is the feedback message: " + state.feedbackMessage,
+      }
+    }
+    
+    let relatedSQLCards = "";
+    if (state.exampleRelatedCards) {
+      relatedSQLCards = await formatExampleSQLCards(this.companyName, state.sessionToken, state.exampleRelatedCards)
+    } else {
+      relatedSQLCards = fallbackSQLCardExamples(this.database);
+    }
+
+    const result = await createMetabaseSQLCard(state.task, state.sessionToken, state.schema, state.fieldDetails, relatedSQLCards, this.database, this.companyName, state.feedbackMessage, state.metabaseQuery);
+
+    if ('error' in result) {
+      this.functions[1]('info', createNodeResponse('error', { message: result.error }));
+      return {
+        ...state,
+        feedbackMessage: result.error,
+        metabaseQuery: result.sqlQuery,
+        queryAttempts: state.queryAttempts + 1,
+      };
+    } else {
+      return {
+        ...state,
+        cardId: result.cardId!,
+        metabaseQuery: result.sqlQuery,
         queryAttempts: state.queryAttempts + 1,
       };
     }
@@ -256,28 +305,21 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
       .addNode('evaluate_fields', this.evaluateFieldsNode.bind(this))
       .addNode('evaluate_examples', this.evaluateExamplesNode.bind(this))
       .addNode('check_update_semantic_layer', this.checkUpdateSemanticLayer.bind(this))
+      .addNode('create_sql_card', this.createSQLCardNode.bind(this))
       .addNode('create_card', this.createCardNode.bind(this))
       .addNode('execute_query', this.executeQueryNode.bind(this))
       .addNode('getReasoning', this.getReasoningNode.bind(this))
       .addEdge(START, 'fetch_schema')
-      .addEdge('fetch_schema', 'evaluate_examples')
-      .addEdge('evaluate_examples', 'evaluate_fields')
-      .addEdge('evaluate_fields', 'rewrite_task')
+      .addEdge('fetch_schema', 'evaluate_fields')
+      .addEdge('evaluate_fields', 'evaluate_examples')
+      .addEdge('evaluate_examples', 'rewrite_task')
       .addConditionalEdges('rewrite_task', (state: { isPossible: string }) => {
         if (state.isPossible === 'yes') {
           return 'create_card';
         } else {
-          return 'check_update_semantic_layer';
+          return 'create_sql_card';
         }
       })
-      .addConditionalEdges('check_update_semantic_layer', (state: { needsSemanticUpdate: boolean }) => {
-        if (state.needsSemanticUpdate) {
-          return END;
-        } else {
-          return 'create_card';
-        }
-      })
-      //.addEdge('evaluate_examples', 'create_card')
       .addConditionalEdges('create_card', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3) {
           return END;
@@ -287,13 +329,23 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
           return 'execute_query';
         }
       })
+      .addConditionalEdges('create_sql_card', (state: DataRecoveryState) => {
+        if (state.queryAttempts > 3) {
+          return 'check_update_semantic_layer';
+        } else if (!state.cardId) {
+          return 'create_sql_card';
+        } else {
+          return 'execute_query';
+        }
+      })
+      .addEdge('check_update_semantic_layer', END)
       .addConditionalEdges('execute_query', (state: DataRecoveryState) => {
         if (state.queryAttempts > 3 || state.stopExecution) {
           return END;
         } else if (state.queryResult && !("error" in state.queryResult)) {
           return 'getReasoning';
         } else {
-          return 'create_card';
+          return state.isPossible === 'yes' ? 'create_card' : 'create_sql_card';
         }
       })
       .addEdge('getReasoning', END);

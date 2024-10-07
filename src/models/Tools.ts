@@ -422,6 +422,205 @@ export const GenerateMetabaseQueryTool: ToolDefinition = {
   }
 };
 
+export const GenerateMetabaseSQLQueryTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generateMetabaseSQLQuery",
+    description: "Generate a Metabase query based on a natural language task and provided schema",
+    parameters: {
+      type: "object",
+      properties: {
+        description: {
+          type: "string",
+          description: "A detailed description of the query's purpose.",
+          minLength: 1
+        },
+        result_metadata: {
+          type: "array",
+          description: "Metadata about the results, including column descriptions, semantic types, and fingerprints.",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: ["string", "null"] },
+              semantic_type: { type: ["string", "null"] },
+              converted_timezone: {
+                type: "string",
+                description: "Converted timezone for the field, IE: America/New_York, Europe/Amsterdam, etc.",
+                pattern: "(?:Z|(?:[+-]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,6})?)?))"
+              },
+              unit: { type: ["string", "null"] },
+              name: { type: "string" },
+              field_ref: { type: ["array", "null"]},
+              id: { type: ["integer", "null"], minimum: 1 },
+              display_name: { type: "string" },
+              fingerprint: {
+                type: ["object", "null"],
+                properties: {
+                  global: {
+                    type: "object",
+                    properties: {
+                      "distinct-count": { type: "integer" },
+                      "nil%": { type: ["number", "null"] }
+                    }
+                  },
+                  type: {
+                    type: "object",
+                    properties: {
+                      "type/Number": {
+                        type: "object",
+                        properties: {
+                          min: { type: ["number", "null"] },
+                          max: { type: ["number", "null"] },
+                          avg: { type: ["number", "null"] },
+                          q1: { type: ["number", "null"] },
+                          q3: { type: ["number", "null"] },
+                          sd: { type: ["number", "null"] }
+                        }
+                      },
+                      "type/Text": {
+                        type: "object",
+                        properties: {
+                          "percent-json": { type: ["number", "null"] },
+                          "percent-url": { type: ["number", "null"] },
+                          "percent-email": { type: ["number", "null"] },
+                          "percent-state": { type: ["number", "null"] },
+                          "average-length": { type: ["number", "null"] }
+                        }
+                      },
+                      "type/DateTime": {
+                        type: "object",
+                        properties: {
+                          earliest: { type: ["string", "null"] },
+                          latest: { type: ["string", "null"] }
+                        }
+                      }
+                    }
+                  },
+                }
+              },
+              base_type: {
+                type: "string",
+                enum: ["type/Text", "type/Number", "type/Boolean", "type/DateTime", "type/URL", "type/Category"]
+              }
+            }
+          }
+        },
+        collection_id: {
+          type: "integer",
+          description: "The ID of the collection where the card will be stored, for now pick 2 as is the default library folder", // TODO: Keep track of this in case we use multiple folders
+          minimum: 1
+        },
+        name: {
+          type: "string",
+          description: "The name of the query or card.",
+          minLength: 1
+        },
+        type: {
+          type: "string",
+          description: "The type of the card, either 'question', 'metric', or 'model'.",
+          enum: ["question", "metric", "model"]
+        },
+        dataset_query: {
+          type: "object",
+          description: "The actual query to be executed, in structured JSON format.",
+          properties: {
+            database: { type: "integer", description: "The ID of the database to query." },
+            type: { type: "string", enum: ["native"], description: "The type of the query." },
+            native: {
+              type: "object",
+              description: "Contains the native SQL query details.",
+              properties: {
+                query: { type: "string", description: "The SQL query." },
+                "template-tags": { type: "object", description: "Template tags for dynamic query generation." }
+              }
+            }
+          },
+          required: ["database", "type", "native"]
+        },
+        parameter_mappings: {
+          type: "array",
+          description: "Mappings for parameters used in the query.",
+          items: {
+            type: "object",
+            properties: {
+              parameter_id: { type: "string", minLength: 1 },
+              target: { type: ["string", "object"] },
+              card_id: { type: "integer", minimum: 1 }
+            }
+          }
+        },
+        display: {
+          type: "string",
+          description: "The display mode of the query, typically a visualization type.",
+          minLength: 1
+        },
+        visualization_settings: {
+          type: "object",
+          description: "Settings for how the results will be visualized, in a chart or table."
+          // No changes to this part as requested
+        },
+        parameters: {
+          type: "array",
+          description: "Parameters that can be passed into the query for dynamic filtering.",
+          items: {
+            type: "object",
+            properties: {
+              slug: { type: "string" },
+              default: { type: ["string", "number", "boolean", "null"] },
+              name: { type: "string" },
+              type: {
+                type: "string",
+                description: "The type of parameter, such as 'string', 'number', 'date', etc.",
+                minLength: 1
+              },
+              temporal_units: {
+                type: "array",
+                items: { type: "string", enum: ["quarter", "day", "hour", "week", "second", "month", "year"] }
+              },
+              sectionId: { type: "string", minLength: 1 },
+              values_source_type: {
+                type: "string",
+                enum: ["static-list", "card", "null"]
+              },
+              id: { type: "string", minLength: 1 },
+              values_source_config: {
+                type: "object",
+                properties: {
+                  values: { type: ["array", "null"], items: { type: ["string", "number", "boolean"] } },
+                  card_id: { type: ["integer", "null"], minimum: 1 },
+                  value_field: {
+                    type: ["array", "null"],
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: ["string", "integer"] },
+                        options: { type: "object" }
+                      }
+                    }
+                  },
+                  label_field: {
+                    type: ["array", "null"],
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: ["string", "integer"] },
+                        options: { type: "object" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            required: ["id", "type"]
+          }
+        }
+      },
+      required: ["name", "dataset_query", "display", "type", "visualization_settings"]
+    }
+  }
+};
+  
+
 export const GenerateCardDescriptionsTool: ToolDefinition = {
   type: "function",
   function: {

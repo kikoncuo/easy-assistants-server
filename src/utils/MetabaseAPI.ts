@@ -85,7 +85,6 @@ export async function getCard(companyName: string, sessionToken: string, cardId:
  */
 export async function getExampleCards(companyName: string, sessionToken: string, cardIds: number[]): Promise<any> {
   const cardPayloads = [];
-  let stringResponse = "";
 
   for (const cardId of cardIds) {
     try {
@@ -113,14 +112,12 @@ export async function getExampleCards(companyName: string, sessionToken: string,
 
       cardPayloads.push(cardPayload);
 
-      stringResponse = formatExampleCards(cardPayloads);
-
     } catch (error) {
       console.error(`Error getting example cards ${cardId}, we will use the fallback card. Error: ${error}`);
     }
   }
 
-  return stringResponse;
+  return cardPayloads;
 }
 
 
@@ -331,7 +328,7 @@ export async function createDashboard(
   }
 }
 
-function formatExampleCards(exampleCards: any[]): string {
+export function formatExampleCards(exampleCards: any[]): string {
   let formattedString = '';
 
   exampleCards.forEach((card, index) => {
@@ -342,6 +339,20 @@ function formatExampleCards(exampleCards: any[]): string {
     formattedString += `${JSON.stringify(card, null, 2)}\n\n`;
   });
 
+  return formattedString.trim();
+}
+
+export async function formatExampleSQLCards(companyName: string, sessionToken: string, exampleCards: any[]): Promise<string> {
+  let formattedString = '';
+
+  const sqlQueries = await Promise.all(
+    exampleCards.map(async (card, index) => {
+      const sqlNative = await getDatasetSQLQuery(companyName, sessionToken, card.dataset_query);
+      return `**Example ${index + 1}:**\n\n**Natural Language Query:**\n${card.description || 'No description available'}\n\n**Native query:**\n${sqlNative}\n\n`;
+    })
+  );
+
+  formattedString = sqlQueries.join('');
   return formattedString.trim();
 }
 
@@ -446,5 +457,37 @@ export async function getDatasetAsCSV(companyName: string, payload:any, sessionT
     return response.data;
   } catch (error) {
     console.error('Error fetching data:', error);
+  }
+}
+
+/**
+ * Fetch dataset native query from Metabase.
+ * @param companyName The name of the company to get the configuration for.
+ * @param sessionToken The session token obtained from authentication.
+ */
+export async function getDatasetSQLQuery(companyName: string, sessionToken: string, query: any): Promise<string | { error: string; status: number }> {
+  const config = ConfigurationManager.getConfig(companyName);
+
+  try {
+    const response = await axios.post(`${config.METABASE_URL}/dataset/native`, query, {
+      headers: {
+        'X-Metabase-Session': sessionToken,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.data && response.data.query) {
+      return response.data.query;
+    } else {
+      return { error: 'Query not found in the response', status: 404 };
+    }
+
+  } catch (error: any) {
+    Logger.error('Error fetching dataset:', error);
+    if (error.response) {
+      return { error: error.response.data || 'Unknown error occurred', status: error.response.status };
+    } else {
+      return { error: 'An unexpected error occurred', status: 500 };
+    }
   }
 }

@@ -1,12 +1,12 @@
 import { authenticate, createCard, executeQuery, fetchFieldValues, getSchema, getExampleCards, deleteCard, createDashboard, getCards, getCard } from '../../utils/MetabaseAPI';
 import { similaritySearch } from '../../utils/EmbeddingUtils';
-import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool, GetSuggestionsForAskedQuestionTool, GetRewriteTask, IdentifyingTablesDoneTool} from '../../models/Tools';
 import { getFasterModel, anthropicSonnet, createStructuredResponseAgent, getStrongestModel, createToolsAgent } from '../../models/Models';
 import Logger from '../../utils/Logger';
-import { fallbackCardExamples } from '../../utils/CardExamples';
 import { LLMResponseHandler } from '../../utils/LLMResponseHandler';
 import { InsightDatasetStateV3 } from '../getInisghtsV3';
+import { HumanMessage } from '@langchain/core/messages';
+import { GenerateMetabaseQueryTool, IdentifyFieldsTool, GetReasoningTool, GenerateInsightTool, AnalyzeFiltersTool, GetRelevantCardsTool, TableIdentifyingTool, CardIdentifyingTool, GetSuggestionsForAskedQuestionTool, GetRewriteTask, GenerateMetabaseSQLQueryTool} from '../../models/Tools';
+import { fallbackCardExamples, fallbackSQLCardExamples } from '../../utils/CardExamples';
 
 
 export async function fetchSchema(company_name: string, database: number): Promise<{ sessionToken: string, schema: any }> {
@@ -95,11 +95,11 @@ export async function getFieldDetails(task: string, sessionToken: string, schema
 };
 
 export async function getExampleRelatedCards(task: string, sessionToken: string, databaseId: number,  companyName:string, feedbackMessage?: string):
-Promise<{ exampleRelatedCards: string, ids?: number[] }> {
-  const filter = { databaseID: databaseId };
+Promise<{ exampleRelatedCards: any, ids?: number[] }> {
+  const filter = { databaseID: databaseId};
   //TODO: Check this functionality
 
-  let exampleRelatedCards = "";
+  let exampleRelatedCards = null;
   if (!feedbackMessage) {
     const similaritySearchWithScoreResults = await similaritySearch(companyName, task, 3, filter);
     //Logger.log('Similarity search results', similaritySearchWithScoreResults);
@@ -116,18 +116,17 @@ Promise<{ exampleRelatedCards: string, ids?: number[] }> {
     }
 
     if (ids.length === 0) {
-      Logger.log('No related cards found, using fallback cards');
-      exampleRelatedCards = fallbackCardExamples(databaseId);
+      Logger.log('No related cards found, use fallback cards');
     } else {
       exampleRelatedCards = await getExampleCards(companyName, sessionToken, ids);
       //Logger.log('Recovered exampleRelatedCards', exampleRelatedCards);
     }
 
     return { exampleRelatedCards, ids }
-  } else {
-    exampleRelatedCards = fallbackCardExamples(databaseId);
-    return { exampleRelatedCards }
-  }
+  } 
+    
+  return { exampleRelatedCards }
+
 }
 
 //TODO: Check this functionality
@@ -188,6 +187,68 @@ Promise<{ cardId: number; metabaseQuery: string } | { error: string, metabaseQue
     return {
       cardId: cardIdResponse,
       metabaseQuery: JSON.stringify(metabaseQueryResult)
+    };
+  }
+}
+
+export async function createMetabaseSQLCard(task: string, sessionToken: string, schema: any[], fieldDetails: Record<number, any>, exampleRelatedCards: any, databaseId: any,  companyName:string, feedbackMessage?: string, sqlQuery?: any):
+Promise<{ cardId: number; sqlQuery: string } | { error: string, sqlQuery: string }> {
+  
+  const model = createStructuredResponseAgent(anthropicSonnet(), [GenerateMetabaseSQLQueryTool]); // Only model flexible enough to generate the query
+
+  const message = await model.invoke([ 
+    new HumanMessage(`You are tasked with generating a Metabase SQL query based on the following natural language task: 
+    "${task}"
+  
+    The schema of the database is:
+    ${JSON.stringify(schema, null, 2)}
+
+    The id of the database is: ${databaseId}
+
+    You can only use the tables and fields that are provided in the schema.
+
+    Here are some value examples for some of the fields of the schema:
+    ${fieldDetails}
+  
+    Ensure that the SQL is well-formed, syntactically correct, and meets the requirements of the task.
+  
+    ${feedbackMessage ? `Previous attempt has generated the following query ${sqlQuery}, and resulted in an error: ${feedbackMessage}\n Please adjust the query or try a different approach to avoid this error` : ''}
+
+    Try to leverage the "CubeJoinField" fields that all tables have to join source tables.
+    When available, try to use names instead of IDs for visualizations, even if a new join is necessary to get an item's name.
+
+    The output query must be a native SQL query. Try to keep it simple as possible.
+    Don't use WITH clauses, use subqueries instead.
+
+    Here are some examples of a natural language query and its corresponding query on the data_set:
+    ${feedbackMessage ? fallbackSQLCardExamples : exampleRelatedCards}
+
+    `)
+  ]);
+  
+  const sqlQueryResult = message.lc_kwargs.tool_calls[0].args;
+  Logger.log("SQL Query:", sqlQueryResult.dataset_query.native.query)
+
+  const cardIdResponse = await createCard(companyName, sessionToken, sqlQueryResult); 
+
+  if (typeof cardIdResponse === 'object' && ('error' in cardIdResponse)) {
+    let errorMessage = "";
+    if (JSON.parse(cardIdResponse.error).message) {
+      Logger.error(`Failed to create card: ${JSON.parse(cardIdResponse.error).message} (Status: ${cardIdResponse.status})`);
+      errorMessage = JSON.parse(cardIdResponse.error).message;
+    } else {
+      Logger.error(`Failed to create card: ${JSON.stringify(cardIdResponse.error, null, 2)} (Status: ${cardIdResponse.status})`);
+      errorMessage = "unknown error, try to create the query in a different way";
+    }
+    return {
+      error: errorMessage,
+      sqlQuery: JSON.stringify(sqlQueryResult)
+    };
+  } else {
+    Logger.log('Card ID:', cardIdResponse); 
+    return {
+      cardId: cardIdResponse,
+      sqlQuery: JSON.stringify(sqlQueryResult)
     };
   }
 }
@@ -276,7 +337,6 @@ if (queryResult.length === 0) {
   ]);
 }
 
-console.log({message})
 if (message.lc_kwargs.tool_calls.length > 0) {
   const args = message.lc_kwargs.tool_calls[0].args;
 
