@@ -677,13 +677,9 @@ export const TableIdentifyingTool: ToolDefinition = {
               name: {
                 type: "string",
                 description: "The name of the table."
-              },
-              status: {
-                type: "string",
-                description: "The status of the table, previous or current."
               }
             },
-            required: ["id", "name", "status"]
+            required: ["id", "name"]
           }
         },
         isPossible: {
@@ -855,6 +851,145 @@ export const GetRewriteTask: ToolDefinition = {
         }
       },
       required: ["task"]
+    }
+  }
+};
+
+export const PlanFinishedTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "planFinished",
+    description: "Indicates that the user has finished the plan. Only use this when the user says ok.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "boolean",
+        }
+      },
+      required: ["status"]
+    }
+  }
+};
+
+export const IdentifyingTablesDoneTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "identifyingTablesDone",
+    description: "Indicates that the user has finished the selecting the tables. Only use this when the selection is finished.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "boolean",
+        }
+      },
+      required: ["status"]
+    }
+  }
+};
+
+export const GenerateCodeTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generateCode",
+    description: "Generate Python code to extract insights based on the dataset and plan",
+    parameters: {
+      type: "object",
+      properties: {
+        explanation: {
+          type: "string",
+          description: "Brief explanation of what the generated code does"
+        },
+        pythonCode: {
+          type: "string",
+          description: "Complete Python code to extract insights, including necessary imports and data manipulation"
+        }        
+      },
+      required: ["pythonCode", "explanation"]
+    }
+  }
+};
+
+export const CodeFinishedTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "codeFinished",
+    description: "Indicates that the generated Python code has been executed successfully and the task is complete.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "boolean",
+          description: "True if the code execution is finished, false otherwise."
+        }
+      },
+      required: ["status"]
+    }
+  }
+};
+
+export const GenerateReportTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "generateReport",
+    description: "Generate a comprehensive report based on the analyzed data and insights",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "Title of the report"
+        },
+        summary: {
+          type: "string",
+          description: "Executive summary of the key findings"
+        },
+        sections: {
+          type: "array",
+          description: "Array of report sections",
+          items: {
+            type: "object",
+            properties: {
+              heading: {
+                type: "string",
+                description: "Section heading"
+              },
+              content: {
+                type: "string",
+                description: "Detailed content for this section"
+              }
+            },
+            required: ["heading", "content"]
+          }
+        },
+        recommendations: {
+          type: "array",
+          description: "List of actionable recommendations based on the analysis",
+          items: {
+            type: "string"
+          }
+        }
+      },
+      required: ["title", "summary", "sections"]
+    }
+  }
+};
+
+export const ReportFinishedTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "reportFinished",
+    description: "Indicates that the report generation is complete and ready for review",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "boolean",
+          description: "True if the report is finished, false otherwise"
+        }
+      },
+      required: ["status"]
     }
   }
 };

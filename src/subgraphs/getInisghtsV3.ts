@@ -1,20 +1,18 @@
+import axios from 'axios';
 import { AbstractGraph, BaseState } from './baseGraph';
 import { END, START, StateGraph, StateGraphArgs } from '@langchain/langgraph';
-import { getRelevantTables, getSuggestionForTask } from './nodes/cardLogic';
-import { authenticate, getDatasetAsCSV, getDatasetQuery } from '../utils/MetabaseAPI';
-import { HumanMessage } from '@langchain/core/messages';
-import { createStructuredResponseAgent, getStrongestModel } from '../models/Models';
+import { getCode, getRelevantTables, getReport, startKernel } from './nodes/insightLogic';
+import { authenticate, getDatasetQuery } from '../utils/MetabaseAPI';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 import Logger from '../utils/Logger';
-import { GeneratePlanTool } from '../models/Tools';
-import { createThread, createMessage, streamRun, uploadTables } from '../utils/AssistantsOpenAI';
 import { createNodeResponse } from '../utils/NodeResponseUtils';
 import { ConfigurationManager } from '../utils/ConfigurationManager';
 import { PostgresSaver } from '../checkpoint/postgres';
 import { MemorySaver } from '@langchain/langgraph';
-
-type MessageType = 'Image' | 'Text' | 'Code';
-
-interface InsightDatasetStateV3 extends BaseState {
+import { getPlan } from './nodes/insightLogic';
+import { LLMResponseHandler } from '../utils/LLMResponseHandler';
+export interface InsightDatasetStateV3 extends BaseState {
+  messages: (HumanMessage | AIMessage | SystemMessage)[];
   task: string;
   queryResult: any[];
   fieldDetails: Record<number, any>; 
@@ -25,18 +23,33 @@ interface InsightDatasetStateV3 extends BaseState {
   runId: string; 
   continued: boolean;
   result: string;
+  planDone: boolean;
+  codeDone: boolean;
+  limit: number;
+  code: any[];
+  cellCount: number;
+  summary: any[];
+  kernelId: any
   finalResult: string; 
 }
 
 export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> {
   private database: number;
   private companyName: string;
+  private llmResponseHandler: LLMResponseHandler;
   private functions: Function[];
   private schema: any[];
   private sessionToken: string;
 
   constructor(databaseId: number, functions: Function[], companyName: string, schema: any[]) {
     const graphState: StateGraphArgs<InsightDatasetStateV3>['channels'] = {
+      messages: {
+        value: (
+          x: (HumanMessage | AIMessage | SystemMessage)[],
+          y: (HumanMessage | AIMessage | SystemMessage)[]
+        ) => x.concat(y),
+        default: () => [],
+      },
       task: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
@@ -80,12 +93,41 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
       result: {
         value: (x: string, y?: string) => (y ? y : x),
         default: () => '',
-      }
+      },
+      planDone: {
+        value: (x: boolean, y?: boolean) => (typeof y === 'boolean' ? y : x),
+        default: () => false,
+      },
+      limit: {
+        value: (x: number, y?: number) => (typeof y === 'number' ? y : x),
+        default: () => 10
+      },
+      code: {
+        value: (x: any[], y?: any[]) => (y ? y : x),
+        default: () => [],
+      },
+      cellCount: {
+        value: (x: number, y?: number) => (typeof y === 'number' ? y : x),
+        default: () => 1
+      },
+      codeDone: {
+        value: (x: boolean, y?: boolean) => (typeof y === 'boolean' ? y : x),
+        default: () => false,
+      },
+      summary: {
+        value: (x: any[], y?: any[]) => (y ? y : x),
+        default: () => [],
+      },
+      kernelId: {
+        value: (x: any, y?: any) => (y ? y : x),
+        default: () => ''
+      },
     };
     super(graphState);
     this.database = databaseId;
     this.companyName = companyName;
     this.functions = functions;
+    this.llmResponseHandler = new LLMResponseHandler(functions);
     this.sessionToken = '';
     this.schema = schema;
   }
@@ -97,11 +139,11 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
       if (sessionToken) {
         Logger.log('Authenticated successfully');
       } else {
-        this.functions[0]('info', createNodeResponse('error', { message: "Sorry could not authenticate" }));
+        this.functions[1]('info', createNodeResponse('error', { message: "Sorry could not authenticate" }));
       }
     } catch (error) {
       console.error("Error fetching schema:", error);
-      this.functions[0]('info', createNodeResponse('error', { message: "Error fetching schema" }));
+      this.functions[1]('info', createNodeResponse('error', { message: "Error fetching schema" }));
     }
   }
 
@@ -109,35 +151,27 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
     if(state.continued) {
         return {...state, isPossible: 'yes'};
     }
-    const { relevantTables, isPossible } = await getRelevantTables(state.task, this.schema, state.relevantTables, state.continued, state.result);
-    Logger.log('Table selection isPossible:', isPossible);
-    Logger.log('Table selection relevantTables:', relevantTables)
-    const changeNeeded = relevantTables.filter(table => table.status === 'current').length === 0;
-    if (relevantTables && relevantTables.length > 0 && !changeNeeded && isPossible) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables successfully retrieved", data: {relevantTables: relevantTables} }));
-    } else if (relevantTables && relevantTables.length > 0 && changeNeeded && isPossible) {
-      this.functions[0]('info', createNodeResponse('data', { message: "Relevant tables are already retrieved", data: {relevantTables: relevantTables} }));
-    } else {
-        this.functions[0]('info', createNodeResponse('error', { message: "Relevant tables could not be retrieved" }));
-    }
-    Logger.log('relevantTables',relevantTables)
-    const tablesNeeded = changeNeeded ? 'yes' : 'no';
-    Logger.log('tablesNeeded', tablesNeeded)
-    return { ...state, isPossible: tablesNeeded, relevantTables };
+    const systemPrompt = `You are an expert database schema analyst specializing in identifying relevant tables and relationships for a specific task. 
+    Your role is to analyze a given database schema and determine which tables are most relevant for accomplishing a specified task.
+    Here is the schema: ${JSON.stringify(this.schema, null, 2)}
+    Here is the task: ${state.task}
+    `;
+    state.messages = await this.llmResponseHandler.initializeMessages(state.task, systemPrompt, state.messages);
+    const { state: updatedState, response } = await getRelevantTables(state,this.llmResponseHandler);
+    state = { ...state, ...updatedState };
+    return { ...state, ...response };
   }
 
 
   private async getTablesNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
-    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
-    Logger.log('tablesToQuery', tablesToQuery)
-    for (const table of tablesToQuery) {
+    for (const table of state.relevantTables) {
         const questionData = {
             datasetQuery: {
                 database: this.database,
                 type: "query",
                 query: {
                     "source-table": table.id,
-                    "limit": 10
+                    "limit": state.limit
                 }
             }
         };
@@ -151,16 +185,16 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
                 if (tableResult && tableResult.via && tableResult.via.length > 0 && tableResult.via[0].status === "failed") {
                   retryCount++;  
                   Logger.log(`Query for table ${table.name} failed, retry attempt ${retryCount}`);
-                    this.functions[0]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
+                    this.functions[1]('info', createNodeResponse('error', { message: `Query for table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
                     if (retryCount >= maxRetryCount) {
                         retry = false; // Exit retry loop if max retry count is reached
-                        this.functions[0]('error', createNodeResponse('error', { 
+                        this.functions[1]('error', createNodeResponse('error', { 
                             message: `Failed to retrieve data for table ${table.name} after ${retryCount} attempts.` 
                         }));
                     } 
                 } else {
                     retry = false; // Exit retry loop if no failure
-                    this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
+                    this.functions[1]('info', createNodeResponse('data', { message: `Successfully retrieved data for table ${table.name}`, data: {tableName: table.name} }));
                 }
             } catch (error) {
                 Logger.error(`Error querying table ${table.name}:`, error);
@@ -177,318 +211,168 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
           state.queryResult.push({ name: table.name, rows: tableResult.data.rows, fields: fields });
         }
     }
-    return { ...state, queryResult: state.queryResult };
+    state.messages = []
+    state.cellCount = state.relevantTables.length + 1;
+    return { ...state, queryResult: state.queryResult, messages: state.messages, cellCount: state.cellCount };
   }
 
   private async plannerNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
-
-    if(state.queryResult.length === 0) {
-        const { suggestion } = await getSuggestionForTask(this.schema, state.task);
-        console.log('Suggestion', suggestion);
-    }
 
     const tables = state.queryResult.map((table: any) => ({
         tableName: table.name,
         rows: table.rows,
         fields: table.fields
       }));
-  
+    
     const formattedTables = JSON.stringify(tables)
 
-    const model = createStructuredResponseAgent(getStrongestModel(), [GeneratePlanTool]);
-
-    const message = await model.invoke([
-      new HumanMessage(`
-        Given the following task: "${state.task}"
+    const systemPrompt = `You are a technical business analyst that makes plans.
+          You are provided with several tables. Each table contains its name, 10 rows of data, and fields array which will contain the fieldName of the field, description of the field and additional details of the field which can be very useful.
         
-        You are provided with several tables. Each table contains its name, 10 rows of data, and fields array which will contain the fieldName of the field, description of the field and additional details of the field which can be very useful for the query.
-        
-        For each table, you will receive:
-        tableName: The name of the table.
-        rows: The actual data in the table.
-        fields: The fields of the table.
-        
-        table data: ${formattedTables}
+            For each table, you will receive:
+            tableName: The name of the table.
+            rows: The actual data in the table.
+            fields: The fields of the table.
+            
+            table data: ${formattedTables}
+          
+          Please note: Your responses should be adaptable as users may request plan updates or modifications based on their needs.`
 
-        Your task is to analyze the given task and table data to create a detailed step-by-step plan for extracting valuable insights. Follow these guidelines:
-
-            1. Analyze the task to identify key objectives and determine how to extract valuable insights from the table data.
-            2. Examine the table data to determine the optimal way to retrieve the required information.
-            3. Create a detailed step-by-step plan to extract insights based on the task and the table data. Your plan should demonstrate:
-                a. Data Structure Awareness:
-                    Leverage your understanding of the table data.
-                    Determine the optimal way to retrieve required data based on existing tables and fields.
-                b. Defining Data Requirements:
-                    Identify necessary data fields (e.g., order_date, order_id, order_total).
-                    Outline required metrics (e.g., order counts, total values).
-                c. Analysis Plan:
-                    Propose appropriate analytical methods (e.g., time series analysis, cohort analysis).
-                    Consider potential challenges and data limitations.
-        
-        Your plan should be an array of steps, where each step includes:
-
-        1. Step Name: A brief, descriptive name for the step.
-        2. Description: A detailed description of what this step should accomplish, including any exploratory operations if needed.
-        3. Data Requirements: List the specific data fields and tables required for this step.
-        4. Transformations: Detail any data transformations required for this step (e.g., aggregations, filtering, or calculations).
-        5. Visualization: If applicable, suggest an appropriate visualization (e.g., bar chart, scatter plot, line chart) for this step.
-        6. Expected Insight: Describe the insight or information you expect to gain from this step.
-  
-        IMPORTANT: This plan will be used to generate Python code for each step. Ensure that each step is clear, concise, and can be translated into a single Python script.
-        IMPORTANT: Choose fields that actually exist in the table and avoid fields that do not exist.
-        IMPORTANT: The plan should be returned as a JSON array of step objects.
-  
-        Here's an example of how the plan should be structured:
-  
-        [
-          {
-            "stepName": "Identify Underperforming Products",
-            "description": "Calculate the sales performance of each product over the past month and compare it to the previous month to identify underperforming products.",
-            "dataRequirements": [
-                "orders table: order_id, order_date, product_id, quantity, price"
-            ],
-            "transformations": [
-              "Aggregate TotalSold by ProductId for the current month and the previous month",
-              "Calculate the percentage change in TotalSold for each product",
-              "If product categories are not available, perform text search on product names for relevant keywords"
-            ],
-            "visualization": "Bar chart showing the percentage change in sales for each product",
-            "expectedInsight": "Identify the top 5 products with the largest decrease in sales"
-          },
-          {
-            "stepName": "Analyze Time-based Patterns",
-            "description": "Examine sales patterns across different days of the week and times of day to identify potential factors affecting product performance.",
-            "dataRequirements": [
-                "orders table: order_id, order_date, product_id, quantity, price"
-            ],
-            "transformations": [
-              "Aggregate TotalSold by DayOfWeek and hour of day",
-              "Calculate average sales for each product by day and hour"
-            ],
-            "visualization": "Heatmap showing sales intensity by day of week and hour",
-            "expectedInsight": "Identify peak sales periods and any products that deviate from overall trends"
-          }
-        ]
-  
-        Please provide a similar plan tailored to the given task and data.
-
-        Additionally, provide:
-        1. An assessment of whether the plan is possible with the available table data (isPossible: true/false)
-        2. If the plan is not possible to execute with the available data, suggest an alternative task message that can generate a plan that is possible with the available table data.
-      `)
-    ]);
-
-    const { plan, isPossible, task } = message.lc_kwargs.tool_calls[0].args;
-    Logger.log('isPossible from PlanNode', isPossible);
-    Logger.log('task from PlanNode', task);
-
-    const userResponses = [];
-
-    let planString = JSON.stringify(plan, null, 2);
-      const userOptions = [
-        {
-          function_name: 'planReview',
-          arguments: {
-            planReview: `Here is a plan how we want to get insights for your task. Have a look at it. We will keep you updated on each step of the plan. Please review it and let us know if you have any questions or suggestions.`,
-            plan: plan
-          },
+      state.messages = await this.llmResponseHandler.initializeMessages(state.task, systemPrompt, state.messages);
+      const toolHandlers = {
+        planFinished: async (args: any, toolCallId: string, state: any) => {
+          console.log('Plan finished');
+          return { planDone: true };
         },
-      ];
-
-      // Send options to user via WebSocket
-      try {
-        const response = await this.functions[0]('tool', userOptions);
-        userResponses.push({ plan: planString, response: response.planReview });
-      } catch (error) {
-        Logger.error('Error sending plan to user:', error);
-      }
-
-
-    return {...state, plan: plan}
+      };
+      const { state: updatedState, response } = await getPlan(state,this.llmResponseHandler, toolHandlers);
+      state = { ...state, ...updatedState };
+      return { ...state, ...response };
   }
 
-  private async codeInterpreterNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
-    let codeInterpreterThreadId = state.codeInterpreterThreadId;
-
-    if(state.continued) {
-        state.relevantTables = state.relevantTables.map(table => ({
-          ...table,
-          status: 'previous'
-        }));
+  private async jupyCellNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
+    if(!state.kernelId) {
+       state.messages = []
+       state.kernelId = await startKernel(state, this.companyName, this.sessionToken, this.database);
     }
-    const tablesToQuery = state.relevantTables.filter(table => table.status === 'current');
-    if (!codeInterpreterThreadId) { // If there is no codeInterpreterThreadId create it and expect a plan and files
+    state.codeDone = true;
+
+    const tables = state.queryResult.map((table: any) => ({
+      tableName: table.name,
+      rows: table.rows,
+      fields: table.fields
+    }));
+  
+    const formattedTables = JSON.stringify(tables)
+    const systemPrompt = 
+    `You are ChatGPT, a large language model trained by OpenAI.
+     You are expert in Python programming and data analysis.
+     Your task is to generate executable Python code based on the provided dataset preview and plan.
+     For each table in the dataset:
+      - tableName: The name of the table
+      - rows: Sample data (10 rows) from the table
+      - fields: The fields/columns of the table
+
+     Dataset Preview: ${formattedTables}
+     Plan: ${JSON.stringify(state.plan, null, 2)}
+     REQUIREMENTS:
+      1. Generate clear, efficient, and executable Python code
+      2. Focus on data manipulation, analysis, and visualization
+      3. Ensure all code is compatible with a Jupyter notebook environment
+      4. The complete dataset for each table is already loaded in the kernel named in a variable named according to the table name. example: weather
+      5. The variable names will be in the LowerCase.
+      6. Use StringIO to read the dataset CSV string into a DataFrame. example: weather_data = pd.read_csv(StringIO(weather)) 
+      7. Use the actual table names from the preview for data manipulation
+
+    IMPORTANT: The preview only shows 10 rows per table, but your code should work with the full datasets available in the kernel.
+    ADDITIONAL REQUIREMENTS:
+      1. After each step of data manipulation, display the results using appropriate functions like print, head(), or summary statistics functions.
+      2. Ensure that the code provides meaningful insights or results in addition to visualizations. For example, calculate and display averages, sums, correlations, or other metrics based on the dataset.
+     `
+     state.messages = await this.llmResponseHandler.initializeMessages(state.task, systemPrompt, state.messages);
+     const toolHandlers = {
+      generateCode: async (args: any, toolCallId: string, state: any) => {
+        state.code = [args.pythonCode];
+        let result;
+        
+      let cellCount = state.cellCount;
+      state.cellCount++;
+      for (let i = 0; i < state.code.length; i++) {
+        let code = state.code[i];
+        const codeCellResponse = await axios.post('http://localhost:8000/cell', {
+            kernel_id: state.kernelId,
+            cell_number: cellCount,
+            code: code, 
+            action: 'add'
+        });
+        console.log(`state.code ${i}`, code);
+        Logger.log(`codeCellResponse.data ${cellCount}`,codeCellResponse.data); 
+  
+        const runCellResponse = await axios.post('http://localhost:8000/cell', {
+            kernel_id: state.kernelId,
+            cell_number: cellCount, 
+            action: 'run'
+        });
+        cellCount++;
+        const cellOutputs = runCellResponse.data.outputs;
+      if (cellOutputs.length > 0) {
+        for (let i = 0; i < cellOutputs.length; i++) {
+          if (cellOutputs[i].data && cellOutputs[i].data['image/png']) {
+                let imageData = cellOutputs[i].data['image/png'];
+                const generateImages = [
+                  {
+                    function_name: 'generateImages',
+                    arguments: {
+                      generatedImages: imageData
+                    }
+                  },
+                ];
+                this.functions[1]('tool', generateImages);
+            }
+            if(cellOutputs[i].name && cellOutputs[i].name === 'stdout') {
+              state.summary = [...state.summary, cellOutputs[i].text];
+              result = cellOutputs[i].text;
+            }
+          }
+        }
       
-      codeInterpreterThreadId = await createThread();
-
-      const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
-
-      const attachmentsandCsvs = await uploadTables(csvs);
-      const attachments = attachmentsandCsvs.attachments;
-      const csvFiles = attachmentsandCsvs.csvs;
-
-      const getCsv = [
+       const generateCode = [
         {
-          function_name: 'getCsv',
-          arguments: {
-            generatedCsv: csvs,
-            generatedFiles: csvFiles
+          function_name: 'generateCode',
+          args: {
+            pythonCode: args.pythonCode,
+            explanation: args.explanation
           }
         },
       ];
-      this.functions[0]('tool', getCsv);
-    
-      await createMessage(codeInterpreterThreadId, JSON.stringify(state.plan), attachments);
-    
-    } else { // If there is a codeInterpreterThreadId, we are continuing a plan we will just send the new task
-      
-      if(state.continued && tablesToQuery.length > 0) {
-        
-        const csvs = await this.getDatasetAsCSV(tablesToQuery, this.sessionToken, this.database, this.companyName);
-        console.log('csvs', csvs)
-        const attachmentsandCsvs = await uploadTables(csvs);
-        const attachments = attachmentsandCsvs.attachments;
-        const csvFiles = attachmentsandCsvs.csvs;
-
-        const getCsv = [
-          {
-            function_name: 'getCsv',
-            arguments: {
-              generatedCsv: csvs,
-              generatedFiles: csvFiles
-            }
-          },
-        ];
-        this.functions[0]('tool', getCsv);
-        
-        await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), attachments);
-     
-      } else {
-        
-        await createMessage(codeInterpreterThreadId, JSON.stringify(state.task), []);
+      this.functions[1]('tool', generateCode);
       }
-    }
-    
-    if(!process.env.INSIGHT_ASSISTANT_KEY) {
-      this.functions[0]('info', createNodeResponse('error', { message: "Insight assistant integration is not enabled. " }));
-      return { ...state, codeInterpreterThreadId: codeInterpreterThreadId };
-    }
-
-    const assistantId = process.env.INSIGHT_ASSISTANT_KEY
-  
-    await streamRun(
-      codeInterpreterThreadId,
-      assistantId,
-      async (tool, imageData, status, runId) => {
-
-        Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`)
-        if(imageData) {
-          this.sendImageAndTextToFrontend(imageData, "Image", status, runId, codeInterpreterThreadId);
-        }
-        this.sendImageAndTextToFrontend(tool.input, "Code", status, runId, codeInterpreterThreadId);
+        return { code: result };
       },
-      (content, status, runId) => {
-
-        this.sendImageAndTextToFrontend(content, "Text", status, runId);
-        Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`);
-        if(status === 'completed') {
-          state.result = content.value;
-        }
+      codeFinished: async (args: any, toolCallId: string, state: any) => {
+        console.log('code execution finished');
+        return { codeDone: true };
       },
-      (error) => {
-        Logger.error('Error in streamRun:', error);
-        this.functions[0]('info', createNodeResponse('error', { message: "There was an error with the AI models. Please contact with Omniloy support team.", data: { error: error } }));
-      }
-    );
-
-    // await pollRun(
-    //   codeInterpreterThreadId, 
-    //   assistantId, 
-    //   (tool) => Logger.log(`\nTOOL CALL DONE > ${JSON.stringify(tool, null, 2)}\n\n`),
-    //   (content, snapshot) => saveOpenAIImage(content.image_file.file_id), // TODO: create a private function to send the image to the frontend
-    //   (content, snapshot) => Logger.log(`\nTEXT DONE > ${JSON.stringify(content, null, 2)}`)
-    // );
-
-
-    state.continued = true;
-    Logger.log('continued', state.continued)
-
-    return {...state, codeInterpreterThreadId: codeInterpreterThreadId};
-  } 
-
-  private async sendImageAndTextToFrontend(value: string | Buffer, type: string, status: string, runId: string, codeInterpreterThreadId?: string): Promise<void> {
-    const argumentKeyMap = {
-      Image: 'generatedImages',
-      Text: 'generatedTexts',
-      Code: 'generatedCodes'
     };
-  
-    const getArguments = (type: MessageType, value: string | Buffer, status: string, runId:string, codeInterpreterThreadId?: string) => {
-      const args: any = {
-        [argumentKeyMap[type]]: value,
-        status: status,
-        runId: runId
-      };
-  
-      if ((type === 'Image' || type === 'Code') && codeInterpreterThreadId) {
-        args.codeInterpreterThreadId = codeInterpreterThreadId;
-      }
-  
-      return {
-        function_name: `get${type}`,
-        arguments: args
-      };
-    };
-  
-    const data = [getArguments(type as MessageType, value, status, runId, codeInterpreterThreadId)];
-  
-    this.functions[0]('tool', data);
+     const { state: updatedState, response } = await getCode(state,this.llmResponseHandler, toolHandlers);
+     state = { ...state, ...updatedState };
+     return { ...state, ...response };
   }
 
-  private async getDatasetAsCSV(relevantTables:any[], sessionToken: string, databaseID:number, companyName:string): Promise<any> {
-    const csvs: { [tableName: string]: string } = {};
-    for(const table of relevantTables) {
-      let retry = true;
-      let maxRetryCount = 3;
-      let retryCount = 0;
-      let csv;
-      let error: boolean = false;
-    //   const query = table.dataset_query
-      const payload = {
-        query: JSON.stringify({
-            database: databaseID,
-            query: { "source-table": table.id, limit: 10000 },
-            type: "query"
-          })
-      };
-      while (retry && retryCount < maxRetryCount) {
-        try {
-            csv = await getDatasetAsCSV(companyName, payload, sessionToken);
-            if (csv && csv.via && csv.via.length > 0 && csv.via[0].status === "failed") {
-              retryCount++;  
-              Logger.log(`CSV for table ${table.name} failed, retry attempt ${retryCount}`);
-              this.functions[0]('info', createNodeResponse('data', { message: `Table ${table.name} couldn't be retrieved for network issues, retry attempt ${retryCount}...` }));
-              if (retryCount >= maxRetryCount) {
-                retry = false; // Exit retry loop if max retry count is reached
-                this.functions[0]('error', createNodeResponse('error', { 
-                  message: `Failed to retrieve CSV for table ${table.name} after ${retryCount} attempts.` 
-                }));
-                error = true;
-              }
-            } else {
-              retry = false; // Exit retry loop if no failure
-              this.functions[0]('info', createNodeResponse('data', { message: `Successfully retrieved table ${table.name}`, data: {csv: table.name} }));
-            }
-          } catch (error) {
-            console.error(`Error fetching CSV for table ${table.name}:`, error);
-            retry = false; // Exit retry loop in case of an error
-            error = true;
-        }
-      }
-        csvs[table.name] = csv;
-    }
-    return csvs;
+  private async reportWriterNode(state: InsightDatasetStateV3): Promise<InsightDatasetStateV3> {
+    state.messages = []
+    const systemPrompt = `You are a technical business analyst that writes reports.
+    Your role is to write a report based on the given task, plan and result.
+    Here is the task: ${state.task}
+    Here is the plan: ${JSON.stringify(state.plan, null, 2)}
+    Here is the result: ${JSON.stringify(state.summary, null, 2)}
+`
+     state.messages = await this.llmResponseHandler.initializeMessages(state.task, systemPrompt, state.messages);
+     const { state: updatedState, response } = await getReport(state,this.llmResponseHandler);
+     state = { ...state, ...updatedState };
+     return { ...state, ...response };
   }
+  
 
   getGraph(): any {
     const graphBuilder = new StateGraph<InsightDatasetStateV3>({ channels: this.channels });
@@ -498,16 +382,17 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
       .addNode('select_tables', this.identifyRelevantTablesNode.bind(this))
       .addNode('get_tables', this.getTablesNode.bind(this))
       .addNode("plan_execution", this.plannerNode.bind(this))
-      .addNode("generate_python_code", this.codeInterpreterNode.bind(this))
+      .addNode("generate_python_code", this.jupyCellNode.bind(this))
+      .addNode("report_writer", this.reportWriterNode.bind(this))
       .addEdge(START, "select_tables")
       .addConditionalEdges('select_tables', (state) => { // Now if there is a threadId from openai, we will go there directly
-        if (state.codeInterpreterThreadId !== '' && state.isPossible === 'yes') {
+        if (state.codeInterpreterThreadId !== '' && state.relevantTables.length > 0) {
           return 'generate_python_code';
         } 
-        if (state.relevantTables.length >= 1 && state.isPossible === 'no' && state.continued === false) {
+        if (state.relevantTables.length > 0) {
           return 'get_tables';
         } else {
-            return END;
+          return "select_tables"
         }
       })
       .addConditionalEdges('get_tables', (state) => {
@@ -517,9 +402,21 @@ export class InsightDatasetGraphV3 extends AbstractGraph<InsightDatasetStateV3> 
           return 'plan_execution';
         }
       })
-      .addEdge('plan_execution', 'generate_python_code') 
-      .addEdge("generate_python_code", END)
-    
+      .addConditionalEdges('plan_execution', (state) => {
+        if (state.planDone === true) {
+          return "generate_python_code";
+        } else {
+          return 'plan_execution';
+        }
+      })
+      .addConditionalEdges('generate_python_code', (state) => {
+        if (state.codeDone === true) {
+          return "report_writer";
+        } else {
+          return 'generate_python_code';
+        }
+      })
+      .addEdge('report_writer', END)
       
       const poolConfig = {
         host: clientConfig.PG_HOST,

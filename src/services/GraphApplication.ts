@@ -5,6 +5,7 @@ import { DataRecoveryGraph } from '../subgraphs/getData';
 // import { InsightExtractorGraph } from '../subgraphs/insightExtractor';
 import { InsightDatasetGraph } from '../subgraphs/insightDataset';
 // import {InsightDatasetGraphV3} from '../subgraphs/getInisghtsV3';
+import { SimplePlannerGraph } from '../subgraphs/testGraph';
 // import { CreateDashboardGraph } from '../subgraphs/createDashboard';
 
 type SubgraphConfig = {
@@ -35,6 +36,10 @@ export class GraphApplication {
       subgraphs: [{ name: 'getInsights', Graph: InsightDatasetGraph }],
       systemPrompt: insightsSystemPrompt
     },
+    test: {
+      subgraphs: [{ name: 'user_analysis_agent', Graph: SimplePlannerGraph }],
+      systemPrompt: "redirect to user_analysis_agent"
+    },
     // Add more app types here as needed
   };
 
@@ -62,6 +67,10 @@ export class GraphApplication {
       const insightDatasetGraph = new InsightDatasetGraph(+this.clientData[0], [this.clientAgentFunction, this.outputHandler], this.clientData[1], schema);
       await insightDatasetGraph.initialize();
       this.graphManager = insightDatasetGraph;
+    } else if (appType === 'test') {
+      const test = new SimplePlannerGraph(+this.clientData[0], [this.clientAgentFunction], this.clientData[1], schema);
+      await test.initialize();
+      this.graphManager = test;
     } else {
       const fasterModel = getFasterModel();
       const planner = createPlanner(fasterModel);
