@@ -94,7 +94,7 @@ export class DataRecoveryGraph extends AbstractGraph<DataRecoveryState> {
     };
     super(graphState);
     this.functions = functions;
-    this.database = 11;
+    this.database = database;
     this.companyName = companyName;
   }
 
